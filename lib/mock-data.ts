@@ -70,6 +70,17 @@ export type TaskSubmission = {
   note: string;
 };
 
+export type PlanBundle = {
+  plan: Plan;
+  organization: Organization;
+  phases: Phase[];
+  tasks: Task[];
+  nextTask: Task;
+  apps: SaaSApp[];
+  attachments: Attachment[];
+  comments: Comment[];
+};
+
 export type Plan = {
   id: string;
   organizationId: string;
@@ -329,6 +340,12 @@ export function getPlanBundle(planId: string) {
   const planTasks = tasks.filter((task) => plan.taskIds.includes(task.id));
   const nextTask = planTasks.find((task) => task.id === plan.nextTaskId);
   const apps = saasApps.filter((app) => app.organizationId === plan.organizationId);
+  const planAttachments = attachments.filter((attachment) => plan.taskIds.includes(attachment.taskId));
+  const planComments = comments.filter((comment) => plan.taskIds.includes(comment.taskId));
+
+  if (!organization || !nextTask) {
+    return null;
+  }
 
   return {
     plan,
@@ -336,6 +353,8 @@ export function getPlanBundle(planId: string) {
     phases: planPhases,
     tasks: planTasks,
     nextTask,
-    apps
-  };
+    apps,
+    attachments: planAttachments,
+    comments: planComments
+  } satisfies PlanBundle;
 }

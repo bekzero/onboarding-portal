@@ -9,7 +9,7 @@ const cards = [
   {
     title: "MSP onboarding workspace",
     body: "Track shared next steps, task ownership, waiting states, and KZero meeting checkpoints.",
-    href: `/portal/${plans[0].id}`,
+    href: `/demo/${plans[0].id}`,
     icon: ClipboardList
   },
   {
@@ -40,7 +40,7 @@ export default function HomePage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link href="/portal/northwind-nfr">
+                <Link href="/demo/northwind-nfr">
                   <Button>View demo onboarding portal</Button>
                 </Link>
                 <Link href="/internal">
@@ -61,7 +61,7 @@ export default function HomePage() {
               <div className="mt-6 space-y-4 text-sm text-muted">
                 <p>Auth.js Keycloak integration is scaffolded with safe local mock fallbacks.</p>
                 <p>The onboarding flow models the full 10-step MSP-to-customer rollout path.</p>
-                <p>The demo plan at `/portal/northwind-nfr` reflects the polished onboarding layout.</p>
+                <p>The public demo plan at `/demo/northwind-nfr` reflects the polished onboarding layout.</p>
               </div>
             </div>
           </div>
