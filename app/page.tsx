@@ -35,16 +35,16 @@ export default function HomePage() {
                   Clean onboarding skeleton for MSP and customer passwordless rollouts.
                 </h2>
                 <p className="max-w-2xl text-base leading-7 text-muted">
-                  This initial scaffold keeps the UI intentionally conservative until partners.kzero.com
-                  screenshots, brand assets, or exported patterns are available.
+                  The demo onboarding portal now highlights the polished MSP rollout experience while keeping the rest
+                  of the scaffold intentionally conservative and easy to extend.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link href={`/portal/${plans[0].id}`}>
-                  <Button>Open sample MSP plan</Button>
+                <Link href="/portal/northwind-nfr">
+                  <Button>View demo onboarding portal</Button>
                 </Link>
-                <Link href="/docs/design-brief.md">
-                  <Button variant="outline">Review design brief</Button>
+                <Link href="/internal">
+                  <Button variant="outline">Open internal dashboard</Button>
                 </Link>
               </div>
             </div>
@@ -61,7 +61,7 @@ export default function HomePage() {
               <div className="mt-6 space-y-4 text-sm text-muted">
                 <p>Auth.js Keycloak integration is scaffolded with safe local mock fallbacks.</p>
                 <p>The onboarding flow models the full 10-step MSP-to-customer rollout path.</p>
-                <p>Visual polish is intentionally deferred pending KZero source assets.</p>
+                <p>The demo plan at `/portal/northwind-nfr` reflects the polished onboarding layout.</p>
               </div>
             </div>
           </div>
@@ -84,6 +84,8 @@ export default function HomePage() {
             </Card>
           ))}
         </section>
+
+        <p className="text-center text-sm text-muted">Portal prototype v2</p>
       </main>
     </PortalShell>
   );
