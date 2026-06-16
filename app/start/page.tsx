@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Building2, Search } from "lucide-react";
+import { ArrowRight, Building2, LockKeyhole, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -22,6 +23,7 @@ export default function StartPage() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState("");
   const [error, setError] = useState("");
+  const [oidcReadyTenant, setOidcReadyTenant] = useState<TenantRegistryEntry | null>(null);
   const [registry, setRegistry] = useState<TenantRegistryEntry[]>(tenantRegistry);
 
   useEffect(() => {
@@ -39,15 +41,21 @@ export default function StartPage() {
     const tenant = findTenantByInputWithRegistry(tenantName, registry);
 
     window.localStorage.setItem(TENANT_STORAGE_KEY, tenantName);
+    setOidcReadyTenant(null);
 
     if (!tenant) {
       setError(
-        "We could not find that onboarding portal. Check the tenant name or contact your KZero Sales Engineer."
+        "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer."
       );
       return;
     }
 
     setError("");
+
+    if (tenant.accessMode === "oidc") {
+      setOidcReadyTenant(tenant);
+      return;
+    }
 
     // Future production redirect:
     // /api/auth/signin/keycloak?callbackUrl=/portal/resolve
@@ -59,7 +67,8 @@ export default function StartPage() {
   }
 
   const tenant = findTenantByInputWithRegistry(tenantName, registry);
-  const issuerPreview = tenant ? buildKzeroIssuerForTenant(tenant.tenantSlug) : null;
+  const issuerPreview =
+    tenant?.accessMode === "oidc" ? buildKzeroIssuerForTenant(tenant.tenantSlug) : null;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8 md:px-10">
@@ -67,7 +76,7 @@ export default function StartPage() {
         <Link href="/" className="text-sm text-slate-400 transition-colors hover:text-blue-200">
           Back
         </Link>
-        <Link href="/internal" className="text-sm text-slate-400 transition-colors hover:text-blue-200">
+        <Link href="/admin-demo" className="text-sm text-slate-400 transition-colors hover:text-blue-200">
           Admin
         </Link>
       </div>
@@ -89,21 +98,25 @@ export default function StartPage() {
                   Find your KZero onboarding portal
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-blue-100/78">
-                  Enter the KZero tenant name provided by your KZero Sales Engineer to continue to your onboarding login flow.
+                  Enter your MSP name or KZero tenant name to continue into your onboarding plan.
                 </p>
               </div>
               <div className="grid max-w-xl gap-3">
                 <label className="grid gap-2 text-sm text-blue-100/82">
-                  <span>Tenant name</span>
+                  <span>MSP or tenant name</span>
                   <input
                     className="rounded-2xl border border-white/10 bg-[#0b1424]/90 px-4 py-3 text-white outline-none placeholder:text-slate-500"
-                    onChange={(event) => setTenantName(event.target.value)}
+                    onChange={(event) => {
+                      setTenantName(event.target.value);
+                      setError("");
+                      setOidcReadyTenant(null);
+                    }}
                     placeholder="your-tenant-name"
                     value={tenantName}
                   />
                 </label>
                 <p className="text-sm text-slate-300">
-                  Enter the KZero tenant name provided by your KZero Sales Engineer.
+                  Enter your MSP name or the KZero tenant name provided by your KZero Sales Engineer.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Button className="h-11 px-5" onClick={handleContinue}>
@@ -118,6 +131,23 @@ export default function StartPage() {
                 </div>
                 <p className="text-sm text-blue-100/78">Testing? Use ABCMSP.</p>
                 {error ? <p className="text-sm text-amber-200">{error}</p> : null}
+                {oidcReadyTenant ? (
+                  <div className="rounded-[1.35rem] border border-blue-400/20 bg-blue-500/10 p-4 text-sm text-blue-100">
+                    <div className="flex items-center gap-2">
+                      <LockKeyhole className="h-4 w-4" />
+                      <p className="font-medium">This MSP is configured for KZero sign-in.</p>
+                    </div>
+                    <p className="mt-2 leading-6 text-blue-100/78">
+                      In production, this will redirect to the tenant OIDC login.
+                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <Link href={`/demo/${oidcReadyTenant.planId}`}>
+                        <Button>Continue to demo plan</Button>
+                      </Link>
+                      <Badge>Future OIDC redirect</Badge>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -133,10 +163,13 @@ export default function StartPage() {
               </div>
               <div className="mt-5 grid gap-3 text-sm text-slate-300">
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                  Known demo tenants are validated against an allowlisted tenant registry.
+                  Known MSPs and demo tenants are validated against an allowlisted tenant registry.
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                  Future production flow will redirect into the tenant-specific KZero OIDC sign-in experience.
+                  Temporary MSP access can open a demo onboarding plan before the tenant is deployed.
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  Future production flow will redirect OIDC-configured MSPs into the tenant-specific KZero sign-in experience.
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
                   {issuerPreview

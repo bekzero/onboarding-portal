@@ -15,7 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { OnboardingCase, OnboardingCaseStatus, TenantType, User } from "@/lib/mock-data";
+import type { OnboardingCase, TenantType, User } from "@/lib/mock-data";
 import {
   buildKzeroIssuerForTenant,
   DemoEnrollment,
@@ -37,13 +37,10 @@ type EnrollmentFormState = {
   clientId: string;
   clientSecret: string;
   mspName: string;
+  primaryContactEmail: string;
   startingPlanType: TenantType;
   tenantName: string;
 };
-
-function formatStatusLabel(status: string) {
-  return status.replaceAll("_", " ");
-}
 
 function formatDateLabel() {
   return new Intl.DateTimeFormat("en-US", {
@@ -55,19 +52,32 @@ function formatDateLabel() {
 
 function enrollmentToCase(enrollment: DemoEnrollment): OnboardingCase {
   return {
+    accessMode: enrollment.accessMode,
     actionHref: `/demo/${enrollment.planId}`,
+    assignedSalesEngineer: enrollment.assignedSalesEngineer,
     currentStage: "Kickoff",
     lastActivity: enrollment.enrolledAt,
     mspName: enrollment.mspName,
-    oidcStatus: enrollment.oidcClientId && enrollment.oidcSecretProvided ? "configured" : "pending",
-    planId: enrollment.planId,
+    mspSlug: enrollment.mspSlug,
+    oidcClientId: enrollment.oidcClientId,
+    oidcClientSecretConfigured: enrollment.oidcClientSecretConfigured,
+    oidcStatus: enrollment.oidcStatus,
+    onboardingPlanId: enrollment.planId,
+    primaryContactEmail: enrollment.primaryContactEmail,
     progress: 0,
-    salesEngineer: enrollment.assignedSalesEngineer,
-    startingPlanType: enrollment.startingPlanType,
     status: "waiting_on_msp",
+    startingPlanType: enrollment.startingPlanType,
     submittedSaasAppCount: 0,
-    tenantSlug: enrollment.tenantSlug
+    tenantName: enrollment.tenantName
   };
+}
+
+function getAccessLabel(item: OnboardingCase) {
+  if (item.accessMode === "temporary") {
+    return "Temporary access";
+  }
+
+  return item.oidcStatus === "configured" ? "OIDC configured" : "OIDC missing";
 }
 
 export function InternalDashboard({
@@ -84,6 +94,7 @@ export function InternalDashboard({
     clientId: "",
     clientSecret: "",
     mspName: "",
+    primaryContactEmail: "",
     startingPlanType: "nfr",
     tenantName: ""
   });
@@ -96,7 +107,6 @@ export function InternalDashboard({
 
   const onboardingCases = useMemo(() => {
     const enrolledCases = demoEnrollments.map(enrollmentToCase);
-
     return [...enrolledCases, ...baseCases];
   }, [baseCases, demoEnrollments]);
 
@@ -108,29 +118,36 @@ export function InternalDashboard({
       : Math.round(onboardingCases.reduce((total, item) => total + item.progress, 0) / onboardingCases.length);
 
   function handleSubmit() {
+    const normalizedMspSlug = normalizeTenantName(formState.mspName);
     const normalizedTenant = normalizeTenantName(formState.tenantName);
     const trimmedMspName = formState.mspName.trim();
+    const trimmedPrimaryContactEmail = formState.primaryContactEmail.trim();
     const trimmedClientId = formState.clientId.trim();
+    const hasAnyOidcConfig = Boolean(normalizedTenant || trimmedClientId || formState.clientSecret.trim());
+    const hasFullOidcConfig = Boolean(normalizedTenant && trimmedClientId && formState.clientSecret.trim());
 
-    if (!normalizedTenant || !trimmedMspName) {
+    if (!trimmedMspName || !trimmedPrimaryContactEmail || !normalizedMspSlug) {
       return;
     }
 
     const newEnrollment: DemoEnrollment = {
+      accessMode: hasAnyOidcConfig ? "oidc" : "temporary",
       assignedSalesEngineer: formState.assignedSalesEngineer,
       enrolledAt: formatDateLabel(),
       mspName: trimmedMspName,
-      oidcClientId: trimmedClientId,
-      oidcSecretMask: formState.clientSecret.trim() ? "••••••••" : "",
-      oidcSecretProvided: Boolean(formState.clientSecret.trim()),
-      planId: `${normalizedTenant}-nfr`,
+      mspSlug: normalizedMspSlug,
+      oidcClientId: trimmedClientId || undefined,
+      oidcClientSecretConfigured: Boolean(formState.clientSecret.trim()),
+      oidcStatus: hasFullOidcConfig ? "configured" : "not_configured",
+      planId: `${normalizedMspSlug}-nfr`,
+      primaryContactEmail: trimmedPrimaryContactEmail,
       startingPlanType: formState.startingPlanType,
-      tenantSlug: normalizedTenant
+      tenantName: normalizedTenant || undefined
     };
 
     const nextEnrollments = [
       newEnrollment,
-      ...demoEnrollments.filter((item) => item.tenantSlug !== normalizedTenant)
+      ...demoEnrollments.filter((item) => item.mspSlug !== normalizedMspSlug)
     ];
 
     // TODO: production must send this configuration to a secure backend.
@@ -142,6 +159,7 @@ export function InternalDashboard({
       clientId: "",
       clientSecret: "",
       mspName: "",
+      primaryContactEmail: "",
       startingPlanType: "nfr",
       tenantName: ""
     });
@@ -172,7 +190,7 @@ export function InternalDashboard({
             <div>
               <h2 className="text-2xl font-semibold text-white">Enroll MSP</h2>
               <p className="mt-1 text-sm text-slate-300">
-                Configure the MSP tenant name and OIDC client settings before portal sign-in is enabled.
+                Add a temporary MSP onboarding portal now, then configure tenant-based OIDC later when the realm is ready.
               </p>
             </div>
           </div>
@@ -188,31 +206,15 @@ export function InternalDashboard({
               />
             </label>
             <label className="grid gap-2 text-sm text-slate-300">
-              <span>Tenant name / realm</span>
+              <span>Primary contact email</span>
               <input
                 className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none placeholder:text-slate-500"
-                onChange={(event) => setFormState((current) => ({ ...current, tenantName: event.target.value }))}
-                placeholder="abcmsp"
-                value={formState.tenantName}
-              />
-            </label>
-            <label className="grid gap-2 text-sm text-slate-300">
-              <span>OIDC client ID</span>
-              <input
-                className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none placeholder:text-slate-500"
-                onChange={(event) => setFormState((current) => ({ ...current, clientId: event.target.value }))}
-                placeholder="portal-onboarding-client"
-                value={formState.clientId}
-              />
-            </label>
-            <label className="grid gap-2 text-sm text-slate-300">
-              <span>OIDC client secret</span>
-              <input
-                className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none placeholder:text-slate-500"
-                onChange={(event) => setFormState((current) => ({ ...current, clientSecret: event.target.value }))}
-                placeholder="Enter secret"
-                type="password"
-                value={formState.clientSecret}
+                onChange={(event) =>
+                  setFormState((current) => ({ ...current, primaryContactEmail: event.target.value }))
+                }
+                placeholder="contact@abcmsp.com"
+                type="email"
+                value={formState.primaryContactEmail}
               />
             </label>
             <label className="grid gap-2 text-sm text-slate-300">
@@ -247,6 +249,34 @@ export function InternalDashboard({
                 <option value="customer">Customer tenant</option>
               </select>
             </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              <span>Tenant name / realm</span>
+              <input
+                className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none placeholder:text-slate-500"
+                onChange={(event) => setFormState((current) => ({ ...current, tenantName: event.target.value }))}
+                placeholder="abcmsp"
+                value={formState.tenantName}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              <span>OIDC client ID</span>
+              <input
+                className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none placeholder:text-slate-500"
+                onChange={(event) => setFormState((current) => ({ ...current, clientId: event.target.value }))}
+                placeholder="portal-onboarding-client"
+                value={formState.clientId}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+              <span>OIDC client secret</span>
+              <input
+                className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none placeholder:text-slate-500"
+                onChange={(event) => setFormState((current) => ({ ...current, clientSecret: event.target.value }))}
+                placeholder="Enter secret"
+                type="password"
+                value={formState.clientSecret}
+              />
+            </label>
           </div>
 
           <div className="mt-6 rounded-[1.3rem] border border-white/10 bg-[#0a1424] p-4">
@@ -254,7 +284,7 @@ export function InternalDashboard({
               <div>
                 <p className="text-sm font-medium text-white">Issuer preview</p>
                 <p className="mt-1 text-sm text-slate-300">
-                  {issuerPreview ?? "Enter a tenant name to preview the KZero OIDC issuer."}
+                  {issuerPreview ?? "Optional until the MSP has a KZero tenant and OIDC is configured."}
                 </p>
               </div>
               <Button onClick={handleCopyIssuer} variant="outline">
@@ -266,8 +296,8 @@ export function InternalDashboard({
 
           <div className="mt-5 flex flex-wrap gap-3">
             <Button onClick={handleSubmit}>Enroll MSP</Button>
-            {normalizeTenantName(formState.tenantName) ? (
-              <Link href={`/demo/${normalizeTenantName(formState.tenantName)}-nfr`}>
+            {normalizeTenantName(formState.mspName) ? (
+              <Link href={`/demo/${normalizeTenantName(formState.mspName)}-nfr`}>
                 <Button variant="outline">Test login</Button>
               </Link>
             ) : null}
@@ -352,15 +382,15 @@ export function InternalDashboard({
           <div className="grid">
             {onboardingCases.map((item) => (
               <div
-                key={item.planId}
+                key={item.onboardingPlanId}
                 className="grid gap-4 border-b border-white/10 px-5 py-4 last:border-b-0 lg:grid-cols-[1.3fr_0.9fr_1fr_0.9fr_1fr_0.8fr_1fr_1fr_0.9fr_0.8fr] lg:items-center"
               >
                 <div>
                   <p className="font-medium text-white">{item.mspName}</p>
-                  <p className="mt-1 text-sm text-slate-400 lg:hidden">Tenant: {item.tenantSlug}</p>
+                  <p className="mt-1 text-sm text-slate-400 lg:hidden">MSP slug: {item.mspSlug}</p>
                 </div>
                 <div>
-                  <p className="hidden text-sm text-slate-300 lg:block">{item.tenantSlug}</p>
+                  <p className="hidden text-sm text-slate-300 lg:block">{item.tenantName ?? item.mspSlug}</p>
                   <p className="mt-1 text-xs text-slate-500 lg:mt-0">{item.startingPlanType.toUpperCase()}</p>
                 </div>
                 <div>
@@ -377,24 +407,35 @@ export function InternalDashboard({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Badge status={item.status}>{formatStatusLabel(item.status)}</Badge>
+                  <Badge status={item.status}>{getAccessLabel(item)}</Badge>
                 </div>
                 <div>
-                  <p className="text-sm text-white">{item.oidcStatus === "configured" ? "Configured" : "Pending"}</p>
-                  {demoEnrollments.find((enrollment) => enrollment.planId === item.planId)?.oidcSecretProvided ? (
-                    <p className="mt-1 text-xs text-slate-400">Secret: ••••••••</p>
+                  <p className="text-sm text-white">
+                    {item.oidcStatus === "configured"
+                      ? "Configured"
+                      : item.accessMode === "temporary"
+                        ? "Temporary access"
+                        : "OIDC missing"}
+                  </p>
+                  {item.oidcClientSecretConfigured ? (
+                    <p className="mt-1 text-xs text-slate-400">Secret: ********</p>
                   ) : null}
                 </div>
                 <p className="text-sm text-slate-300">{item.submittedSaasAppCount}</p>
-                <p className="text-sm text-slate-300">{item.salesEngineer}</p>
+                <p className="text-sm text-slate-300">{item.assignedSalesEngineer}</p>
                 <p className="hidden text-sm text-slate-300 lg:block">{item.lastActivity}</p>
-                <Link
-                  href={item.actionHref}
-                  className="inline-flex items-center gap-2 text-sm font-medium text-blue-200 transition-colors hover:text-blue-100"
-                >
-                  Test login
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                <div className="flex flex-col gap-2">
+                  <Link
+                    href={item.actionHref}
+                    className="inline-flex items-center gap-2 text-sm font-medium text-blue-200 transition-colors hover:text-blue-100"
+                  >
+                    Test login
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <span className="text-xs text-slate-400">
+                    {item.oidcStatus === "configured" ? "Edit OIDC config" : "Configure OIDC"}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -409,7 +450,7 @@ export function InternalDashboard({
           <div>
             <h3 className="text-lg font-semibold text-white">Security note</h3>
             <p className="mt-1 text-sm text-slate-300">
-              Demo enrollment stores only a masked secret placeholder. Production must store OIDC client secrets server-side using encrypted storage or a secrets manager.
+              Demo enrollment stores only whether a client secret is configured. Production must store OIDC client secrets server-side using encrypted storage or a secrets manager.
             </p>
           </div>
         </div>

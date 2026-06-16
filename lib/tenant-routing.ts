@@ -1,41 +1,60 @@
 export type TenantRegistryEntry = {
+  accessMode: "temporary" | "oidc";
   displayName: string;
+  mspSlug: string;
+  oidcStatus: "not_configured" | "configured";
   planId: string;
+  primaryContactEmail: string;
   tenantSlug: string;
 };
 
 export type DemoEnrollment = {
   assignedSalesEngineer: string;
+  accessMode: "temporary" | "oidc";
   enrolledAt: string;
   mspName: string;
-  oidcClientId: string;
-  oidcSecretMask: string;
-  oidcSecretProvided: boolean;
+  mspSlug: string;
+  oidcClientId?: string;
+  oidcClientSecretConfigured: boolean;
+  oidcStatus: "not_configured" | "configured";
   planId: string;
+  primaryContactEmail: string;
   startingPlanType: "nfr" | "customer";
-  tenantSlug: string;
+  tenantName?: string;
 };
 
 export const DEMO_ENROLLMENTS_STORAGE_KEY = "kzero-demo-enrollments";
 
 export const tenantRegistry: TenantRegistryEntry[] = [
   {
+    accessMode: "oidc",
     displayName: "ABCMSP",
+    mspSlug: "abcmsp",
+    oidcStatus: "configured",
     planId: "abcmsp-nfr",
+    primaryContactEmail: "taylor@abcmsp.com",
     tenantSlug: "abcmsp"
   },
   {
+    accessMode: "oidc",
     displayName: "Northwind MSP",
+    mspSlug: "northwind",
+    oidcStatus: "configured",
     planId: "northwind-nfr",
+    primaryContactEmail: "avery@northwindmsp.com",
     tenantSlug: "northwind"
   }
 ];
 
 export function buildTenantRegistry(enrollments: DemoEnrollment[] = []) {
   const enrollmentEntries: TenantRegistryEntry[] = enrollments.map((enrollment) => ({
+    accessMode: enrollment.accessMode,
     displayName: enrollment.mspName,
+    mspSlug: enrollment.mspSlug,
+    oidcStatus: enrollment.oidcStatus,
     planId: enrollment.planId,
-    tenantSlug: enrollment.tenantSlug
+    primaryContactEmail: enrollment.primaryContactEmail,
+    tenantSlug: enrollment.tenantName ?? enrollment.mspSlug
   }));
 
   const registry = [...tenantRegistry];
@@ -71,7 +90,12 @@ export function findTenantByInputWithRegistry(
     return null;
   }
 
-  return registry.find((entry) => normalizeTenantName(entry.tenantSlug) === normalizedInput) ?? null;
+  return (
+    registry.find((entry) => {
+      const candidates = [entry.tenantSlug, entry.displayName, entry.mspSlug];
+      return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedInput);
+    }) ?? null
+  );
 }
 
 export function getDemoPlanUrlForTenant(input?: string | null) {

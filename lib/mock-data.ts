@@ -8,6 +8,8 @@ export type TaskStatus =
 export type TaskOwner = "msp" | "kzero_se" | "shared";
 export type TenantType = "nfr" | "customer";
 export type OnboardingCaseStatus = "waiting_on_msp" | "waiting_on_kzero" | "in_progress" | "complete";
+export type AccessMode = "temporary" | "oidc";
+export type OidcStatus = "not_configured" | "configured";
 
 export type Organization = {
   id: string;
@@ -96,31 +98,39 @@ export type PlanBundle = {
 };
 
 export type OnboardingCase = {
+  accessMode: AccessMode;
   actionHref: string;
+  assignedSalesEngineer: string;
   currentStage: string;
   lastActivity: string;
   mspName: string;
-  oidcStatus: "configured" | "pending";
-  planId: string;
+  mspSlug: string;
+  oidcClientId?: string;
+  oidcClientSecretConfigured: boolean;
+  oidcStatus: OidcStatus;
+  onboardingPlanId: string;
+  primaryContactEmail: string;
   progress: number;
-  salesEngineer: string;
   status: OnboardingCaseStatus;
   startingPlanType: "nfr" | "customer";
   submittedSaasAppCount: number;
-  tenantSlug: string;
+  tenantName?: string;
 };
 
 type DemoCaseConfig = {
+  accessMode: AccessMode;
   currentStage: string;
   lastActivity: string;
   name: string;
   planId: string;
+  primaryContactEmail: string;
   progress: number;
   salesEngineerId: string;
   status: OnboardingCaseStatus;
   submittedSaasAppCount: number;
   tenantSlug: string;
   tenantType: TenantType;
+  tenantName?: string;
 };
 
 export const phases: Phase[] = [
@@ -158,46 +168,57 @@ export const phases: Phase[] = [
 
 const demoCaseConfigs: DemoCaseConfig[] = [
   {
+    accessMode: "oidc",
     currentStage: "Kickoff",
     lastActivity: "June 16, 2026",
     name: "ABCMSP",
     planId: "abcmsp-nfr",
+    primaryContactEmail: "taylor@abcmsp.com",
     progress: 12,
     salesEngineerId: "user-se-morgan",
     status: "waiting_on_msp",
     submittedSaasAppCount: 0,
     tenantSlug: "abcmsp",
-    tenantType: "nfr"
+    tenantType: "nfr",
+    tenantName: "abcmsp"
   },
   {
+    accessMode: "oidc",
     currentStage: "SSO Rollout",
     lastActivity: "June 15, 2026",
     name: "Northwind MSP",
     planId: "northwind-nfr",
+    primaryContactEmail: "avery@northwindmsp.com",
     progress: 82,
     salesEngineerId: "user-se-morgan",
     status: "in_progress",
     submittedSaasAppCount: 2,
     tenantSlug: "northwind",
-    tenantType: "nfr"
+    tenantType: "nfr",
+    tenantName: "northwind"
   },
   {
+    accessMode: "oidc",
     currentStage: "App Review",
     lastActivity: "June 14, 2026",
     name: "PeakPoint MSP",
     planId: "peakpoint-nfr",
+    primaryContactEmail: "casey@peakpointmsp.com",
     progress: 58,
     salesEngineerId: "user-se-riley",
     status: "waiting_on_kzero",
     submittedSaasAppCount: 4,
     tenantSlug: "peakpoint",
-    tenantType: "nfr"
+    tenantType: "nfr",
+    tenantName: "peakpoint"
   },
   {
+    accessMode: "temporary",
     currentStage: "Customer Rollout",
     lastActivity: "June 13, 2026",
     name: "Skyline MSP",
     planId: "skyline-nfr",
+    primaryContactEmail: "jamie@skylinemsp.com",
     progress: 100,
     salesEngineerId: "user-se-riley",
     status: "complete",
@@ -279,8 +300,8 @@ export const users: User[] = [
 const baseTasks: Omit<Task, "id">[] = [
   {
     phaseId: "phase-kickoff",
-    title: "Book NFR deployment meeting",
-    description: "Schedule the kickoff with your KZero Sales Engineer to deploy the NFR license.",
+    title: "Book setup call with KZero Sales Engineer",
+    description: "Schedule the kickoff with your KZero Sales Engineer to deploy and configure the NFR tenant.",
     owner: "msp",
     status: "waiting_on_msp",
     dueLabel: "This week",
@@ -525,19 +546,24 @@ export const taskSubmissions: TaskSubmission[] = [
 ];
 
 export const onboardingCases: OnboardingCase[] = demoCaseConfigs.map((config) => ({
+  accessMode: config.accessMode,
   actionHref: `/demo/${config.planId}`,
+  assignedSalesEngineer:
+    users.find((user) => user.id === config.salesEngineerId)?.name ?? "Unassigned",
   currentStage: config.currentStage,
   lastActivity: config.lastActivity,
   mspName: config.name,
-  oidcStatus: "configured",
-  planId: config.planId,
+  mspSlug: config.tenantSlug,
+  oidcClientId: config.accessMode === "oidc" ? `portal-${config.tenantSlug}` : undefined,
+  oidcClientSecretConfigured: config.accessMode === "oidc",
+  oidcStatus: config.accessMode === "oidc" ? "configured" : "not_configured",
+  onboardingPlanId: config.planId,
+  primaryContactEmail: config.primaryContactEmail,
   progress: config.progress,
-  salesEngineer:
-    users.find((user) => user.id === config.salesEngineerId)?.name ?? "Unassigned",
   status: config.status,
   startingPlanType: config.tenantType,
   submittedSaasAppCount: config.submittedSaasAppCount,
-  tenantSlug: config.tenantSlug
+  tenantName: config.tenantName
 }));
 
 function titleCaseFromSlug(slug: string) {
