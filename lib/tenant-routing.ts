@@ -4,6 +4,20 @@ export type TenantRegistryEntry = {
   tenantSlug: string;
 };
 
+export type DemoEnrollment = {
+  assignedSalesEngineer: string;
+  enrolledAt: string;
+  mspName: string;
+  oidcClientId: string;
+  oidcSecretMask: string;
+  oidcSecretProvided: boolean;
+  planId: string;
+  startingPlanType: "nfr" | "customer";
+  tenantSlug: string;
+};
+
+export const DEMO_ENROLLMENTS_STORAGE_KEY = "kzero-demo-enrollments";
+
 export const tenantRegistry: TenantRegistryEntry[] = [
   {
     displayName: "ABCMSP",
@@ -17,6 +31,24 @@ export const tenantRegistry: TenantRegistryEntry[] = [
   }
 ];
 
+export function buildTenantRegistry(enrollments: DemoEnrollment[] = []) {
+  const enrollmentEntries: TenantRegistryEntry[] = enrollments.map((enrollment) => ({
+    displayName: enrollment.mspName,
+    planId: enrollment.planId,
+    tenantSlug: enrollment.tenantSlug
+  }));
+
+  const registry = [...tenantRegistry];
+
+  enrollmentEntries.forEach((entry) => {
+    if (!registry.some((item) => normalizeTenantName(item.tenantSlug) === normalizeTenantName(entry.tenantSlug))) {
+      registry.push(entry);
+    }
+  });
+
+  return registry;
+}
+
 export function normalizeTenantName(input?: string | null) {
   if (!input) {
     return "";
@@ -26,19 +58,31 @@ export function normalizeTenantName(input?: string | null) {
 }
 
 export function findTenantByInput(input?: string | null) {
+  return findTenantByInputWithRegistry(input, tenantRegistry);
+}
+
+export function findTenantByInputWithRegistry(
+  input: string | null | undefined,
+  registry: TenantRegistryEntry[]
+) {
   const normalizedInput = normalizeTenantName(input);
 
   if (!normalizedInput) {
     return null;
   }
 
-  return (
-    tenantRegistry.find((entry) => normalizeTenantName(entry.tenantSlug) === normalizedInput) ?? null
-  );
+  return registry.find((entry) => normalizeTenantName(entry.tenantSlug) === normalizedInput) ?? null;
 }
 
 export function getDemoPlanUrlForTenant(input?: string | null) {
-  const tenant = findTenantByInput(input);
+  return getDemoPlanUrlForTenantWithRegistry(input, tenantRegistry);
+}
+
+export function getDemoPlanUrlForTenantWithRegistry(
+  input: string | null | undefined,
+  registry: TenantRegistryEntry[]
+) {
+  const tenant = findTenantByInputWithRegistry(input, registry);
 
   if (!tenant) {
     return null;
@@ -57,6 +101,35 @@ export function buildKzeroIssuerForTenant(tenantSlug: string) {
   // Production OIDC should never trust arbitrary tenant input directly.
   // Only allowlisted tenant registry entries should be used to construct live OIDC endpoints.
   return `https://ca.auth.kzero.com/realms/${normalizedTenant}`;
+}
+
+export function readDemoEnrollmentsFromStorage() {
+  if (typeof window === "undefined") {
+    return [] as DemoEnrollment[];
+  }
+
+  const rawValue = window.localStorage.getItem(DEMO_ENROLLMENTS_STORAGE_KEY);
+
+  if (!rawValue) {
+    return [] as DemoEnrollment[];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown;
+    return Array.isArray(parsed) ? (parsed as DemoEnrollment[]) : [];
+  } catch {
+    return [] as DemoEnrollment[];
+  }
+}
+
+export function saveDemoEnrollmentsToStorage(enrollments: DemoEnrollment[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  // Production must store OIDC client secrets server-side using encrypted storage or a secrets manager.
+  // Demo storage intentionally persists only whether a secret was provided plus a masked placeholder.
+  window.localStorage.setItem(DEMO_ENROLLMENTS_STORAGE_KEY, JSON.stringify(enrollments));
 }
 
 export function resolvePlanIdFromTenantClaim(tenantClaim?: string | null) {

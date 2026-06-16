@@ -100,10 +100,12 @@ export type OnboardingCase = {
   currentStage: string;
   lastActivity: string;
   mspName: string;
+  oidcStatus: "configured" | "pending";
   planId: string;
   progress: number;
   salesEngineer: string;
   status: OnboardingCaseStatus;
+  startingPlanType: "nfr" | "customer";
   submittedSaasAppCount: number;
   tenantSlug: string;
 };
@@ -527,14 +529,85 @@ export const onboardingCases: OnboardingCase[] = demoCaseConfigs.map((config) =>
   currentStage: config.currentStage,
   lastActivity: config.lastActivity,
   mspName: config.name,
+  oidcStatus: "configured",
   planId: config.planId,
   progress: config.progress,
   salesEngineer:
     users.find((user) => user.id === config.salesEngineerId)?.name ?? "Unassigned",
   status: config.status,
+  startingPlanType: config.tenantType,
   submittedSaasAppCount: config.submittedSaasAppCount,
   tenantSlug: config.tenantSlug
 }));
+
+function titleCaseFromSlug(slug: string) {
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function createGeneratedPlanBundle(planId: string) {
+  const tenantType: TenantType = planId.endsWith("-customer") ? "customer" : "nfr";
+  const tenantSlug = planId.replace(/-(nfr|customer)$/i, "");
+
+  if (!tenantSlug) {
+    return null;
+  }
+
+  const displayName = titleCaseFromSlug(tenantSlug);
+  const organizationName = tenantType === "nfr" ? `${displayName} MSP` : displayName;
+  const generatedOrganization: Organization = {
+    id: `org-generated-${tenantSlug}`,
+    name: organizationName,
+    tenantSlug,
+    tenantType,
+    assignedSalesEngineerId: "user-se-morgan"
+  };
+  const generatedTasks = createTasks(tenantSlug);
+  const generatedPlan: Plan = {
+    id: planId,
+    organizationId: generatedOrganization.id,
+    title: tenantType === "nfr" ? `${organizationName} NFR Tenant Onboarding` : `${organizationName} Customer Rollout`,
+    tenantType,
+    phaseIds: phases.map((phase) => phase.id),
+    taskIds: generatedTasks.map((task) => task.id),
+    nextTaskId: `${tenantSlug}-task-1`,
+    progress: 8
+  };
+
+  return {
+    plan: generatedPlan,
+    organization: generatedOrganization,
+    phases,
+    tasks: generatedTasks,
+    nextTask: generatedTasks[0],
+    apps: [],
+    attachments: [
+      {
+        id: `attachment-generated-${tenantSlug}-1`,
+        taskId: `${tenantSlug}-task-4`,
+        name: "Vault adoption guide placeholder",
+        kind: "guide"
+      },
+      {
+        id: `attachment-generated-${tenantSlug}-2`,
+        taskId: `${tenantSlug}-task-7`,
+        name: "Onboarding plan placeholder",
+        kind: "plan"
+      }
+    ],
+    comments: [
+      {
+        id: `comment-generated-${tenantSlug}-1`,
+        taskId: `${tenantSlug}-task-1`,
+        author: "Morgan Lee",
+        body: "Demo-generated onboarding case. Production data will come from enrolled MSP records."
+      }
+    ]
+  } satisfies PlanBundle;
+}
 
 export function getPlan(planId: string) {
   return plans.find((plan) => plan.id === planId);
@@ -544,7 +617,7 @@ export function getPlanBundle(planId: string) {
   const plan = getPlan(planId);
 
   if (!plan) {
-    return null;
+    return createGeneratedPlanBundle(planId);
   }
 
   const organization = organizations.find((item) => item.id === plan.organizationId);

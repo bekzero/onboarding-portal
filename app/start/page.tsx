@@ -6,7 +6,15 @@ import { ArrowRight, Building2, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { buildKzeroIssuerForTenant, findTenantByInput, getDemoPlanUrlForTenant } from "@/lib/tenant-routing";
+import {
+  buildKzeroIssuerForTenant,
+  buildTenantRegistry,
+  findTenantByInputWithRegistry,
+  getDemoPlanUrlForTenantWithRegistry,
+  readDemoEnrollmentsFromStorage,
+  tenantRegistry,
+  type TenantRegistryEntry
+} from "@/lib/tenant-routing";
 
 const TENANT_STORAGE_KEY = "kzero-demo-tenant";
 
@@ -14,16 +22,21 @@ export default function StartPage() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState("");
   const [error, setError] = useState("");
+  const [registry, setRegistry] = useState<TenantRegistryEntry[]>(tenantRegistry);
 
   useEffect(() => {
     const storedTenant = window.localStorage.getItem(TENANT_STORAGE_KEY);
+    const enrollments = readDemoEnrollmentsFromStorage();
+
     if (storedTenant) {
       setTenantName(storedTenant);
     }
+
+    setRegistry(buildTenantRegistry(enrollments));
   }, []);
 
   function handleContinue() {
-    const tenant = findTenantByInput(tenantName);
+    const tenant = findTenantByInputWithRegistry(tenantName, registry);
 
     window.localStorage.setItem(TENANT_STORAGE_KEY, tenantName);
 
@@ -39,13 +52,13 @@ export default function StartPage() {
     // Future production redirect:
     // /api/auth/signin/keycloak?callbackUrl=/portal/resolve
     // or a tenant-aware OIDC start route built from the allowlisted KZero issuer.
-    const demoUrl = getDemoPlanUrlForTenant(tenantName);
+    const demoUrl = getDemoPlanUrlForTenantWithRegistry(tenantName, registry);
     if (demoUrl) {
       router.push(demoUrl);
     }
   }
 
-  const tenant = findTenantByInput(tenantName);
+  const tenant = findTenantByInputWithRegistry(tenantName, registry);
   const issuerPreview = tenant ? buildKzeroIssuerForTenant(tenant.tenantSlug) : null;
 
   return (
