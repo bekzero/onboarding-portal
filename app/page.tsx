@@ -1,92 +1,101 @@
 import Link from "next/link";
-import { ArrowRight, Building2, ClipboardList, ShieldCheck } from "lucide-react";
-import { PortalShell } from "@/components/portal-shell";
+import { CalendarDays, Rocket, ShieldCheck, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { plans } from "@/lib/mock-data";
 
-const cards = [
+const onboardingCards = [
   {
-    title: "MSP onboarding workspace",
-    body: "Track shared next steps, task ownership, waiting states, and KZero meeting checkpoints.",
-    href: `/demo/${plans[0].id}`,
-    icon: ClipboardList
+    title: "Book your kickoff",
+    body: "Schedule your first session with a KZero Sales Engineer and get your onboarding plan moving.",
+    icon: CalendarDays
   },
   {
-    title: "Internal Sales Engineer view",
-    body: "See active onboarding plans, apps pending review, and customer rollout readiness.",
-    href: "/internal",
-    icon: Building2
+    title: "Prepare your tenant",
+    body: "Set up admins, add users, and work through the steps needed for your MSP rollout.",
+    icon: ShieldCheck
+  },
+  {
+    title: "Roll out to customers",
+    body: "Follow the same guided process for customer tenants once your NFR environment is ready.",
+    icon: Users
   }
 ];
 
 export default function HomePage() {
   return (
-    <PortalShell title="KZero Onboarding Portal" eyebrow="Skeleton">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 md:px-10">
       <main className="grid gap-6">
-        <Card className="overflow-hidden">
-          <div className="grid gap-8 md:grid-cols-[1.4fr_0.8fr]">
+        <Card className="overflow-hidden border-white/10 bg-[linear-gradient(135deg,#1e3a75_0%,#111d32_52%,#09111d_100%)] p-0">
+          <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
             <div className="space-y-5">
-              <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-200">
-                KZero-owned references pending
-              </span>
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-blue-100">
+                  <Rocket className="h-6 w-6" />
+                </div>
+                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-blue-100/80">
+                  KZero Passwordless
+                </p>
+              </div>
               <div className="space-y-3">
-                <h2 className="max-w-2xl text-4xl font-semibold tracking-tight text-white">
-                  Clean onboarding skeleton for MSP and customer passwordless rollouts.
-                </h2>
-                <p className="max-w-2xl text-base leading-7 text-muted">
-                  The demo onboarding portal now highlights the polished MSP rollout experience while keeping the rest
-                  of the scaffold intentionally conservative and easy to extend.
+                <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-5xl">
+                  Welcome to your KZero onboarding portal
+                </h1>
+                <p className="max-w-2xl text-base leading-7 text-blue-100/78">
+                  Track your setup, book kickoff and SSO meetings, submit SaaS apps for review, and follow your rollout
+                  plan from first deployment through customer onboarding.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Link href="/demo/northwind-nfr">
-                  <Button>View demo onboarding portal</Button>
+                  <Button>Start onboarding</Button>
                 </Link>
-                <Link href="/internal">
-                  <Button variant="outline">Open internal dashboard</Button>
+                <Link href="/demo/northwind-nfr">
+                  <Button variant="outline">View setup checklist</Button>
                 </Link>
               </div>
             </div>
-            <div className="rounded-[1.75rem] border border-border bg-[#07101d] p-5">
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-[#0b1424]/80 p-5">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                   <ShieldCheck className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">Portal scope</p>
-                  <p className="text-sm text-muted">Auth scaffold, mock data, protected routes</p>
+                  <p className="text-sm font-semibold text-white">What you can do here</p>
+                  <p className="text-sm text-slate-300">A guided view of your onboarding progress</p>
                 </div>
               </div>
-              <div className="mt-6 space-y-4 text-sm text-muted">
-                <p>Auth.js Keycloak integration is scaffolded with safe local mock fallbacks.</p>
-                <p>The onboarding flow models the full 10-step MSP-to-customer rollout path.</p>
-                <p>The public demo plan at `/demo/northwind-nfr` reflects the polished onboarding layout.</p>
+              <div className="mt-5 grid gap-3 text-sm text-slate-300">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  Follow your onboarding plan and see the next step at a glance.
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  Keep app submissions, meetings, and rollout milestones in one place.
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  Reuse the process for customer tenants as you expand KZero deployment.
+                </div>
               </div>
             </div>
           </div>
         </Card>
 
-        <section className="grid gap-6 md:grid-cols-2">
-          {cards.map(({ title, body, href, icon: Icon }) => (
-            <Card key={title} className="flex flex-col gap-5">
+        <section className="grid gap-6 md:grid-cols-3">
+          {onboardingCards.map(({ title, body, icon: Icon }) => (
+            <Card key={title} className="flex flex-col gap-4 border-white/10 bg-[#101a2d]">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                 <Icon className="h-6 w-6" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-xl font-semibold text-white">{title}</h3>
-                <p className="text-sm leading-6 text-muted">{body}</p>
+                <h2 className="text-xl font-semibold text-white">{title}</h2>
+                <p className="text-sm leading-6 text-slate-300">{body}</p>
               </div>
-              <Link href={href} className="mt-auto inline-flex items-center gap-2 text-sm font-medium text-blue-200">
-                Explore
-                <ArrowRight className="h-4 w-4" />
-              </Link>
             </Card>
           ))}
         </section>
 
-        <p className="text-center text-sm text-muted">Portal prototype v2</p>
+        <p className="text-center text-sm text-slate-400">KZero Passwordless onboarding</p>
       </main>
-    </PortalShell>
+    </div>
   );
 }
