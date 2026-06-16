@@ -1,3 +1,5 @@
+import type { AdminCaseOverride } from "@/lib/admin-case-storage";
+
 export type TenantRegistryEntry = {
   accessMode: "temporary" | "oidc";
   displayName: string;
@@ -43,10 +45,51 @@ export const tenantRegistry: TenantRegistryEntry[] = [
     planId: "northwind-nfr",
     primaryContactEmail: "avery@northwindmsp.com",
     tenantSlug: "northwind"
+  },
+  {
+    accessMode: "oidc",
+    displayName: "PeakPoint MSP",
+    mspSlug: "peakpoint",
+    oidcStatus: "configured",
+    planId: "peakpoint-nfr",
+    primaryContactEmail: "casey@peakpointmsp.com",
+    tenantSlug: "peakpoint"
+  },
+  {
+    accessMode: "temporary",
+    displayName: "Skyline MSP",
+    mspSlug: "skyline",
+    oidcStatus: "not_configured",
+    planId: "skyline-nfr",
+    primaryContactEmail: "jamie@skylinemsp.com",
+    tenantSlug: "skyline"
   }
 ];
 
-export function buildTenantRegistry(enrollments: DemoEnrollment[] = []) {
+function applyOverrideToRegistryEntry(
+  entry: TenantRegistryEntry,
+  overrides: Record<string, AdminCaseOverride>
+) {
+  const override = overrides[entry.planId];
+
+  if (!override) {
+    return entry;
+  }
+
+  return {
+    ...entry,
+    accessMode: override.accessMode ?? entry.accessMode,
+    displayName: override.mspName ?? entry.displayName,
+    oidcStatus: override.oidcStatus ?? entry.oidcStatus,
+    primaryContactEmail: override.primaryContactEmail ?? entry.primaryContactEmail,
+    tenantSlug: override.tenantName ?? entry.tenantSlug
+  } satisfies TenantRegistryEntry;
+}
+
+export function buildTenantRegistry(
+  enrollments: DemoEnrollment[] = [],
+  overrides: Record<string, AdminCaseOverride> = {}
+) {
   const enrollmentEntries: TenantRegistryEntry[] = enrollments.map((enrollment) => ({
     accessMode: enrollment.accessMode,
     displayName: enrollment.mspName,
@@ -57,11 +100,23 @@ export function buildTenantRegistry(enrollments: DemoEnrollment[] = []) {
     tenantSlug: enrollment.tenantName ?? enrollment.mspSlug
   }));
 
-  const registry = [...tenantRegistry];
+  const registry = tenantRegistry.map((entry) => applyOverrideToRegistryEntry(entry, overrides));
 
   enrollmentEntries.forEach((entry) => {
-    if (!registry.some((item) => normalizeTenantName(item.tenantSlug) === normalizeTenantName(entry.tenantSlug))) {
-      registry.push(entry);
+    const override = overrides[entry.planId];
+    const nextEntry = override
+      ? {
+          ...entry,
+          accessMode: override.accessMode ?? entry.accessMode,
+          displayName: override.mspName ?? entry.displayName,
+          oidcStatus: override.oidcStatus ?? entry.oidcStatus,
+          primaryContactEmail: override.primaryContactEmail ?? entry.primaryContactEmail,
+          tenantSlug: override.tenantName ?? entry.tenantSlug
+        }
+      : entry;
+
+    if (!registry.some((item) => normalizeTenantName(item.planId) === normalizeTenantName(nextEntry.planId))) {
+      registry.push(nextEntry);
     }
   });
 

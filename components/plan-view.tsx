@@ -4,7 +4,6 @@ import {
   CalendarDays,
   CircleAlert,
   Clock3,
-  FileText,
   ListChecks,
   Mail,
   ShieldCheck
@@ -12,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DocumentsReviewCard } from "@/components/documents-review-card";
 import type { PlanBundle } from "@/lib/mock-data";
 import { users } from "@/lib/mock-data";
 
@@ -36,11 +36,9 @@ function taskTone(status: string) {
 }
 
 export function PlanView({
-  bundle,
-  demoMode = false
+  bundle
 }: {
   bundle: PlanBundle;
-  demoMode?: boolean;
 }) {
   const nextTask = bundle.nextTask;
   const completedTasks = bundle.tasks.filter((task) => task.status === "complete").length;
@@ -66,11 +64,6 @@ export function PlanView({
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-100/80">
                   {bundle.plan.tenantType.toUpperCase()} plan
                 </p>
-                {demoMode ? (
-                  <span className="rounded-full border border-blue-300/20 bg-blue-400/10 px-2.5 py-1 text-[11px] font-medium text-blue-100">
-                    Demo mode
-                  </span>
-                ) : null}
               </div>
               <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{bundle.plan.title}</h1>
               <p className="mt-1 text-sm text-slate-300">{bundle.organization.name} - KZero Passwordless onboarding workspace</p>
@@ -103,21 +96,12 @@ export function PlanView({
                   MSP Portal
                 </Button>
               </Link>
-              <Link href="/internal">
-                <Button className="h-9 px-4">Internal View</Button>
-              </Link>
             </div>
           </div>
         </div>
       </header>
 
       <main className="mt-5 grid gap-5">
-        {demoMode ? (
-          <div className="rounded-full border border-blue-300/20 bg-blue-400/10 px-4 py-2 text-center text-sm text-blue-100">
-            Demo mode - mock onboarding data
-          </div>
-        ) : null}
-
         <div className="grid gap-5 lg:grid-cols-12">
           <section className="grid gap-5 lg:col-span-8">
             <Card className="border-white/10 bg-[linear-gradient(135deg,#223c78_0%,#101c31_54%,#09111d_100%)] p-5 md:p-6">
@@ -314,9 +298,9 @@ export function PlanView({
                 </div>
               </div>
               <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
-                <p className="font-medium text-white">{kzeroContact?.name ?? "Morgan Lee"}</p>
-                <p className="mt-1 text-sm text-slate-300">{kzeroContact?.email ?? "morgan@kzero.com"}</p>
-                <p className="mt-3 text-sm text-slate-300">Use the Bookings placeholder to schedule implementation help.</p>
+                <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
+                <p className="mt-1 text-sm text-slate-300">{kzeroContact?.email ?? "ben@kzero.com"}</p>
+                <p className="mt-3 text-sm text-slate-300">Use Microsoft Bookings to schedule implementation help.</p>
               </div>
             </Card>
 
@@ -337,27 +321,7 @@ export function PlanView({
               </div>
             </Card>
 
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <FileText className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Plan docs</h3>
-                  <p className="text-sm text-slate-300">Guides and placeholders tied to this rollout.</p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-2.5">
-                {bundle.attachments.map((attachment) => (
-                  <div key={attachment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] px-3.5 py-3 text-sm text-white">
-                    {attachment.name}
-                  </div>
-                ))}
-                <Button variant="outline" className="h-10">
-                  Plan upload placeholder
-                </Button>
-              </div>
-            </Card>
+            <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} />
 
             <Card className="border-white/10 bg-[#101a2d] p-4">
               <h3 className="text-lg font-semibold text-white">Blockers and notes</h3>

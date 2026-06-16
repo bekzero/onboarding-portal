@@ -175,7 +175,7 @@ const demoCaseConfigs: DemoCaseConfig[] = [
     planId: "abcmsp-nfr",
     primaryContactEmail: "taylor@abcmsp.com",
     progress: 12,
-    salesEngineerId: "user-se-morgan",
+    salesEngineerId: "user-se-ben",
     status: "waiting_on_msp",
     submittedSaasAppCount: 0,
     tenantSlug: "abcmsp",
@@ -190,7 +190,7 @@ const demoCaseConfigs: DemoCaseConfig[] = [
     planId: "northwind-nfr",
     primaryContactEmail: "avery@northwindmsp.com",
     progress: 82,
-    salesEngineerId: "user-se-morgan",
+    salesEngineerId: "user-se-ben",
     status: "in_progress",
     submittedSaasAppCount: 2,
     tenantSlug: "northwind",
@@ -205,7 +205,7 @@ const demoCaseConfigs: DemoCaseConfig[] = [
     planId: "peakpoint-nfr",
     primaryContactEmail: "casey@peakpointmsp.com",
     progress: 58,
-    salesEngineerId: "user-se-riley",
+    salesEngineerId: "user-se-ben",
     status: "waiting_on_kzero",
     submittedSaasAppCount: 4,
     tenantSlug: "peakpoint",
@@ -220,7 +220,7 @@ const demoCaseConfigs: DemoCaseConfig[] = [
     planId: "skyline-nfr",
     primaryContactEmail: "jamie@skylinemsp.com",
     progress: 100,
-    salesEngineerId: "user-se-riley",
+    salesEngineerId: "user-se-ben",
     status: "complete",
     submittedSaasAppCount: 5,
     tenantSlug: "skyline",
@@ -241,7 +241,7 @@ export const organizations: Organization[] = [
     name: "Northwind Dental",
     tenantSlug: "northwind-dental",
     tenantType: "customer",
-    assignedSalesEngineerId: "user-se-morgan"
+    assignedSalesEngineerId: "user-se-ben"
   }
 ];
 
@@ -275,17 +275,10 @@ export const users: User[] = [
     role: "msp_admin"
   },
   {
-    id: "user-se-morgan",
-    name: "Morgan Lee",
-    email: "morgan@kzero.com",
+    id: "user-se-ben",
+    name: "Ben Eakin",
+    email: "ben@kzero.com",
     organizationId: "org-abcmsp",
-    role: "sales_engineer"
-  },
-  {
-    id: "user-se-riley",
-    name: "Riley Chen",
-    email: "riley@kzero.com",
-    organizationId: "org-peakpoint",
     role: "sales_engineer"
   },
   {
@@ -511,19 +504,19 @@ export const comments: Comment[] = [
   {
     id: "comment-abcmsp-1",
     taskId: "abcmsp-task-1",
-    author: "Morgan Lee",
+    author: "Ben Eakin",
     body: "Kickoff booking link is ready when ABCMSP is ready to schedule."
   },
   {
     id: "comment-peakpoint-1",
     taskId: "peakpoint-task-6",
-    author: "Riley Chen",
+    author: "Ben Eakin",
     body: "Compatibility review is waiting on the final app inventory and login URLs."
   },
   {
     id: "comment-skyline-1",
     taskId: "skyline-task-8",
-    author: "Riley Chen",
+    author: "Ben Eakin",
     body: "Skyline is ready for customer rollout handoff."
   }
 ];
@@ -589,7 +582,7 @@ function createGeneratedPlanBundle(planId: string) {
     name: organizationName,
     tenantSlug,
     tenantType,
-    assignedSalesEngineerId: "user-se-morgan"
+    assignedSalesEngineerId: "user-se-ben"
   };
   const generatedTasks = createTasks(tenantSlug);
   const generatedPlan: Plan = {
@@ -628,7 +621,7 @@ function createGeneratedPlanBundle(planId: string) {
       {
         id: `comment-generated-${tenantSlug}-1`,
         taskId: `${tenantSlug}-task-1`,
-        author: "Morgan Lee",
+        author: "Ben Eakin",
         body: "Demo-generated onboarding case. Production data will come from enrolled MSP records."
       }
     ]

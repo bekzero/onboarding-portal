@@ -5,11 +5,13 @@ import { Button } from "@/components/ui/button";
 export function PortalShell({
   title,
   eyebrow,
-  children
+  children,
+  showActions = true
 }: {
   title: string;
   eyebrow: string;
   children: React.ReactNode;
+  showActions?: boolean;
 }) {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 md:px-10">
@@ -26,17 +28,19 @@ export function PortalShell({
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Link href="/">
-            <Button variant="outline">Overview</Button>
-          </Link>
-          <Link href="/portal/northwind-nfr">
-            <Button variant="secondary">MSP Portal</Button>
-          </Link>
-          <Link href="/internal">
-            <Button>Internal View</Button>
-          </Link>
-        </div>
+        {showActions ? (
+          <div className="flex flex-wrap gap-3">
+            <Link href="/">
+              <Button variant="outline">Overview</Button>
+            </Link>
+            <Link href="/portal/northwind-nfr">
+              <Button variant="secondary">MSP Portal</Button>
+            </Link>
+            <Link href="/admin">
+              <Button>Admin Dashboard</Button>
+            </Link>
+          </div>
+        ) : null}
       </header>
       {children}
     </div>

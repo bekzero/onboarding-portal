@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock3,
-  FileText,
   Lock,
   Mail,
   ShieldCheck
@@ -15,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DocumentsReviewCard } from "@/components/documents-review-card";
 import type { PlanBundle, Task } from "@/lib/mock-data";
 import { users } from "@/lib/mock-data";
 
@@ -150,7 +150,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
     setCompletedTaskIds((current) => (current.includes(taskId) ? current : [...current, taskId]));
   }
 
-  function resetDemoState() {
+  function resetPlanState() {
     setCompletedTaskIds([]);
     setSubmittedApps([]);
     setFormState({
@@ -214,9 +214,6 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-100/80">
                   {bundle.plan.tenantType.toUpperCase()} plan
                 </p>
-                <span className="rounded-full border border-blue-300/20 bg-blue-400/10 px-2.5 py-1 text-[11px] font-medium text-blue-100">
-                  Demo mode
-                </span>
               </div>
               <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{bundle.plan.title}</h1>
               <p className="mt-1 text-sm text-slate-300">{bundle.organization.name} - KZero Passwordless onboarding workspace</p>
@@ -242,10 +239,6 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
       </header>
 
       <main className="mt-5 grid gap-5">
-        <div className="rounded-full border border-blue-300/20 bg-blue-400/10 px-4 py-2 text-center text-sm text-blue-100">
-          Demo mode - mock onboarding data
-        </div>
-
         <div className="grid gap-5 lg:grid-cols-12">
           <section className="grid gap-5 lg:col-span-8">
             <Card className="border-white/10 bg-[linear-gradient(135deg,#223c78_0%,#101c31_54%,#09111d_100%)] p-5 md:p-6">
@@ -262,7 +255,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                     </h2>
                     <p className="max-w-2xl text-sm leading-7 text-blue-100/78">
                       {currentTask?.description ??
-                        "You have completed the guided demo workflow. Reset the demo to walk through it again."}
+                        "You have completed the guided onboarding workflow. Restart the plan to walk through it again."}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
@@ -290,12 +283,12 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                     ) : null}
                     {currentTask && isKZeroOwnedTask(currentTask) ? (
                       <Button variant="outline" onClick={() => markTaskComplete(currentTask.id)}>
-                        Demo only: simulate KZero completion
+                        Advance KZero step
                       </Button>
                     ) : null}
                     {!currentTask ? (
-                      <Button variant="outline" onClick={resetDemoState}>
-                        Restart demo
+                      <Button variant="outline" onClick={resetPlanState}>
+                        Restart plan
                       </Button>
                     ) : null}
                   </div>
@@ -547,7 +540,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
 
                                     {isKZeroOwnedTask(task) ? (
                                       <Button variant="outline" onClick={() => markTaskComplete(task.id)}>
-                                        Demo only: simulate KZero completion
+                                        Advance KZero step
                                       </Button>
                                     ) : null}
                                   </div>
@@ -606,8 +599,8 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                 </div>
               </div>
               <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
-                <p className="font-medium text-white">{kzeroContact?.name ?? "Morgan Lee"}</p>
-                <p className="mt-1 text-sm text-slate-300">{kzeroContact?.email ?? "morgan@kzero.com"}</p>
+                <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
+                <p className="mt-1 text-sm text-slate-300">{kzeroContact?.email ?? "ben@kzero.com"}</p>
                 <a
                   className={`${buttonVariants({ variant: "outline" })} mt-4 w-full justify-center`}
                   href={BOOKING_URL}
@@ -621,7 +614,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
 
             <Card className="border-white/10 bg-[#101a2d] p-4">
               <h3 className="text-lg font-semibold text-white">Submitted SaaS apps</h3>
-              <p className="mt-1 text-sm text-slate-300">Applications added during this demo are saved in your browser.</p>
+              <p className="mt-1 text-sm text-slate-300">Applications added here are saved in this browser for now.</p>
               <div className="mt-4 grid gap-3">
                 {submittedApps.length === 0 ? (
                   <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-3.5 py-4 text-sm text-slate-400">
@@ -641,24 +634,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
               </div>
             </Card>
 
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <FileText className="h-4 w-4" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Plan docs</h3>
-                  <p className="text-sm text-slate-300">Guides and placeholders tied to this rollout.</p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-2.5">
-                {bundle.attachments.map((attachment) => (
-                  <div key={attachment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] px-3.5 py-3 text-sm text-white">
-                    {attachment.name}
-                  </div>
-                ))}
-              </div>
-            </Card>
+            <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} />
 
             <Card className="border-white/10 bg-[#101a2d] p-4">
               <h3 className="text-lg font-semibold text-white">Blockers and notes</h3>

@@ -26,7 +26,7 @@ export default function HomePage() {
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 md:px-10">
       <div className="relative z-10 mb-4 flex justify-end">
         <Link
-          href="/admin-demo"
+          href="/admin-login"
           className="inline-flex rounded-md text-sm text-slate-400 transition-colors hover:text-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
         >
           Admin
