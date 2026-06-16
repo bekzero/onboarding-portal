@@ -24,6 +24,11 @@ const onboardingCards = [
 export default function HomePage() {
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 md:px-10">
+      <div className="mb-4 flex justify-end">
+        <Link href="/internal" className="text-sm text-slate-400 transition-colors hover:text-blue-200">
+          Admin
+        </Link>
+      </div>
       <main className="grid gap-6">
         <Card className="overflow-hidden border-white/10 bg-[linear-gradient(135deg,#1e3a75_0%,#111d32_52%,#09111d_100%)] p-0">
           <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
@@ -46,10 +51,10 @@ export default function HomePage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link href="/demo/northwind-nfr">
+                <Link href="/start">
                   <Button>Start onboarding</Button>
                 </Link>
-                <Link href="/demo/northwind-nfr">
+                <Link href="/demo/abcmsp-nfr">
                   <Button variant="outline">View setup checklist</Button>
                 </Link>
               </div>

@@ -7,11 +7,14 @@ export type TaskStatus =
 
 export type TaskOwner = "msp" | "kzero_se" | "shared";
 export type TenantType = "nfr" | "customer";
+export type OnboardingCaseStatus = "waiting_on_msp" | "waiting_on_kzero" | "in_progress" | "complete";
 
 export type Organization = {
   id: string;
   name: string;
+  tenantSlug: string;
   tenantType: TenantType;
+  assignedSalesEngineerId: string;
 };
 
 export type User = {
@@ -70,17 +73,6 @@ export type TaskSubmission = {
   note: string;
 };
 
-export type PlanBundle = {
-  plan: Plan;
-  organization: Organization;
-  phases: Phase[];
-  tasks: Task[];
-  nextTask: Task;
-  apps: SaaSApp[];
-  attachments: Attachment[];
-  comments: Comment[];
-};
-
 export type Plan = {
   id: string;
   organizationId: string;
@@ -92,34 +84,42 @@ export type Plan = {
   progress: number;
 };
 
-export const organizations: Organization[] = [
-  { id: "org-nfr", name: "Northwind MSP", tenantType: "nfr" },
-  { id: "org-customer", name: "Northwind Dental", tenantType: "customer" }
-];
+export type PlanBundle = {
+  plan: Plan;
+  organization: Organization;
+  phases: Phase[];
+  tasks: Task[];
+  nextTask: Task;
+  apps: SaaSApp[];
+  attachments: Attachment[];
+  comments: Comment[];
+};
 
-export const users: User[] = [
-  {
-    id: "user-msp",
-    name: "Avery Cole",
-    email: "avery@northwindmsp.com",
-    organizationId: "org-nfr",
-    role: "msp_admin"
-  },
-  {
-    id: "user-se",
-    name: "Morgan Lee",
-    email: "morgan@kzero.com",
-    organizationId: "org-nfr",
-    role: "sales_engineer"
-  },
-  {
-    id: "user-admin",
-    name: "Jordan Park",
-    email: "jordan@kzero.com",
-    organizationId: "org-nfr",
-    role: "admin"
-  }
-];
+export type OnboardingCase = {
+  actionHref: string;
+  currentStage: string;
+  lastActivity: string;
+  mspName: string;
+  planId: string;
+  progress: number;
+  salesEngineer: string;
+  status: OnboardingCaseStatus;
+  submittedSaasAppCount: number;
+  tenantSlug: string;
+};
+
+type DemoCaseConfig = {
+  currentStage: string;
+  lastActivity: string;
+  name: string;
+  planId: string;
+  progress: number;
+  salesEngineerId: string;
+  status: OnboardingCaseStatus;
+  submittedSaasAppCount: number;
+  tenantSlug: string;
+  tenantType: TenantType;
+};
 
 export const phases: Phase[] = [
   {
@@ -151,6 +151,126 @@ export const phases: Phase[] = [
     title: "Customer Rollout",
     description: "Repeat the motion for the first customer tenant.",
     order: 5
+  }
+];
+
+const demoCaseConfigs: DemoCaseConfig[] = [
+  {
+    currentStage: "Kickoff",
+    lastActivity: "June 16, 2026",
+    name: "ABCMSP",
+    planId: "abcmsp-nfr",
+    progress: 12,
+    salesEngineerId: "user-se-morgan",
+    status: "waiting_on_msp",
+    submittedSaasAppCount: 0,
+    tenantSlug: "abcmsp",
+    tenantType: "nfr"
+  },
+  {
+    currentStage: "SSO Rollout",
+    lastActivity: "June 15, 2026",
+    name: "Northwind MSP",
+    planId: "northwind-nfr",
+    progress: 82,
+    salesEngineerId: "user-se-morgan",
+    status: "in_progress",
+    submittedSaasAppCount: 2,
+    tenantSlug: "northwind",
+    tenantType: "nfr"
+  },
+  {
+    currentStage: "App Review",
+    lastActivity: "June 14, 2026",
+    name: "PeakPoint MSP",
+    planId: "peakpoint-nfr",
+    progress: 58,
+    salesEngineerId: "user-se-riley",
+    status: "waiting_on_kzero",
+    submittedSaasAppCount: 4,
+    tenantSlug: "peakpoint",
+    tenantType: "nfr"
+  },
+  {
+    currentStage: "Customer Rollout",
+    lastActivity: "June 13, 2026",
+    name: "Skyline MSP",
+    planId: "skyline-nfr",
+    progress: 100,
+    salesEngineerId: "user-se-riley",
+    status: "complete",
+    submittedSaasAppCount: 5,
+    tenantSlug: "skyline",
+    tenantType: "nfr"
+  }
+];
+
+export const organizations: Organization[] = [
+  ...demoCaseConfigs.map((config) => ({
+    id: `org-${config.tenantSlug}`,
+    name: config.name,
+    tenantSlug: config.tenantSlug,
+    tenantType: config.tenantType,
+    assignedSalesEngineerId: config.salesEngineerId
+  })),
+  {
+    id: "org-northwind-customer",
+    name: "Northwind Dental",
+    tenantSlug: "northwind-dental",
+    tenantType: "customer",
+    assignedSalesEngineerId: "user-se-morgan"
+  }
+];
+
+export const users: User[] = [
+  {
+    id: "user-msp-abcmsp",
+    name: "Taylor Brooks",
+    email: "taylor@abcmsp.com",
+    organizationId: "org-abcmsp",
+    role: "msp_admin"
+  },
+  {
+    id: "user-msp-northwind",
+    name: "Avery Cole",
+    email: "avery@northwindmsp.com",
+    organizationId: "org-northwind",
+    role: "msp_admin"
+  },
+  {
+    id: "user-msp-peakpoint",
+    name: "Casey Doyle",
+    email: "casey@peakpointmsp.com",
+    organizationId: "org-peakpoint",
+    role: "msp_admin"
+  },
+  {
+    id: "user-msp-skyline",
+    name: "Jamie Patel",
+    email: "jamie@skylinemsp.com",
+    organizationId: "org-skyline",
+    role: "msp_admin"
+  },
+  {
+    id: "user-se-morgan",
+    name: "Morgan Lee",
+    email: "morgan@kzero.com",
+    organizationId: "org-abcmsp",
+    role: "sales_engineer"
+  },
+  {
+    id: "user-se-riley",
+    name: "Riley Chen",
+    email: "riley@kzero.com",
+    organizationId: "org-peakpoint",
+    role: "sales_engineer"
+  },
+  {
+    id: "user-admin",
+    name: "Jordan Park",
+    email: "jordan@kzero.com",
+    organizationId: "org-abcmsp",
+    role: "admin"
   }
 ];
 
@@ -231,98 +351,190 @@ const baseTasks: Omit<Task, "id">[] = [
   }
 ];
 
-function createTasks(prefix: TenantType) {
+function createTasks(prefix: string) {
   return baseTasks.map((task, index) => ({
     ...task,
     id: `${prefix}-task-${index + 1}`
   }));
 }
 
-const nfrTasks = createTasks("nfr");
-const customerTasks = createTasks("customer").map((task, index) => ({
-  ...task,
-  status: index === 0 ? "not_started" : task.status
-}));
+const mspTaskSets = demoCaseConfigs.flatMap((config) => createTasks(config.tenantSlug));
+const customerTasks = createTasks("northwind-customer");
 
-export const tasks: Task[] = [...nfrTasks, ...customerTasks];
+export const tasks: Task[] = [...mspTaskSets, ...customerTasks];
 
 export const plans: Plan[] = [
-  {
-    id: "northwind-nfr",
-    organizationId: "org-nfr",
-    title: "Northwind MSP NFR Tenant Onboarding",
-    tenantType: "nfr",
+  ...demoCaseConfigs.map((config) => ({
+    id: config.planId,
+    organizationId: `org-${config.tenantSlug}`,
+    title: `${config.name} NFR Tenant Onboarding`,
+    tenantType: config.tenantType,
     phaseIds: phases.map((phase) => phase.id),
-    taskIds: nfrTasks.map((task) => task.id),
-    nextTaskId: "nfr-task-1",
-    progress: 20
-  },
+    taskIds: createTasks(config.tenantSlug).map((task) => task.id),
+    nextTaskId: `${config.tenantSlug}-task-1`,
+    progress: config.progress
+  })),
   {
     id: "northwind-customer",
-    organizationId: "org-customer",
+    organizationId: "org-northwind-customer",
     title: "Northwind Dental Customer Rollout",
     tenantType: "customer",
     phaseIds: phases.map((phase) => phase.id),
     taskIds: customerTasks.map((task) => task.id),
-    nextTaskId: "customer-task-1",
+    nextTaskId: "northwind-customer-task-1",
     progress: 5
   }
 ];
 
 export const saasApps: SaaSApp[] = [
   {
-    id: "app-1",
+    id: "app-abcmsp-1",
+    name: "Microsoft 365",
+    status: "submitted",
+    organizationId: "org-abcmsp"
+  },
+  {
+    id: "app-northwind-1",
     name: "Microsoft 365",
     status: "under_review",
-    organizationId: "org-nfr"
+    organizationId: "org-northwind"
   },
   {
-    id: "app-2",
+    id: "app-northwind-2",
     name: "Salesforce",
     status: "submitted",
-    organizationId: "org-nfr"
+    organizationId: "org-northwind"
   },
   {
-    id: "app-3",
+    id: "app-peakpoint-1",
+    name: "Google Workspace",
+    status: "under_review",
+    organizationId: "org-peakpoint"
+  },
+  {
+    id: "app-peakpoint-2",
+    name: "Zendesk",
+    status: "under_review",
+    organizationId: "org-peakpoint"
+  },
+  {
+    id: "app-peakpoint-3",
+    name: "Autotask",
+    status: "submitted",
+    organizationId: "org-peakpoint"
+  },
+  {
+    id: "app-peakpoint-4",
+    name: "QuickBooks Online",
+    status: "submitted",
+    organizationId: "org-peakpoint"
+  },
+  {
+    id: "app-skyline-1",
+    name: "Microsoft 365",
+    status: "approved_for_sso",
+    organizationId: "org-skyline"
+  },
+  {
+    id: "app-skyline-2",
+    name: "Zoom",
+    status: "approved_for_sso",
+    organizationId: "org-skyline"
+  },
+  {
+    id: "app-skyline-3",
+    name: "HubSpot",
+    status: "approved_for_sso",
+    organizationId: "org-skyline"
+  },
+  {
+    id: "app-skyline-4",
+    name: "Slack",
+    status: "approved_for_sso",
+    organizationId: "org-skyline"
+  },
+  {
+    id: "app-skyline-5",
+    name: "DocuSign",
+    status: "approved_for_sso",
+    organizationId: "org-skyline"
+  },
+  {
+    id: "app-customer-1",
     name: "Dentrix Ascend",
     status: "submitted",
-    organizationId: "org-customer"
+    organizationId: "org-northwind-customer"
   }
 ];
 
 export const attachments: Attachment[] = [
-  {
-    id: "attachment-1",
-    taskId: "nfr-task-4",
-    name: "Vault adoption guide placeholder",
-    kind: "guide"
-  },
-  {
-    id: "attachment-2",
-    taskId: "nfr-task-7",
-    name: "Onboarding plan placeholder",
-    kind: "plan"
-  }
+  ...demoCaseConfigs.flatMap((config) => [
+    {
+      id: `attachment-${config.tenantSlug}-1`,
+      taskId: `${config.tenantSlug}-task-4`,
+      name: "Vault adoption guide placeholder",
+      kind: "guide" as const
+    },
+    {
+      id: `attachment-${config.tenantSlug}-2`,
+      taskId: `${config.tenantSlug}-task-7`,
+      name: "Onboarding plan placeholder",
+      kind: "plan" as const
+    }
+  ])
 ];
 
 export const comments: Comment[] = [
   {
-    id: "comment-1",
-    taskId: "nfr-task-6",
+    id: "comment-abcmsp-1",
+    taskId: "abcmsp-task-1",
     author: "Morgan Lee",
-    body: "Waiting on final SaaS app list before compatibility review begins."
+    body: "Kickoff booking link is ready when ABCMSP is ready to schedule."
+  },
+  {
+    id: "comment-peakpoint-1",
+    taskId: "peakpoint-task-6",
+    author: "Riley Chen",
+    body: "Compatibility review is waiting on the final app inventory and login URLs."
+  },
+  {
+    id: "comment-skyline-1",
+    taskId: "skyline-task-8",
+    author: "Riley Chen",
+    body: "Skyline is ready for customer rollout handoff."
   }
 ];
 
 export const taskSubmissions: TaskSubmission[] = [
   {
-    id: "submission-1",
-    taskId: "nfr-task-5",
+    id: "submission-northwind-1",
+    taskId: "northwind-task-5",
     submittedBy: "Avery Cole",
     submittedAt: "2026-06-14",
     note: "Initial SaaS list submitted for review."
+  },
+  {
+    id: "submission-peakpoint-1",
+    taskId: "peakpoint-task-5",
+    submittedBy: "Casey Doyle",
+    submittedAt: "2026-06-13",
+    note: "Four SaaS applications submitted for compatibility review."
   }
 ];
+
+export const onboardingCases: OnboardingCase[] = demoCaseConfigs.map((config) => ({
+  actionHref: `/demo/${config.planId}`,
+  currentStage: config.currentStage,
+  lastActivity: config.lastActivity,
+  mspName: config.name,
+  planId: config.planId,
+  progress: config.progress,
+  salesEngineer:
+    users.find((user) => user.id === config.salesEngineerId)?.name ?? "Unassigned",
+  status: config.status,
+  submittedSaasAppCount: config.submittedSaasAppCount,
+  tenantSlug: config.tenantSlug
+}));
 
 export function getPlan(planId: string) {
   return plans.find((plan) => plan.id === planId);

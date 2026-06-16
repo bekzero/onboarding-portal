@@ -144,7 +144,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
     phase,
     tasks: orderedTasks.filter((task) => task.phaseId === phase.id)
   }));
-  const kzeroContact = users.find((user) => user.role === "sales_engineer");
+  const kzeroContact = users.find((user) => user.id === bundle.organization.assignedSalesEngineerId);
 
   function markTaskComplete(taskId: string) {
     setCompletedTaskIds((current) => (current.includes(taskId) ? current : [...current, taskId]));
