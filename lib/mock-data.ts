@@ -159,8 +159,8 @@ const baseTasks: Omit<Task, "id">[] = [
     phaseId: "phase-kickoff",
     title: "Book NFR deployment meeting",
     description: "Schedule the kickoff with your KZero Sales Engineer to deploy the NFR license.",
-    owner: "shared",
-    status: "in_progress",
+    owner: "msp",
+    status: "waiting_on_msp",
     dueLabel: "This week",
     meetingCta: "Open Microsoft Bookings"
   },

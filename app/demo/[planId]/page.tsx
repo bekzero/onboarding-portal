@@ -1,6 +1,6 @@
 import Link from "next/link";
+import { DemoPlanView } from "@/components/demo-plan-view";
 import { PortalShell } from "@/components/portal-shell";
-import { PlanView } from "@/components/plan-view";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { getPlanBundle, plans } from "@/lib/mock-data";
@@ -38,5 +38,5 @@ export default async function DemoPlanPage({
     );
   }
 
-  return <PlanView bundle={bundle} demoMode />;
+  return <DemoPlanView bundle={bundle} />;
 }
