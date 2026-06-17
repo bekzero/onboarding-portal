@@ -52,8 +52,8 @@ model OnboardingPlan {
   progress             Int                  @default(0)
   currentStage         String?
   status               String               @default("waiting_on_msp")
-  lastActivity         String?
-  submittedSaasAppCount Int                 @default(0)
+  lastActivityAt       DateTime?
+  submittedAppCount    Int                  @default(0)
   createdAt            DateTime             @default(now())
   updatedAt            DateTime             @updatedAt
   msp                  Msp                  @relation(fields: [mspId], references: [id], onDelete: Cascade)

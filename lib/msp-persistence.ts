@@ -14,6 +14,30 @@ function formatDateLabel() {
   }).format(new Date());
 }
 
+function formatDateLabelFromValue(value: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).format(value);
+}
+
+function parseLastActivityInput(value?: string) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  const parsedValue = new Date(trimmedValue);
+
+  if (Number.isNaN(parsedValue.getTime())) {
+    return undefined;
+  }
+
+  return parsedValue;
+}
+
 export type PublicMspRecord = {
   accessMode: AccessMode;
   assignedSalesEngineer: string;
@@ -142,7 +166,7 @@ function toAdminDashboardCase(
     assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
     currentStage: plan?.currentStage ?? "Kickoff",
     id: msp.id,
-    lastActivity: plan?.lastActivity ?? formatDateLabel(),
+    lastActivity: formatDateLabelFromValue(plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt),
     mspName: msp.name,
     mspSlug: msp.slug,
     oidcClientId: msp.oidcConfig?.clientId,
@@ -151,7 +175,7 @@ function toAdminDashboardCase(
     primaryContactEmail: msp.primaryContactEmail,
     progress: plan?.progress ?? 0,
     status: plan?.status ?? "waiting_on_msp",
-    submittedSaasAppCount: plan?.submittedSaasAppCount ?? 0,
+    submittedSaasAppCount: plan?.submittedAppCount ?? 0,
     tenantRealm: msp.oidcConfig?.tenantRealm
   };
 }
@@ -172,11 +196,11 @@ export async function createMsp(input: CreateMspInput) {
       onboardingPlans: {
         create: {
           currentStage: "Kickoff",
-          lastActivity: formatDateLabel(),
+          lastActivityAt: new Date(),
           planId: `${slug}-nfr`,
           progress: 0,
           status: "waiting_on_msp",
-          submittedSaasAppCount: 0,
+          submittedAppCount: 0,
           tenantType: "nfr",
           title: `${input.name.trim()} onboarding`
         }
@@ -221,10 +245,10 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
           where: {},
           data: {
             currentStage: input.currentStage?.trim(),
-            lastActivity: input.lastActivity?.trim(),
+            lastActivityAt: parseLastActivityInput(input.lastActivity),
             progress: input.progress,
             status: input.status?.trim(),
-            submittedSaasAppCount: input.submittedSaasAppCount
+            submittedAppCount: input.submittedSaasAppCount
           }
         }
       },
