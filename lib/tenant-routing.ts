@@ -7,7 +7,7 @@ export type TenantRegistryEntry = {
   oidcStatus: "not_configured" | "configured";
   planId: string;
   primaryContactEmail: string;
-  tenantSlug: string;
+  tenantName?: string;
 };
 
 export type DemoEnrollment = {
@@ -35,7 +35,7 @@ export const tenantRegistry: TenantRegistryEntry[] = [
     oidcStatus: "configured",
     planId: "abcmsp-nfr",
     primaryContactEmail: "taylor@abcmsp.com",
-    tenantSlug: "abcmsp"
+    tenantName: "ABCMSP"
   },
   {
     accessMode: "oidc",
@@ -44,7 +44,7 @@ export const tenantRegistry: TenantRegistryEntry[] = [
     oidcStatus: "configured",
     planId: "northwind-nfr",
     primaryContactEmail: "avery@northwindmsp.com",
-    tenantSlug: "northwind"
+    tenantName: "northwind"
   },
   {
     accessMode: "oidc",
@@ -53,7 +53,7 @@ export const tenantRegistry: TenantRegistryEntry[] = [
     oidcStatus: "configured",
     planId: "peakpoint-nfr",
     primaryContactEmail: "casey@peakpointmsp.com",
-    tenantSlug: "peakpoint"
+    tenantName: "peakpoint"
   },
   {
     accessMode: "temporary",
@@ -62,7 +62,7 @@ export const tenantRegistry: TenantRegistryEntry[] = [
     oidcStatus: "not_configured",
     planId: "skyline-nfr",
     primaryContactEmail: "jamie@skylinemsp.com",
-    tenantSlug: "skyline"
+    tenantName: undefined
   }
 ];
 
@@ -82,7 +82,7 @@ function applyOverrideToRegistryEntry(
     displayName: override.mspName ?? entry.displayName,
     oidcStatus: override.oidcStatus ?? entry.oidcStatus,
     primaryContactEmail: override.primaryContactEmail ?? entry.primaryContactEmail,
-    tenantSlug: override.tenantName ?? entry.tenantSlug
+    tenantName: override.tenantName ?? entry.tenantName
   } satisfies TenantRegistryEntry;
 }
 
@@ -97,7 +97,7 @@ export function buildTenantRegistry(
     oidcStatus: enrollment.oidcStatus,
     planId: enrollment.planId,
     primaryContactEmail: enrollment.primaryContactEmail,
-    tenantSlug: enrollment.tenantName ?? enrollment.mspSlug
+    tenantName: enrollment.tenantName
   }));
 
   const registry = tenantRegistry.map((entry) => applyOverrideToRegistryEntry(entry, overrides));
@@ -111,7 +111,7 @@ export function buildTenantRegistry(
           displayName: override.mspName ?? entry.displayName,
           oidcStatus: override.oidcStatus ?? entry.oidcStatus,
           primaryContactEmail: override.primaryContactEmail ?? entry.primaryContactEmail,
-          tenantSlug: override.tenantName ?? entry.tenantSlug
+          tenantName: override.tenantName ?? entry.tenantName
         }
       : entry;
 
@@ -131,6 +131,10 @@ export function normalizeTenantName(input?: string | null) {
   return input.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function normalizeLookupValue(input?: string | null) {
+  return normalizeTenantName(input);
+}
+
 export function findTenantByInput(input?: string | null) {
   return findTenantByInputWithRegistry(input, tenantRegistry);
 }
@@ -139,7 +143,7 @@ export function findTenantByInputWithRegistry(
   input: string | null | undefined,
   registry: TenantRegistryEntry[]
 ) {
-  const normalizedInput = normalizeTenantName(input);
+  const normalizedInput = normalizeLookupValue(input);
 
   if (!normalizedInput) {
     return null;
@@ -147,8 +151,8 @@ export function findTenantByInputWithRegistry(
 
   return (
     registry.find((entry) => {
-      const candidates = [entry.tenantSlug, entry.displayName, entry.mspSlug];
-      return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedInput);
+      const candidates = [entry.tenantName, entry.displayName, entry.mspSlug];
+      return candidates.some((candidate) => normalizeLookupValue(candidate) === normalizedInput);
     }) ?? null
   );
 }
@@ -170,16 +174,20 @@ export function getDemoPlanUrlForTenantWithRegistry(
   return `/demo/${tenant.planId}`;
 }
 
-export function buildKzeroIssuerForTenant(tenantSlug: string) {
-  const normalizedTenant = normalizeTenantName(tenantSlug);
+function trimTenantRealmName(input?: string | null) {
+  return input?.trim() ?? "";
+}
 
-  if (!normalizedTenant) {
+export function buildKzeroIssuerForTenant(tenantName: string) {
+  const exactTenantName = trimTenantRealmName(tenantName);
+
+  if (!exactTenantName) {
     return null;
   }
 
   // Production OIDC should never trust arbitrary tenant input directly.
   // Only allowlisted tenant registry entries should be used to construct live OIDC endpoints.
-  return `https://ca.auth.kzero.com/realms/${normalizedTenant}`;
+  return `https://ca.auth.kzero.com/realms/${exactTenantName}`;
 }
 
 export function readDemoEnrollmentsFromStorage() {

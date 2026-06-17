@@ -10,7 +10,8 @@ import {
   KeyRound,
   Pencil,
   PlusCircle,
-  TimerReset
+  TimerReset,
+  X
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -200,21 +201,23 @@ function DashboardTable({
           {items.length === 0 ? (
             <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
           ) : (
-            <table className="min-w-[920px] w-full table-fixed">
+            <table className="min-w-[1080px] w-full table-fixed">
               <colgroup>
-                <col className="w-[24%]" />
+                <col className="w-[20%]" />
+                <col className="w-[14%]" />
                 <col className="w-[12%]" />
                 <col className="w-[16%]" />
-                <col className="w-[15%]" />
-                <col className="w-[15%]" />
-                <col className="w-[7%]" />
-                <col className="w-[11%]" />
-                <col className="w-[160px]" />
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[8%]" />
+                <col className="w-[12%]" />
+                <col className="w-[168px]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
                   <th className="px-4 py-3 font-medium">MSP</th>
                   <th className="px-4 py-3 font-medium">Access</th>
+                  <th className="px-4 py-3 font-medium">Tenant</th>
                   <th className="px-4 py-3 font-medium">Stage</th>
                   <th className="px-4 py-3 font-medium">Progress</th>
                   <th className="px-4 py-3 font-medium">Waiting on</th>
@@ -234,6 +237,9 @@ function DashboardTable({
                     </td>
                     <td className="px-4 py-3 align-middle">
                       <Badge status={getStatusTone(item)}>{getAccessLabel(item)}</Badge>
+                    </td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">
+                      {item.tenantName ? item.tenantName : <span className="text-slate-500">Not configured</span>}
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.currentStage}</td>
                     <td className="px-4 py-3 align-middle">
@@ -322,14 +328,9 @@ export function InternalDashboard({
     }));
   }, [baseCases, caseOverrides, demoEnrollments]);
 
-  const selectedCase =
-    onboardingCases.find((item) => item.onboardingPlanId === selectedCaseId) ?? onboardingCases[0] ?? null;
-
-  useEffect(() => {
-    if (!selectedCaseId && onboardingCases[0]) {
-      setSelectedCaseId(onboardingCases[0].onboardingPlanId);
-    }
-  }, [onboardingCases, selectedCaseId]);
+  const selectedCase = selectedCaseId
+    ? onboardingCases.find((item) => item.onboardingPlanId === selectedCaseId) ?? null
+    : null;
 
   const inProgressCases = onboardingCases.filter((item) => item.progress < 100);
   const completedCases = onboardingCases.filter((item) => item.progress >= 100);
@@ -339,10 +340,23 @@ export function InternalDashboard({
   const issuerPreview = buildKzeroIssuerForTenant(
     panelMode === "enroll" ? enrollmentState.tenantName : oidcState?.tenantName ?? selectedCase?.tenantName ?? ""
   );
+  const authUrlPreview = issuerPreview ? `${issuerPreview}/protocol/openid-connect/auth` : null;
+  const tokenUrlPreview = issuerPreview ? `${issuerPreview}/protocol/openid-connect/token` : null;
+  const userInfoUrlPreview = issuerPreview ? `${issuerPreview}/protocol/openid-connect/userinfo` : null;
+  const logoutUrlPreview = issuerPreview ? `${issuerPreview}/protocol/openid-connect/logout` : null;
+  const productionRedirectUri = "https://onboarding-portal20.vercel.app/api/auth/callback/keycloak";
+  const localRedirectUri = "http://localhost:3000/api/auth/callback/keycloak";
 
   function persistOverrides(nextOverrides: Record<string, AdminCaseOverride>) {
     setCaseOverrides(nextOverrides);
     saveAdminCaseOverridesToStorage(nextOverrides);
+  }
+
+  function closePanel() {
+    setPanelMode("preview");
+    setSelectedCaseId(null);
+    setEditState(null);
+    setOidcState(null);
   }
 
   function openPreview(item: OnboardingCase) {
@@ -363,17 +377,20 @@ export function InternalDashboard({
   }
 
   function openEnroll() {
+    setSelectedCaseId(null);
+    setEditState(null);
+    setOidcState(null);
     setEnrollmentState(createEnrollmentState());
     setPanelMode("enroll");
   }
 
   function handleEnroll() {
     const normalizedMspSlug = normalizeTenantName(enrollmentState.mspName);
-    const normalizedTenant = normalizeTenantName(enrollmentState.tenantName);
+    const exactTenantName = enrollmentState.tenantName.trim();
     const trimmedMspName = enrollmentState.mspName.trim();
     const trimmedPrimaryContactEmail = enrollmentState.primaryContactEmail.trim();
     const trimmedClientId = enrollmentState.clientId.trim();
-    const hasFullOidcConfig = Boolean(normalizedTenant && trimmedClientId && enrollmentState.clientSecret.trim());
+    const hasFullOidcConfig = Boolean(exactTenantName && trimmedClientId && enrollmentState.clientSecret.trim());
     const accessMode: OnboardingCase["accessMode"] =
       hasFullOidcConfig || enrollmentState.accessMode === "oidc" ? "oidc" : "temporary";
     const nextOidcStatus: OnboardingCase["oidcStatus"] = hasFullOidcConfig ? "configured" : "not_configured";
@@ -395,7 +412,7 @@ export function InternalDashboard({
       planId: `${normalizedMspSlug}-nfr`,
       primaryContactEmail: trimmedPrimaryContactEmail,
       startingPlanType: enrollmentState.startingPlanType,
-      tenantName: normalizedTenant || undefined
+      tenantName: exactTenantName || undefined
     };
 
     const nextEnrollments = [
@@ -430,9 +447,9 @@ export function InternalDashboard({
     }
 
     const nextProgress = Math.max(0, Math.min(100, Number(editState.progress) || 0));
-    const normalizedTenantName = normalizeTenantName(editState.tenantName);
+    const exactTenantName = editState.tenantName.trim();
     const hasExistingOidcConfig = Boolean(
-      selectedCase.oidcClientId && selectedCase.oidcClientSecretConfigured && (selectedCase.tenantName ?? normalizedTenantName)
+      selectedCase.oidcClientId && selectedCase.oidcClientSecretConfigured && (selectedCase.tenantName ?? exactTenantName)
     );
     const nextAccessMode: OnboardingCase["accessMode"] =
       editState.accessMode === "oidc" && hasExistingOidcConfig ? "oidc" : "temporary";
@@ -453,7 +470,7 @@ export function InternalDashboard({
         progress: nextProgress,
         status: waitingStatus,
         submittedSaasAppCount: Math.max(0, Number(editState.submittedSaasAppCount) || 0),
-        tenantName: normalizedTenantName || undefined
+        tenantName: exactTenantName || undefined
       }
     };
 
@@ -466,9 +483,9 @@ export function InternalDashboard({
       return;
     }
 
-    const normalizedTenant = normalizeTenantName(oidcState.tenantName);
+    const exactTenantName = oidcState.tenantName.trim();
     const trimmedClientId = oidcState.clientId.trim();
-    const hasFullOidcConfig = Boolean(normalizedTenant && trimmedClientId && oidcState.clientSecret.trim());
+    const hasFullOidcConfig = Boolean(exactTenantName && trimmedClientId && oidcState.clientSecret.trim());
     const accessMode: OnboardingCase["accessMode"] = hasFullOidcConfig ? "oidc" : "temporary";
     const nextOidcStatus: OnboardingCase["oidcStatus"] = hasFullOidcConfig ? "configured" : "not_configured";
     const nextStatus: OnboardingCase["status"] =
@@ -487,7 +504,7 @@ export function InternalDashboard({
         oidcClientSecretConfigured: hasFullOidcConfig || selectedCase.oidcClientSecretConfigured,
         oidcStatus: nextOidcStatus,
         status: nextStatus,
-        tenantName: normalizedTenant || undefined
+        tenantName: exactTenantName || undefined
       }
     };
 
@@ -502,7 +519,7 @@ export function InternalDashboard({
         oidcClientId: trimmedClientId || undefined,
         oidcClientSecretConfigured: hasFullOidcConfig || nextEnrollments[enrollmentIndex].oidcClientSecretConfigured,
         oidcStatus: nextOidcStatus,
-        tenantName: normalizedTenant || undefined
+        tenantName: exactTenantName || undefined
       };
       saveDemoEnrollmentsToStorage(nextEnrollments);
       setDemoEnrollments(nextEnrollments);
@@ -511,8 +528,11 @@ export function InternalDashboard({
     setPanelMode("preview");
   }
 
+  const isModalOpen =
+    panelMode === "enroll" || ((panelMode === "preview" || panelMode === "edit" || panelMode === "oidc") && !!selectedCase);
+
   return (
-    <main className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_400px] xl:gap-8">
+    <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
       <section className="min-w-0 grid gap-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -604,120 +624,359 @@ export function InternalDashboard({
         />
       </section>
 
-      <aside className="min-w-0 w-full xl:w-[400px] xl:self-start">
-        <Card className="border-white/10 bg-[#101a2d] xl:sticky xl:top-6">
-          {panelMode === "preview" && selectedCase ? (
-            <div className="grid gap-5">
+      {isModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 p-4 md:p-6">
+          <Card className="max-h-[calc(100vh-2rem)] w-full max-w-[520px] overflow-y-auto border-white/10 bg-[#101a2d] md:max-h-[calc(100vh-3rem)]">
+            <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-blue-200">Case preview</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">{selectedCase.mspName}</h3>
-                <p className="mt-1 text-sm text-slate-300">{selectedCase.primaryContactEmail}</p>
+                <p className="text-xs uppercase tracking-[0.24em] text-blue-200">
+                  {panelMode === "preview"
+                    ? "Case preview"
+                    : panelMode === "edit"
+                      ? "Edit MSP"
+                      : panelMode === "oidc"
+                        ? "Configure OIDC"
+                        : "Enroll MSP"}
+                </p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">
+                  {panelMode === "enroll" ? "New onboarding case" : selectedCase?.mspName}
+                </h3>
+                <p className="mt-1 text-sm text-slate-300">
+                  {panelMode === "enroll"
+                    ? `Sales Engineer: ${SALES_ENGINEER_NAME}`
+                    : panelMode === "preview"
+                      ? selectedCase?.primaryContactEmail
+                      : panelMode === "edit"
+                        ? "Update account details and case status."
+                        : getAccessLabel(selectedCase!)}
+                </p>
               </div>
-
-              <div className="grid gap-3">
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current stage</p>
-                  <p className="mt-2 text-white">{selectedCase.currentStage}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Progress</p>
-                    <p className="mt-2 text-white">{selectedCase.progress}%</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Waiting status</p>
-                    <p className="mt-2 text-white">{getWaitingLabel(selectedCase)}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Submitted apps</p>
-                    <p className="mt-2 text-white">{selectedCase.submittedSaasAppCount}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Documents</p>
-                    <p className="mt-2 text-white">2 planned</p>
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Badge status={getStatusTone(selectedCase)}>{getAccessLabel(selectedCase)}</Badge>
-                    {selectedCase.oidcClientSecretConfigured ? (
-                      <span className="text-sm text-slate-300">Secret: ********</span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3">
-                <Button className="justify-start" onClick={() => openEdit(selectedCase)} variant="outline">
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit MSP
-                </Button>
-                <Button className="justify-start" onClick={() => openOidc(selectedCase)} variant="outline">
-                  <KeyRound className="mr-2 h-4 w-4" />
-                  Configure OIDC
-                </Button>
-                <Link href={selectedCase.actionHref}>
-                  <Button className="w-full">Open full onboarding plan</Button>
-                </Link>
-              </div>
+              <Button aria-label="Close panel" className="h-9 px-2.5" onClick={closePanel} title="Close" variant="outline">
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-          ) : null}
 
-          {panelMode === "edit" && selectedCase && editState ? (
-            <div className="grid gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-blue-200">Edit MSP</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">{selectedCase.mspName}</h3>
+            {panelMode === "preview" && selectedCase ? (
+              <div className="grid gap-5">
+                <div className="grid gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current stage</p>
+                    <p className="mt-2 text-white">{selectedCase.currentStage}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Progress</p>
+                      <p className="mt-2 text-white">{selectedCase.progress}%</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Waiting status</p>
+                      <p className="mt-2 text-white">{getWaitingLabel(selectedCase)}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Submitted apps</p>
+                      <p className="mt-2 text-white">{selectedCase.submittedSaasAppCount}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Documents</p>
+                      <p className="mt-2 text-white">2 planned</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Badge status={getStatusTone(selectedCase)}>{getAccessLabel(selectedCase)}</Badge>
+                        {selectedCase.oidcClientSecretConfigured ? (
+                          <span className="text-sm text-slate-300">Secret: ********</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Sales Engineer</p>
+                      <p className="mt-2 text-white">{SALES_ENGINEER_NAME}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  <Button className="justify-start" onClick={() => openEdit(selectedCase)} variant="outline">
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit MSP
+                  </Button>
+                  <Button className="justify-start" onClick={() => openOidc(selectedCase)} variant="outline">
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    Configure OIDC
+                  </Button>
+                  <Link href={selectedCase.actionHref}>
+                    <Button className="w-full">Open full onboarding plan</Button>
+                  </Link>
+                </div>
               </div>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>MSP name</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setEditState((current) => (current ? { ...current, mspName: event.target.value } : current))}
-                  value={editState.mspName}
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Primary contact email</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) =>
-                    setEditState((current) => (current ? { ...current, primaryContactEmail: event.target.value } : current))
-                  }
-                  type="email"
-                  value={editState.primaryContactEmail}
-                />
-              </label>
-              <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Assigned Sales Engineer</p>
-                <p className="mt-2 text-white">{SALES_ENGINEER_NAME}</p>
+            ) : null}
+
+            {panelMode === "edit" && selectedCase && editState ? (
+              <div className="grid gap-4">
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>MSP name</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) => setEditState((current) => (current ? { ...current, mspName: event.target.value } : current))}
+                    value={editState.mspName}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>Primary contact email</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) =>
+                      setEditState((current) => (current ? { ...current, primaryContactEmail: event.target.value } : current))
+                    }
+                    type="email"
+                    value={editState.primaryContactEmail}
+                  />
+                </label>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Assigned Sales Engineer</p>
+                  <p className="mt-2 text-white">{SALES_ENGINEER_NAME}</p>
+                </div>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>Tenant name</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) =>
+                      setEditState((current) => (current ? { ...current, tenantName: event.target.value } : current))
+                    }
+                    value={editState.tenantName}
+                  />
+                </label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Access mode</span>
+                    <select
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      onChange={(event) =>
+                        setEditState((current) =>
+                          current
+                            ? { ...current, accessMode: event.target.value as OnboardingCase["accessMode"] }
+                            : current
+                        )
+                      }
+                      value={editState.accessMode}
+                    >
+                      <option value="temporary">temporary</option>
+                      <option value="oidc">oidc</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Current stage</span>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      onChange={(event) =>
+                        setEditState((current) => (current ? { ...current, currentStage: event.target.value } : current))
+                      }
+                      value={editState.currentStage}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Progress %</span>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      max={100}
+                      min={0}
+                      onChange={(event) =>
+                        setEditState((current) =>
+                          current ? { ...current, progress: Number(event.target.value) || 0 } : current
+                        )
+                      }
+                      type="number"
+                      value={editState.progress}
+                    />
+                  </label>
+                </div>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>Submitted apps</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    min={0}
+                    onChange={(event) =>
+                      setEditState((current) =>
+                        current ? { ...current, submittedSaasAppCount: Number(event.target.value) || 0 } : current
+                      )
+                    }
+                    type="number"
+                    value={editState.submittedSaasAppCount}
+                  />
+                </label>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Status</span>
+                    <select
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      onChange={(event) =>
+                        setEditState((current) =>
+                          current ? { ...current, status: event.target.value as OnboardingCase["status"] } : current
+                        )
+                      }
+                      value={editState.status}
+                    >
+                      <option value="waiting_on_msp">waiting_on_msp</option>
+                      <option value="waiting_on_kzero">waiting_on_kzero</option>
+                      <option value="in_progress">in_progress</option>
+                      <option value="complete">complete</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Last activity</span>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      onChange={(event) =>
+                        setEditState((current) => (current ? { ...current, lastActivity: event.target.value } : current))
+                      }
+                      value={editState.lastActivity}
+                    />
+                  </label>
+                </div>
+                <div className="flex gap-3">
+                  <Button className="flex-1" onClick={handleSaveEdit}>
+                    Save MSP details
+                  </Button>
+                  <Button onClick={closePanel} variant="outline">
+                    Cancel
+                  </Button>
+                </div>
               </div>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Tenant name</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) =>
-                    setEditState((current) => (current ? { ...current, tenantName: event.target.value } : current))
-                  }
-                  value={editState.tenantName}
-                />
-              </label>
-              <div className="grid gap-4 md:grid-cols-2">
+            ) : null}
+
+            {panelMode === "oidc" && selectedCase && oidcState ? (
+              <div className="grid gap-4">
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>Tenant name / realm</span>
+                  <span className="text-xs text-slate-400">
+                    KZero tenant / realm names are case-sensitive. Enter the tenant exactly as it appears in KZero.
+                  </span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) => setOidcState((current) => (current ? { ...current, tenantName: event.target.value } : current))}
+                    value={oidcState.tenantName}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>OIDC client ID</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) => setOidcState((current) => (current ? { ...current, clientId: event.target.value } : current))}
+                    value={oidcState.clientId}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>OIDC client secret</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) =>
+                      setOidcState((current) => (current ? { ...current, clientSecret: event.target.value } : current))
+                    }
+                    placeholder="Enter secret"
+                    type="password"
+                    value={oidcState.clientSecret}
+                  />
+                </label>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Issuer preview</p>
+                  <p className="mt-2 text-sm text-white">{issuerPreview ?? "Enter the tenant name to preview the issuer."}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Discovery preview</p>
+                  <p className="mt-2 break-all text-sm text-white">
+                    {issuerPreview
+                      ? `${issuerPreview}/.well-known/openid-configuration`
+                      : "Enter the tenant name to preview the discovery endpoint."}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Authorization URL preview</p>
+                  <p className="mt-2 break-all text-sm text-white">
+                    {authUrlPreview ?? "Enter the tenant name to preview the authorization endpoint."}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Token URL preview</p>
+                  <p className="mt-2 break-all text-sm text-white">
+                    {tokenUrlPreview ?? "Enter the tenant name to preview the token endpoint."}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">UserInfo URL preview</p>
+                  <p className="mt-2 break-all text-sm text-white">
+                    {userInfoUrlPreview ?? "Enter the tenant name to preview the user info endpoint."}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Logout URL preview</p>
+                  <p className="mt-2 break-all text-sm text-white">
+                    {logoutUrlPreview ?? "Enter the tenant name to preview the logout endpoint."}
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Redirect URI</p>
+                    <p className="mt-2 break-all text-sm text-white">{productionRedirectUri}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Local redirect URI</p>
+                    <p className="mt-2 break-all text-sm text-white">{localRedirectUri}</p>
+                  </div>
+                </div>
+                {selectedCase.oidcClientSecretConfigured ? (
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Stored client secret</p>
+                    <p className="mt-2 text-sm text-white">********</p>
+                  </div>
+                ) : null}
+                <div className="flex gap-3">
+                  <Button className="flex-1" onClick={handleSaveOidc}>
+                    Save OIDC config
+                  </Button>
+                  <Button onClick={closePanel} variant="outline">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {panelMode === "enroll" ? (
+              <div className="grid gap-4">
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>MSP name</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) => setEnrollmentState((current) => ({ ...current, mspName: event.target.value }))}
+                    value={enrollmentState.mspName}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>Primary contact email</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) =>
+                      setEnrollmentState((current) => ({ ...current, primaryContactEmail: event.target.value }))
+                    }
+                    type="email"
+                    value={enrollmentState.primaryContactEmail}
+                  />
+                </label>
                 <label className="grid gap-2 text-sm text-slate-300">
                   <span>Access mode</span>
                   <select
                     className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
                     onChange={(event) =>
-                      setEditState((current) =>
-                        current
-                          ? { ...current, accessMode: event.target.value as OnboardingCase["accessMode"] }
-                          : current
-                      )
+                      setEnrollmentState((current) => ({
+                        ...current,
+                        accessMode: event.target.value as OnboardingCase["accessMode"]
+                      }))
                     }
-                    value={editState.accessMode}
+                    value={enrollmentState.accessMode}
                   >
                     <option value="temporary">temporary</option>
                     <option value="oidc">oidc</option>
@@ -727,314 +986,129 @@ export function InternalDashboard({
                   <span>Current stage</span>
                   <input
                     className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEditState((current) => (current ? { ...current, currentStage: event.target.value } : current))
-                    }
-                    value={editState.currentStage}
+                    onChange={(event) => setEnrollmentState((current) => ({ ...current, currentStage: event.target.value }))}
+                    value={enrollmentState.currentStage}
                   />
                 </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Progress %</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    max={100}
-                    min={0}
-                    onChange={(event) =>
-                      setEditState((current) =>
-                        current ? { ...current, progress: Number(event.target.value) || 0 } : current
-                      )
-                    }
-                    type="number"
-                    value={editState.progress}
-                  />
-                </label>
-              </div>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Submitted apps</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  min={0}
-                  onChange={(event) =>
-                    setEditState((current) =>
-                      current ? { ...current, submittedSaasAppCount: Number(event.target.value) || 0 } : current
-                    )
-                  }
-                  type="number"
-                  value={editState.submittedSaasAppCount}
-                />
-              </label>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Status</span>
-                  <select
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEditState((current) =>
-                        current ? { ...current, status: event.target.value as OnboardingCase["status"] } : current
-                      )
-                    }
-                    value={editState.status}
-                  >
-                    <option value="waiting_on_msp">waiting_on_msp</option>
-                    <option value="waiting_on_kzero">waiting_on_kzero</option>
-                    <option value="in_progress">in_progress</option>
-                    <option value="complete">complete</option>
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Last activity</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEditState((current) => (current ? { ...current, lastActivity: event.target.value } : current))
-                    }
-                    value={editState.lastActivity}
-                  />
-                </label>
-              </div>
-              <div className="flex gap-3">
-                <Button className="flex-1" onClick={handleSaveEdit}>
-                  Save MSP details
-                </Button>
-                <Button onClick={() => setPanelMode("preview")} variant="outline">
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {panelMode === "oidc" && selectedCase && oidcState ? (
-            <div className="grid gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-blue-200">Configure OIDC</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">{selectedCase.mspName}</h3>
-                <p className="mt-1 text-sm text-slate-300">{getAccessLabel(selectedCase)}</p>
-              </div>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Tenant name / realm</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setOidcState((current) => (current ? { ...current, tenantName: event.target.value } : current))}
-                  value={oidcState.tenantName}
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>OIDC client ID</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setOidcState((current) => (current ? { ...current, clientId: event.target.value } : current))}
-                  value={oidcState.clientId}
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>OIDC client secret</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) =>
-                    setOidcState((current) => (current ? { ...current, clientSecret: event.target.value } : current))
-                  }
-                  placeholder="Enter secret"
-                  type="password"
-                  value={oidcState.clientSecret}
-                />
-              </label>
-              <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Issuer preview</p>
-                <p className="mt-2 text-sm text-white">{issuerPreview ?? "Enter the tenant name to preview the issuer."}</p>
-              </div>
-              <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Discovery preview</p>
-                <p className="mt-2 break-all text-sm text-white">
-                  {issuerPreview
-                    ? `${issuerPreview}/.well-known/openid-configuration`
-                    : "Enter the tenant name to preview the discovery endpoint."}
-                </p>
-              </div>
-              {selectedCase.oidcClientSecretConfigured ? (
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Stored client secret</p>
-                  <p className="mt-2 text-sm text-white">********</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Progress %</span>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      max={100}
+                      min={0}
+                      onChange={(event) =>
+                        setEnrollmentState((current) => ({ ...current, progress: Number(event.target.value) || 0 }))
+                      }
+                      type="number"
+                      value={enrollmentState.progress}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Submitted apps</span>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      min={0}
+                      onChange={(event) =>
+                        setEnrollmentState((current) => ({
+                          ...current,
+                          submittedSaasAppCount: Number(event.target.value) || 0
+                        }))
+                      }
+                      type="number"
+                      value={enrollmentState.submittedSaasAppCount}
+                    />
+                  </label>
                 </div>
-              ) : null}
-              <div className="flex gap-3">
-                <Button className="flex-1" onClick={handleSaveOidc}>
-                  Save OIDC config
-                </Button>
-                <Button onClick={() => setPanelMode("preview")} variant="outline">
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {panelMode === "enroll" ? (
-            <div className="grid gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-blue-200">Enroll MSP</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">New onboarding case</h3>
-                <p className="mt-1 text-sm text-slate-300">Sales Engineer: {SALES_ENGINEER_NAME}</p>
-              </div>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>MSP name</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setEnrollmentState((current) => ({ ...current, mspName: event.target.value }))}
-                  value={enrollmentState.mspName}
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Primary contact email</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) =>
-                    setEnrollmentState((current) => ({ ...current, primaryContactEmail: event.target.value }))
-                  }
-                  type="email"
-                  value={enrollmentState.primaryContactEmail}
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Access mode</span>
-                <select
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) =>
-                    setEnrollmentState((current) => ({
-                      ...current,
-                      accessMode: event.target.value as OnboardingCase["accessMode"]
-                    }))
-                  }
-                  value={enrollmentState.accessMode}
-                >
-                  <option value="temporary">temporary</option>
-                  <option value="oidc">oidc</option>
-                </select>
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Current stage</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setEnrollmentState((current) => ({ ...current, currentStage: event.target.value }))}
-                  value={enrollmentState.currentStage}
-                />
-              </label>
-              <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Status</span>
+                    <select
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      onChange={(event) =>
+                        setEnrollmentState((current) => ({
+                          ...current,
+                          status: event.target.value as OnboardingCase["status"]
+                        }))
+                      }
+                      value={enrollmentState.status}
+                    >
+                      <option value="waiting_on_msp">waiting_on_msp</option>
+                      <option value="waiting_on_kzero">waiting_on_kzero</option>
+                      <option value="in_progress">in_progress</option>
+                      <option value="complete">complete</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    <span>Last activity</span>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                      onChange={(event) =>
+                        setEnrollmentState((current) => ({ ...current, lastActivity: event.target.value }))
+                      }
+                      value={enrollmentState.lastActivity}
+                    />
+                  </label>
+                </div>
                 <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Progress %</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    max={100}
-                    min={0}
-                    onChange={(event) =>
-                      setEnrollmentState((current) => ({ ...current, progress: Number(event.target.value) || 0 }))
-                    }
-                    type="number"
-                    value={enrollmentState.progress}
-                  />
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Submitted apps</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    min={0}
-                    onChange={(event) =>
-                      setEnrollmentState((current) => ({
-                        ...current,
-                        submittedSaasAppCount: Number(event.target.value) || 0
-                      }))
-                    }
-                    type="number"
-                    value={enrollmentState.submittedSaasAppCount}
-                  />
-                </label>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Status</span>
+                  <span>Starting plan type</span>
                   <select
                     className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
                     onChange={(event) =>
                       setEnrollmentState((current) => ({
                         ...current,
-                        status: event.target.value as OnboardingCase["status"]
+                        startingPlanType: event.target.value as TenantType
                       }))
                     }
-                    value={enrollmentState.status}
+                    value={enrollmentState.startingPlanType}
                   >
-                    <option value="waiting_on_msp">waiting_on_msp</option>
-                    <option value="waiting_on_kzero">waiting_on_kzero</option>
-                    <option value="in_progress">in_progress</option>
-                    <option value="complete">complete</option>
+                    <option value="nfr">NFR tenant</option>
+                    <option value="customer">Customer tenant</option>
                   </select>
                 </label>
                 <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Last activity</span>
+                  <span>Tenant name / realm</span>
                   <input
                     className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEnrollmentState((current) => ({ ...current, lastActivity: event.target.value }))
-                    }
-                    value={enrollmentState.lastActivity}
+                    onChange={(event) => setEnrollmentState((current) => ({ ...current, tenantName: event.target.value }))}
+                    value={enrollmentState.tenantName}
                   />
                 </label>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>OIDC client ID</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) => setEnrollmentState((current) => ({ ...current, clientId: event.target.value }))}
+                    value={enrollmentState.clientId}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm text-slate-300">
+                  <span>OIDC client secret</span>
+                  <input
+                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    onChange={(event) => setEnrollmentState((current) => ({ ...current, clientSecret: event.target.value }))}
+                    placeholder="Enter secret"
+                    type="password"
+                    value={enrollmentState.clientSecret}
+                  />
+                </label>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Issuer preview</p>
+                  <p className="mt-2 text-sm text-white">{issuerPreview ?? "Optional until KZero OIDC is configured."}</p>
+                </div>
+                <div className="flex gap-3">
+                  <Button className="flex-1" onClick={handleEnroll}>
+                    Save MSP case
+                  </Button>
+                  <Button onClick={closePanel} variant="outline">
+                    Cancel
+                  </Button>
+                </div>
               </div>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Starting plan type</span>
-                <select
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) =>
-                    setEnrollmentState((current) => ({
-                      ...current,
-                      startingPlanType: event.target.value as TenantType
-                    }))
-                  }
-                  value={enrollmentState.startingPlanType}
-                >
-                  <option value="nfr">NFR tenant</option>
-                  <option value="customer">Customer tenant</option>
-                </select>
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>Tenant name / realm</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setEnrollmentState((current) => ({ ...current, tenantName: event.target.value }))}
-                  value={enrollmentState.tenantName}
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>OIDC client ID</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setEnrollmentState((current) => ({ ...current, clientId: event.target.value }))}
-                  value={enrollmentState.clientId}
-                />
-              </label>
-              <label className="grid gap-2 text-sm text-slate-300">
-                <span>OIDC client secret</span>
-                <input
-                  className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                  onChange={(event) => setEnrollmentState((current) => ({ ...current, clientSecret: event.target.value }))}
-                  placeholder="Enter secret"
-                  type="password"
-                  value={enrollmentState.clientSecret}
-                />
-              </label>
-              <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Issuer preview</p>
-                <p className="mt-2 text-sm text-white">{issuerPreview ?? "Optional until KZero OIDC is configured."}</p>
-              </div>
-              <div className="flex gap-3">
-                <Button className="flex-1" onClick={handleEnroll}>
-                  Save MSP case
-                </Button>
-                <Button onClick={() => setPanelMode(selectedCase ? "preview" : "enroll")} variant="outline">
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </Card>
-      </aside>
+            ) : null}
+          </Card>
+        </div>
+      ) : null}
     </main>
   );
 }
