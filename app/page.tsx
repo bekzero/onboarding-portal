@@ -53,9 +53,6 @@ export default function HomePage() {
                 <Link href="/start">
                   <Button>Start Onboarding</Button>
                 </Link>
-                <Link href="/demo/abcmsp-nfr">
-                  <Button variant="outline">View Setup Checklist</Button>
-                </Link>
               </div>
             </div>
 

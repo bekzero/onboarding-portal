@@ -136,11 +136,6 @@ export default function StartPage() {
                     Continue
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
-                  <Link href="/demo/abcmsp-nfr">
-                    <Button className="h-11 px-5" variant="outline">
-                      View Setup Checklist
-                    </Button>
-                  </Link>
                 </div>
                 <p className="text-sm text-blue-100/78">If KZero shared an ABCMSP workspace with you, enter ABCMSP.</p>
                 {error ? <p className="text-sm text-amber-200">{error}</p> : null}

@@ -780,16 +780,23 @@ export function InternalDashboard({
           <div className="space-y-3">
             <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" surface="dark" />
             <div>
-            <h2 className="text-2xl font-semibold text-white">MSP onboarding reporting</h2>
-            <p className="mt-1 text-sm text-slate-300">
-              Track live onboarding status, ownership, and OIDC readiness across MSP accounts.
-            </p>
+              <h2 className="text-2xl font-semibold text-white">MSP onboarding reporting</h2>
+              <p className="mt-1 text-sm text-slate-300">
+                Track live onboarding status, ownership, and OIDC readiness across MSP accounts.
+              </p>
             </div>
           </div>
-          <Button className="h-10 px-4" onClick={openEnroll}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Enroll MSP
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/">
+              <Button className="h-10 px-4" variant="outline">
+                Back to Main Page
+              </Button>
+            </Link>
+            <Button className="h-10 px-4" onClick={openEnroll}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Enroll MSP
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
