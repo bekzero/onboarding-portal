@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Building2, Search } from "lucide-react";
+import { ArrowRight, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Button } from "@/components/ui/button";
@@ -102,7 +102,7 @@ export default function StartPage() {
 
       <main className="grid gap-6">
         <Card className="overflow-hidden border-white/10 bg-[linear-gradient(135deg,#1e3a75_0%,#111d32_52%,#09111d_100%)] p-0">
-          <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+          <div className="px-6 py-8 md:px-8 md:py-10">
             <div className="space-y-5">
               <div className="flex items-center gap-3">
                 <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" priority surface="dark" />
@@ -129,7 +129,7 @@ export default function StartPage() {
                   />
                 </label>
                 <p className="text-sm text-slate-300">
-                  Enter your MSP name or the KZero tenant name provided by your KZero Sales Engineer.
+                  Enter the MSP or tenant name provided by your KZero Sales Engineer.
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Button className="h-11 px-5" onClick={handleContinue}>
@@ -137,31 +137,7 @@ export default function StartPage() {
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </div>
-                <p className="text-sm text-blue-100/78">If KZero shared an ABCMSP workspace with you, enter ABCMSP.</p>
                 {error ? <p className="text-sm text-amber-200">{error}</p> : null}
-              </div>
-            </div>
-
-            <div className="rounded-[1.75rem] border border-white/10 bg-[#0b1424]/80 p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <Building2 className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-white">Access Options</p>
-                  <p className="text-sm text-slate-300">Flexible onboarding access for every stage of rollout.</p>
-                </div>
-              </div>
-              <div className="mt-5 grid gap-3 text-sm text-slate-300">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                  We match your MSP or tenant name to the onboarding workspace shared by KZero.
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                  Temporary MSP access can open your onboarding workspace before the tenant is deployed.
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                  Organizations with KZero sign-in enabled will continue through their secure sign-in experience.
-                </div>
               </div>
             </div>
           </div>
