@@ -778,7 +778,7 @@ export function InternalDashboard({
       <section className="min-w-0 grid gap-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-3">
-            <KzeroLogo className="h-auto w-[220px]" />
+            <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" surface="dark" />
             <div>
             <h2 className="text-2xl font-semibold text-white">MSP onboarding reporting</h2>
             <p className="mt-1 text-sm text-slate-300">

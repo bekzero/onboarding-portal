@@ -38,7 +38,7 @@ export default function HomePage() {
           <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
             <div className="space-y-5">
               <div className="flex items-center gap-3">
-                <KzeroLogo className="h-auto w-[220px]" priority />
+                <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" priority surface="dark" />
               </div>
               <div className="space-y-3">
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-5xl">

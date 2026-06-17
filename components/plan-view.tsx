@@ -148,7 +148,7 @@ export function PlanView({
       <header className="rounded-[1.7rem] border border-white/10 bg-[#101c31]/90 px-4 py-4 shadow-panel md:px-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
-            <KzeroLogo className="h-auto w-[196px] shrink-0" />
+            <KzeroLogo className="w-fit shrink-0" imageClassName="h-auto w-[196px]" surface="dark" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-100/80">

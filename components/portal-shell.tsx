@@ -19,7 +19,7 @@ export function PortalShell({
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-200">{eyebrow}</p>
           <div className="mt-2 flex items-center gap-3">
-            <KzeroLogo className="h-auto w-[196px]" />
+            <KzeroLogo className="w-fit shrink-0" imageClassName="h-auto w-[196px]" surface="dark" />
             <div>
               <h1 className="text-2xl font-semibold text-white">{title}</h1>
               <p className="text-sm text-muted">KZero Passwordless onboarding workspace</p>
