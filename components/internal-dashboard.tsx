@@ -353,6 +353,8 @@ export function InternalDashboard({
   const [caseOverrides, setCaseOverrides] = useState<Record<string, AdminCaseOverride>>({});
   const [apiCases, setApiCases] = useState<DashboardCase[]>([]);
   const [useServerData, setUseServerData] = useState(false);
+  const [serverLoadState, setServerLoadState] = useState<"loading" | "server" | "fallback">("loading");
+  const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>("preview");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
@@ -361,6 +363,8 @@ export function InternalDashboard({
 
   async function loadDashboardCases() {
     try {
+      setServerLoadState("loading");
+      setServerErrorMessage(null);
       const response = await fetch("/api/admin/msps", { cache: "no-store" });
 
       if (!response.ok) {
@@ -370,9 +374,13 @@ export function InternalDashboard({
       const payload = (await response.json()) as { msps: AdminApiCase[] };
       setApiCases(payload.msps.map(adminApiCaseToDashboardCase));
       setUseServerData(true);
+      setServerLoadState("server");
       return true;
-    } catch {
+    } catch (error) {
+      console.error("Failed to load /api/admin/msps. Falling back to local data.", error);
       setUseServerData(false);
+      setServerLoadState("fallback");
+      setServerErrorMessage("Showing local fallback data because the server API is unavailable.");
       return false;
     }
   }
@@ -392,7 +400,9 @@ export function InternalDashboard({
     }));
   }, [baseCases, caseOverrides, demoEnrollments]);
 
-  const onboardingCases: DashboardCase[] = useServerData ? apiCases : fallbackCases;
+  const isLoading = serverLoadState === "loading";
+  const isUsingFallback = serverLoadState === "fallback";
+  const onboardingCases: DashboardCase[] = isLoading ? [] : useServerData ? apiCases : fallbackCases;
 
   const selectedCase = selectedCaseId
     ? onboardingCases.find((item) => item.onboardingPlanId === selectedCaseId) ?? null
@@ -778,81 +788,113 @@ export function InternalDashboard({
           </Button>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                <Building2 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-300">Total MSPs</p>
-                <p className="mt-1 text-3xl font-semibold text-white">{onboardingCases.length}</p>
-              </div>
-            </div>
+        {isLoading ? (
+          <Card className="border-white/10 bg-[#101a2d] px-5 py-8">
+            <p className="text-base font-medium text-white">Loading MSPs...</p>
+            <p className="mt-2 text-sm text-slate-300">Pulling the latest enrolled MSP records from the server.</p>
           </Card>
-          <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-400/15 text-blue-200">
-                <Gauge className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-300">In Progress</p>
-                <p className="mt-1 text-3xl font-semibold text-white">{inProgressCases.length}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200">
-                <TimerReset className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-300">Waiting on MSP</p>
-                <p className="mt-1 text-3xl font-semibold text-white">{waitingOnMsp}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/15 text-amber-200">
-                <Clock3 className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-300">Waiting on KZero</p>
-                <p className="mt-1 text-3xl font-semibold text-white">{waitingOnKZero}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-200">
-                <Gauge className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-300">Completed</p>
-                <p className="mt-1 text-3xl font-semibold text-white">{completedCases.length}</p>
-              </div>
-            </div>
-          </Card>
-        </section>
+        ) : (
+          <>
+            {isUsingFallback && serverErrorMessage ? (
+              <Card className="border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
+                <p className="text-sm text-amber-100">{serverErrorMessage}</p>
+              </Card>
+            ) : null}
 
-        <DashboardTable
-          emptyLabel="No in-progress MSPs right now."
-          items={inProgressCases}
-          onConfigureOidc={openOidc}
-          onEdit={openEdit}
-          onView={openPreview}
-          title="In Progress MSPs"
-        />
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-300">Total MSPs</p>
+                    <p className="mt-1 text-3xl font-semibold text-white">{onboardingCases.length}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-400/15 text-blue-200">
+                    <Gauge className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-300">In Progress</p>
+                    <p className="mt-1 text-3xl font-semibold text-white">{inProgressCases.length}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200">
+                    <TimerReset className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-300">Waiting on MSP</p>
+                    <p className="mt-1 text-3xl font-semibold text-white">{waitingOnMsp}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/15 text-amber-200">
+                    <Clock3 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-300">Waiting on KZero</p>
+                    <p className="mt-1 text-3xl font-semibold text-white">{waitingOnKZero}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-200">
+                    <Gauge className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-300">Completed</p>
+                    <p className="mt-1 text-3xl font-semibold text-white">{completedCases.length}</p>
+                  </div>
+                </div>
+              </Card>
+            </section>
 
-        <DashboardTable
-          emptyLabel="No completed MSPs yet."
-          items={completedCases}
-          onConfigureOidc={openOidc}
-          onEdit={openEdit}
-          onView={openPreview}
-          title="Completed MSPs"
-        />
+            {onboardingCases.length === 0 ? (
+              <Card className="border-white/10 bg-[#101a2d] px-5 py-8">
+                <h3 className="text-lg font-semibold text-white">No MSPs enrolled yet.</h3>
+                <p className="mt-2 text-sm text-slate-300">
+                  Add your first MSP onboarding case to start tracking rollout progress and OIDC readiness.
+                </p>
+                <div className="mt-4">
+                  <Button className="h-10 px-4" onClick={openEnroll}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Enroll MSP
+                  </Button>
+                </div>
+              </Card>
+            ) : (
+              <>
+                <DashboardTable
+                  emptyLabel="No in-progress MSPs right now."
+                  items={inProgressCases}
+                  onConfigureOidc={openOidc}
+                  onEdit={openEdit}
+                  onView={openPreview}
+                  title="In Progress MSPs"
+                />
+
+                <DashboardTable
+                  emptyLabel="No completed MSPs yet."
+                  items={completedCases}
+                  onConfigureOidc={openOidc}
+                  onEdit={openEdit}
+                  onView={openPreview}
+                  title="Completed MSPs"
+                />
+              </>
+            )}
+          </>
+        )}
       </section>
 
       {isModalOpen ? (
