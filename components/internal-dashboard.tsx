@@ -13,6 +13,7 @@ import {
   TimerReset,
   X
 } from "lucide-react";
+import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -776,11 +777,14 @@ export function InternalDashboard({
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
       <section className="min-w-0 grid gap-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+          <div className="space-y-3">
+            <KzeroLogo className="h-auto w-[220px]" />
+            <div>
             <h2 className="text-2xl font-semibold text-white">MSP onboarding reporting</h2>
             <p className="mt-1 text-sm text-slate-300">
               Track live onboarding status, ownership, and OIDC readiness across MSP accounts.
             </p>
+            </div>
           </div>
           <Button className="h-10 px-4" onClick={openEnroll}>
             <PlusCircle className="mr-2 h-4 w-4" />

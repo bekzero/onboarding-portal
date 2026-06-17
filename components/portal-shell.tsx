@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
+import { KzeroLogo } from "@/components/kzero-logo";
 import { Button } from "@/components/ui/button";
 
 export function PortalShell({
@@ -19,9 +19,7 @@ export function PortalShell({
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-200">{eyebrow}</p>
           <div className="mt-2 flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-              <ShieldCheck className="h-6 w-6" />
-            </div>
+            <KzeroLogo className="h-auto w-[196px]" />
             <div>
               <h1 className="text-2xl font-semibold text-white">{title}</h1>
               <p className="text-sm text-muted">KZero Passwordless onboarding workspace</p>

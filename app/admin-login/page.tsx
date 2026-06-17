@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { LockKeyhole, ShieldCheck } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 import { submitAdminLogin } from "@/app/admin-login/actions";
+import { KzeroLogo } from "@/components/kzero-logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { isAdminAccessConfigured } from "@/lib/admin-auth";
@@ -25,13 +26,8 @@ export default async function AdminLoginPage({
         <Card className="overflow-hidden border-white/10 bg-[linear-gradient(135deg,#1e3a75_0%,#111d32_52%,#09111d_100%)] p-0">
           <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
             <div className="space-y-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-blue-100">
-                  <ShieldCheck className="h-6 w-6" />
-                </div>
-                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-blue-100/80">
-                  KZero Passwordless
-                </p>
+              <div className="flex justify-start lg:justify-center">
+                <KzeroLogo className="h-auto w-[148px]" priority variant="stacked" />
               </div>
               <div className="space-y-3">
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-5xl">

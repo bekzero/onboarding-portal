@@ -8,9 +8,9 @@ import {
   CircleAlert,
   Clock3,
   Lock,
-  Mail,
-  ShieldCheck
+  Mail
 } from "lucide-react";
+import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -296,9 +296,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
       <header className="rounded-[1.7rem] border border-white/10 bg-[#101c31]/90 px-4 py-4 shadow-panel md:px-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
+            <KzeroLogo className="h-auto w-[196px] shrink-0" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-100/80">
