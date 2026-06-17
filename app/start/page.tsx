@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Building2, LockKeyhole, Search } from "lucide-react";
+import { ArrowRight, Building2, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,7 +10,6 @@ import { readAdminCaseOverridesFromStorage } from "@/lib/admin-case-storage";
 import {
   buildTenantRegistry,
   findTenantByInputWithRegistry,
-  getDemoPlanUrlForTenantWithRegistry,
   readDemoEnrollmentsFromStorage,
   tenantRegistry,
   type TenantRegistryEntry
@@ -22,7 +21,6 @@ export default function StartPage() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState("");
   const [error, setError] = useState("");
-  const [oidcReadyTenant, setOidcReadyTenant] = useState<TenantRegistryEntry | null>(null);
   const [registry, setRegistry] = useState<TenantRegistryEntry[]>(tenantRegistry);
 
   useEffect(() => {
@@ -37,11 +35,28 @@ export default function StartPage() {
     setRegistry(buildTenantRegistry(enrollments, overrides));
   }, []);
 
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const errorCode = searchParams.get("error");
+
+    if (!errorCode) {
+      return;
+    }
+
+    const messages: Record<string, string> = {
+      not_found: "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer.",
+      oidc_not_configured: "KZero sign-in is not fully configured for this onboarding portal yet. Contact your KZero Sales Engineer for help.",
+      session_required: "Your sign-in session expired or could not be verified. Please start again from your onboarding portal lookup.",
+      signin_failed: "We could not complete KZero sign-in. Please try again or contact your KZero Sales Engineer."
+    };
+
+    setError(messages[errorCode] ?? messages.not_found);
+  }, []);
+
   function handleContinue() {
     const tenant = findTenantByInputWithRegistry(tenantName, registry);
 
     window.localStorage.setItem(TENANT_STORAGE_KEY, tenantName);
-    setOidcReadyTenant(null);
 
     if (!tenant) {
       setError(
@@ -53,17 +68,11 @@ export default function StartPage() {
     setError("");
 
     if (tenant.accessMode === "oidc") {
-      setOidcReadyTenant(tenant);
+      window.location.assign(`/api/oidc/start?tenant=${encodeURIComponent(tenantName)}`);
       return;
     }
 
-    // Future production redirect:
-    // /api/auth/signin/keycloak?callbackUrl=/portal/resolve
-    // or a tenant-aware OIDC start route built from the approved KZero issuer.
-    const demoUrl = getDemoPlanUrlForTenantWithRegistry(tenantName, registry);
-    if (demoUrl) {
-      router.push(demoUrl);
-    }
+    router.push(`/demo/${tenant.planId}`);
   }
 
   return (
@@ -105,7 +114,6 @@ export default function StartPage() {
                     onChange={(event) => {
                       setTenantName(event.target.value);
                       setError("");
-                      setOidcReadyTenant(null);
                     }}
                     placeholder="your-tenant-name"
                     value={tenantName}
@@ -127,22 +135,6 @@ export default function StartPage() {
                 </div>
                 <p className="text-sm text-blue-100/78">If KZero shared an ABCMSP workspace with you, enter ABCMSP.</p>
                 {error ? <p className="text-sm text-amber-200">{error}</p> : null}
-                {oidcReadyTenant ? (
-                  <div className="rounded-[1.35rem] border border-blue-400/20 bg-blue-500/10 p-4 text-sm text-blue-100">
-                    <div className="flex items-center gap-2">
-                      <LockKeyhole className="h-4 w-4" />
-                      <p className="font-medium">This MSP is configured for KZero sign-in.</p>
-                    </div>
-                    <p className="mt-2 leading-6 text-blue-100/78">
-                      You&apos;ll be redirected to the organization&apos;s KZero sign-in page when secure sign-in is enabled here.
-                    </p>
-                    <div className="mt-3 flex flex-wrap items-center gap-3">
-                      <Link href={`/demo/${oidcReadyTenant.planId}`}>
-                        <Button>Continue to onboarding</Button>
-                      </Link>
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </div>
 

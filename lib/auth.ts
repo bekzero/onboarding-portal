@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { users } from "@/lib/mock-data";
+import { readPortalOidcSession } from "@/lib/oidc-session";
 
 type SessionUser = {
   name?: string | null;
@@ -60,6 +61,18 @@ function mockSession(kind: "portal" | "internal"): SessionUser {
 }
 
 async function getSessionUser(kind: "portal" | "internal"): Promise<SessionUser | null> {
+  if (kind === "portal") {
+    const portalSession = await readPortalOidcSession();
+
+    if (portalSession?.authenticated) {
+      return {
+        name: portalSession.email ?? portalSession.tenantName,
+        email: portalSession.email ?? null,
+        roles: ["msp_admin"]
+      };
+    }
+  }
+
   const hasOidcConfig =
     !!process.env.AUTH_SECRET &&
     !!process.env.AUTH_KEYCLOAK_ID &&
