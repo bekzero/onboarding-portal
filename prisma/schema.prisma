@@ -51,7 +51,7 @@ model OnboardingPlan {
   tenantType           String?
   progress             Int                  @default(0)
   currentStage         String?
-  status               String               @default("waiting_on_msp")
+  status               String               @default("in_progress")
   lastActivityAt       DateTime?
   submittedAppCount    Int                  @default(0)
   createdAt            DateTime             @default(now())

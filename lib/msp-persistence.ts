@@ -5,6 +5,39 @@ import { prisma } from "@/lib/prisma";
 import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-routing";
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
+const onboardingPlanSelection = {
+  currentStage: true,
+  lastActivityAt: true,
+  planId: true,
+  progress: true,
+  status: true,
+  submittedAppCount: true,
+  updatedAt: true
+} satisfies Prisma.OnboardingPlanSelect;
+
+const mspWithDashboardSelection = {
+  accessMode: true,
+  assignedSalesEngineer: true,
+  createdAt: true,
+  id: true,
+  name: true,
+  primaryContactEmail: true,
+  slug: true,
+  updatedAt: true,
+  oidcConfig: {
+    select: {
+      clientId: true,
+      tenantRealm: true
+    }
+  },
+  onboardingPlans: {
+    orderBy: {
+      createdAt: "asc" as const
+    },
+    select: onboardingPlanSelection,
+    take: 1
+  }
+} satisfies Prisma.MspSelect;
 
 function formatDateLabel() {
   return new Intl.DateTimeFormat("en-US", {
@@ -119,7 +152,21 @@ function ensureDatabaseConfigured() {
 
 function toPublicMspRecord(
   msp: Prisma.MspGetPayload<{
-    include: { oidcConfig: true };
+    select: {
+      accessMode: true;
+      assignedSalesEngineer: true;
+      createdAt: true;
+      id: true;
+      name: true;
+      primaryContactEmail: true;
+      slug: true;
+      updatedAt: true;
+      oidcConfig: {
+        select: {
+          tenantRealm: true;
+        };
+      };
+    };
   }>
 ): PublicMspRecord {
   return {
@@ -149,13 +196,7 @@ function toPublicOidcConfig(oidcConfig: OidcConfig): PublicOidcConfig {
 
 function toAdminDashboardCase(
   msp: Prisma.MspGetPayload<{
-    include: {
-      oidcConfig: true;
-      onboardingPlans: {
-        orderBy: { createdAt: "asc" };
-        take: 1;
-      };
-    };
+    select: typeof mspWithDashboardSelection;
   }>
 ): AdminDashboardCase {
   const plan = msp.onboardingPlans[0];
@@ -214,6 +255,7 @@ export async function createMsp(input: CreateMspInput) {
         orderBy: {
           createdAt: "asc"
         },
+        select: onboardingPlanSelection,
         take: 1
       }
     }
@@ -261,6 +303,7 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
         orderBy: {
           createdAt: "asc"
         },
+        select: onboardingPlanSelection,
         take: 1
       }
     }
@@ -333,15 +376,7 @@ export async function getMspByLookup(lookupValue: string) {
   }
 
   const msps = await prisma.msp.findMany({
-    include: {
-      oidcConfig: true,
-      onboardingPlans: {
-        orderBy: {
-          createdAt: "asc"
-        },
-        take: 1
-      }
-    }
+    select: mspWithDashboardSelection
   });
 
   const match = msps.find((msp) => {
@@ -356,15 +391,7 @@ export async function getAdminDashboardCases() {
   ensureDatabaseConfigured();
 
   const msps = await prisma.msp.findMany({
-    include: {
-      oidcConfig: true,
-      onboardingPlans: {
-        orderBy: {
-          createdAt: "asc"
-        },
-        take: 1
-      }
-    },
+    select: mspWithDashboardSelection,
     orderBy: {
       createdAt: "desc"
     }
@@ -400,15 +427,7 @@ export async function getMspWithOidcByLookupServer(lookupValue: string) {
   }
 
   const msps = await prisma.msp.findMany({
-    include: {
-      oidcConfig: true,
-      onboardingPlans: {
-        orderBy: {
-          createdAt: "asc"
-        },
-        take: 1
-      }
-    }
+    select: mspWithDashboardSelection
   });
 
   return (
@@ -426,15 +445,7 @@ export async function getMspWithOidcByPlanIdServer(planId: string) {
     where: { planId },
     include: {
       msp: {
-        include: {
-          oidcConfig: true,
-          onboardingPlans: {
-            orderBy: {
-              createdAt: "asc"
-            },
-            take: 1
-          }
-        }
+        select: mspWithDashboardSelection
       }
     }
   });
