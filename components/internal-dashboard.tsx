@@ -186,11 +186,6 @@ function DashboardTable({
   onView: (item: OnboardingCase) => void;
   title: string;
 }) {
-  const headerColumns =
-    "grid-cols-[220px_140px_140px_180px_120px_140px_90px_130px_130px_210px]";
-  const rowColumns =
-    "lg:grid-cols-[220px_140px_140px_180px_120px_140px_90px_130px_130px_210px]";
-
   return (
     <Card className="border-white/10 bg-[#101a2d]">
       <div className="flex items-center justify-between gap-3">
@@ -202,74 +197,97 @@ function DashboardTable({
 
       <div className="mt-4 overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0a1424]">
         <div className="overflow-x-auto">
-          <div className="min-w-[1540px]">
-            <div className={`hidden ${headerColumns} gap-4 border-b border-white/10 px-4 py-3 text-[11px] uppercase tracking-[0.22em] text-slate-400 lg:grid`}>
-              <span>MSP</span>
-              <span>Access</span>
-              <span>Tenant</span>
-              <span>Current stage</span>
-              <span>Progress</span>
-              <span>Waiting on</span>
-              <span>Apps</span>
-              <span>Last activity</span>
-              <span>Sales Engineer</span>
-              <span>Actions</span>
-            </div>
-
-            {items.length === 0 ? (
-              <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
-            ) : (
-              <div className="grid">
+          {items.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
+          ) : (
+            <table className="min-w-[920px] w-full table-fixed">
+              <colgroup>
+                <col className="w-[24%]" />
+                <col className="w-[12%]" />
+                <col className="w-[16%]" />
+                <col className="w-[15%]" />
+                <col className="w-[15%]" />
+                <col className="w-[7%]" />
+                <col className="w-[11%]" />
+                <col className="w-[160px]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
+                  <th className="px-4 py-3 font-medium">MSP</th>
+                  <th className="px-4 py-3 font-medium">Access</th>
+                  <th className="px-4 py-3 font-medium">Stage</th>
+                  <th className="px-4 py-3 font-medium">Progress</th>
+                  <th className="px-4 py-3 font-medium">Waiting on</th>
+                  <th className="px-4 py-3 font-medium">Apps</th>
+                  <th className="px-4 py-3 font-medium">Last activity</th>
+                  <th className="px-4 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
                 {items.map((item) => (
-                  <div
-                    key={item.onboardingPlanId}
-                    className={`grid gap-4 border-b border-white/10 px-4 py-3 last:border-b-0 ${rowColumns} lg:items-center`}
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-white">{item.mspName}</p>
-                      <p className="mt-1 truncate text-xs text-slate-400">{item.primaryContactEmail}</p>
-                    </div>
-                    <div>
-                      <Badge status={getStatusTone(item)}>{getAccessLabel(item)}</Badge>
-                    </div>
-                    <div className="text-sm text-slate-300">{item.tenantName ?? "Not configured"}</div>
-                    <div className="text-sm text-slate-300">{item.currentStage}</div>
-                    <div className="min-w-[110px]">
-                      <p className="text-sm font-medium text-white">{item.progress}%</p>
-                      <div className="mt-2 h-1.5 rounded-full bg-white/10">
-                        <div
-                          className="h-1.5 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
-                          style={{ width: `${item.progress}%` }}
-                        />
+                  <tr key={item.onboardingPlanId} className="border-b border-white/10 last:border-b-0">
+                    <td className="px-4 py-3 align-middle">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-white">{item.mspName}</p>
+                        <p className="mt-1 truncate text-xs text-slate-400">{item.primaryContactEmail}</p>
                       </div>
-                    </div>
-                    <div>
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      <Badge status={getStatusTone(item)}>{getAccessLabel(item)}</Badge>
+                    </td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.currentStage}</td>
+                    <td className="px-4 py-3 align-middle">
+                      <div className="min-w-[110px]">
+                        <p className="text-sm font-medium text-white">{item.progress}%</p>
+                        <div className="mt-2 h-1.5 rounded-full bg-white/10">
+                          <div
+                            className="h-1.5 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
+                            style={{ width: `${item.progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-middle">
                       <Badge status={getStatusTone(item)}>{getWaitingLabel(item)}</Badge>
-                    </div>
-                    <div className="text-sm text-slate-300">{item.submittedSaasAppCount}</div>
-                    <div className="text-sm text-slate-300">{item.lastActivity}</div>
-                    <div className="text-sm text-slate-300">{SALES_ENGINEER_NAME}</div>
-                    <div className="flex flex-nowrap items-center gap-2">
-                      <Button className="h-8 px-2.5" onClick={() => onView(item)} variant="outline">
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button className="h-8 px-2.5" onClick={() => onEdit(item)} variant="outline">
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        className="h-8 whitespace-nowrap px-3"
-                        onClick={() => onConfigureOidc(item)}
-                        variant="outline"
-                      >
-                        <KeyRound className="mr-2 h-3.5 w-3.5" />
-                        OIDC
-                      </Button>
-                    </div>
-                  </div>
+                    </td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.lastActivity}</td>
+                    <td className="px-4 py-3 align-middle">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          aria-label={`View ${item.mspName}`}
+                          className="h-8 px-2.5"
+                          onClick={() => onView(item)}
+                          title="View case"
+                          variant="outline"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          aria-label={`Edit ${item.mspName}`}
+                          className="h-8 px-2.5"
+                          onClick={() => onEdit(item)}
+                          title="Edit MSP"
+                          variant="outline"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          aria-label={`Configure OIDC for ${item.mspName}`}
+                          className="h-8 px-2.5"
+                          onClick={() => onConfigureOidc(item)}
+                          title="Configure OIDC"
+                          variant="outline"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
                 ))}
-              </div>
-            )}
-          </div>
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </Card>
@@ -494,7 +512,7 @@ export function InternalDashboard({
   }
 
   return (
-    <main className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
+    <main className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_400px] xl:gap-8">
       <section className="min-w-0 grid gap-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -586,7 +604,7 @@ export function InternalDashboard({
         />
       </section>
 
-      <aside className="w-full xl:w-[390px] xl:self-start">
+      <aside className="min-w-0 w-full xl:w-[400px] xl:self-start">
         <Card className="border-white/10 bg-[#101a2d] xl:sticky xl:top-6">
           {panelMode === "preview" && selectedCase ? (
             <div className="grid gap-5">
