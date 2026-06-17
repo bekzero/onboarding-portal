@@ -35,9 +35,58 @@ type DemoState = {
 };
 
 type TaskViewState = "complete" | "active" | "locked";
+type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function formatTaskStatusLabel(status: string) {
+  if (status === "waiting_on_msp") {
+    return "Action needed from you";
+  }
+
+  if (status === "waiting_on_kzero") {
+    return "KZero is working on this";
+  }
+
+  if (status === "not_started") {
+    return "Upcoming";
+  }
+
+  return formatLabel(status);
+}
+
+function formatTaskOwnerLabel(owner: Task["owner"]) {
+  if (owner === "kzero_se") {
+    return "KZero Sales Engineer";
+  }
+
+  if (owner === "shared") {
+    return "Joint step";
+  }
+
+  return "You";
+}
+
+function formatWorkflowOwnerLabel(isKZeroOwned: boolean) {
+  return isKZeroOwned ? "KZero is working on this" : "Action needed from you";
+}
+
+function formatWaitingLabel(isKZeroOwned: boolean) {
+  return isKZeroOwned ? "KZero action in progress" : "Action needed from you";
+}
+
+function formatTaskOwnerLabelShort(owner: Task["owner"]) {
+  if (owner === "kzero_se") {
+    return "KZero";
+  }
+
+  if (owner === "shared") {
+    return "You and KZero";
+  }
+
+  return "You";
 }
 
 function isBookingTask(task: Task) {
@@ -81,6 +130,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is Task => Boolean(task));
 
+  const [activeTab, setActiveTab] = useState<PlanTab>("overview");
   const [completedTaskIds, setCompletedTaskIds] = useState<string[]>([]);
   const [submittedApps, setSubmittedApps] = useState<DemoSubmittedApp[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -126,12 +176,13 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
   const currentPhase = currentTask
     ? bundle.phases.find((phase) => phase.id === currentTask.phaseId) ?? null
     : null;
+  const followingTask = activeTaskIndex >= 0 ? orderedTasks[activeTaskIndex + 1] ?? null : null;
   const completedCount = completedTaskIds.length;
   const progress = orderedTasks.length === 0 ? 0 : Math.round((completedCount / orderedTasks.length) * 100);
   const currentOwnerState = currentTask
     ? isKZeroOwnedTask(currentTask)
-      ? "Waiting on KZero"
-      : "Waiting on MSP"
+      ? "KZero is working on this"
+      : "Action needed from you"
     : "Complete";
   const currentStatusBadge = currentTask
     ? isKZeroOwnedTask(currentTask)
@@ -145,6 +196,45 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
     tasks: orderedTasks.filter((task) => task.phaseId === phase.id)
   }));
   const kzeroContact = users.find((user) => user.id === bundle.organization.assignedSalesEngineerId);
+  const yourNextAction = currentTask
+    ? isKZeroOwnedTask(currentTask)
+      ? "No action needed from you right now."
+      : currentTask.title
+    : "Onboarding complete";
+  const yourNextActionDetail = currentTask
+    ? isKZeroOwnedTask(currentTask)
+      ? "KZero is currently moving this step forward. We will let you know when your team needs to step back in."
+      : currentTask.description
+    : "You have completed the guided onboarding plan.";
+  const kzeroCurrentAction = currentTask
+    ? isKZeroOwnedTask(currentTask)
+      ? currentTask.title
+      : followingTask?.owner === "kzero_se"
+        ? followingTask.title
+        : "KZero Sales Engineer is standing by for your current step."
+    : "Implementation complete";
+  const kzeroCurrentActionDetail = currentTask
+    ? isKZeroOwnedTask(currentTask)
+      ? currentTask.description
+      : followingTask?.owner === "kzero_se"
+        ? "This is the next KZero-owned step after you complete the current action."
+        : "Your KZero Sales Engineer will continue once your current action is complete."
+    : "No active KZero work remains in this plan.";
+  const blockerStatus = currentTask
+    ? isKZeroOwnedTask(currentTask)
+      ? "No blocker for your team. KZero is actively working this step."
+      : "This plan is waiting on your team to complete the current action."
+    : "No blockers. This onboarding plan is complete.";
+  const whatHappensNext = followingTask
+    ? `${followingTask.title} (${formatTaskOwnerLabelShort(followingTask.owner)})`
+    : "This completes the current onboarding milestone.";
+  const tabs: { id: PlanTab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "tasks", label: "Tasks" },
+    { id: "apps", label: "Apps" },
+    { id: "documents", label: "Documents" },
+    { id: "activity", label: "Activity" }
+  ];
 
   function markTaskComplete(taskId: string) {
     setCompletedTaskIds((current) => (current.includes(taskId) ? current : [...current, taskId]));
@@ -232,11 +322,29 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
               rel="noreferrer"
               target="_blank"
             >
-              Book kickoff
+              Book Kickoff
             </a>
           </div>
         </div>
       </header>
+
+      <nav className="mt-4 flex flex-wrap gap-2" aria-label="Portal sections">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            aria-pressed={activeTab === tab.id}
+            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+              activeTab === tab.id
+                ? "border-primary/40 bg-primary/15 text-white"
+                : "border-white/10 bg-[#0d1627] text-slate-300 hover:border-white/20 hover:text-white"
+            }`}
+            onClick={() => setActiveTab(tab.id)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
       <main className="mt-5 grid gap-5">
         <div className="grid gap-5 lg:grid-cols-12">
@@ -247,15 +355,14 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.26em] text-blue-100/80">
                     <span>{currentPhase?.title ?? "Onboarding complete"}</span>
                     <span className="text-slate-500">/</span>
-                    <span>{currentOwnerState}</span>
+                    <span>Current Action</span>
                   </div>
                   <div className="space-y-2">
                     <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-white md:text-[2.6rem]">
-                      {currentTask?.title ?? "All onboarding steps are complete."}
+                      {yourNextAction}
                     </h2>
                     <p className="max-w-2xl text-sm leading-7 text-blue-100/78">
-                      {currentTask?.description ??
-                        "You have completed the guided onboarding workflow. Restart the plan to walk through it again."}
+                      {yourNextActionDetail}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
@@ -291,6 +398,9 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                         Restart plan
                       </Button>
                     ) : null}
+                    <Button variant="outline" onClick={() => setActiveTab("tasks")}>
+                      View Full Checklist
+                    </Button>
                   </div>
                   {currentTask && isKZeroOwnedTask(currentTask) ? (
                     <p className="text-sm text-amber-100/85">
@@ -299,42 +409,124 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                   ) : null}
                 </div>
 
-                <div className="rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4">
-                  <div className="flex items-center justify-between text-xs uppercase tracking-[0.24em] text-slate-400">
-                    <span>Progress</span>
-                    <span>{progress}%</span>
+                <div className="grid gap-3 rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4 text-sm">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Current Milestone</p>
+                    <p className="mt-2 font-medium text-white">{currentPhase?.title ?? "Onboarding complete"}</p>
                   </div>
-                  <div className="mt-3 h-2 rounded-full bg-white/10">
-                    <div
-                      className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
-                      style={{ width: `${progress}%` }}
-                    />
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">KZero Current Action</p>
+                    <p className="mt-2 font-medium text-white">{kzeroCurrentAction}</p>
+                    <p className="mt-1 text-slate-300">{kzeroCurrentActionDetail}</p>
                   </div>
-                  <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Done</p>
-                      <p className="mt-1 text-2xl font-semibold text-white">{completedCount}</p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Current</p>
-                      <p className="mt-1 text-2xl font-semibold text-white">{currentTask ? 1 : 0}</p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Locked</p>
-                      <p className="mt-1 text-2xl font-semibold text-white">
-                        {Math.max(orderedTasks.length - completedCount - (currentTask ? 1 : 0), 0)}
-                      </p>
-                    </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Blocker Status</p>
+                    <p className="mt-2 font-medium text-white">{blockerStatus}</p>
                   </div>
-                  <div className="mt-4 text-sm text-slate-300">
-                    <p>Current owner</p>
-                    <p className="mt-1 font-medium text-white">{currentOwnerState}</p>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">What Happens Next</p>
+                    <p className="mt-2 font-medium text-white">{whatHappensNext}</p>
                   </div>
                 </div>
               </div>
             </Card>
 
-            {currentTask && isKZeroOwnedTask(currentTask) ? (
+            {activeTab === "overview" ? (
+              <div className="grid gap-5 lg:grid-cols-2">
+                <Card className="border-white/10 bg-[#101a2d] p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Workflow Status</p>
+                      <h3 className="mt-1 text-2xl font-semibold text-white">{currentOwnerState}</h3>
+                    </div>
+                    <Badge status={currentStatusBadge}>
+                      {currentTask ? formatTaskStatusLabel(currentTask.status) : "Complete"}
+                    </Badge>
+                  </div>
+                  <div className="mt-4 h-2 rounded-full bg-white/10">
+                    <div
+                      className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
+                      <p className="text-slate-400">Done</p>
+                      <p className="mt-1 font-semibold text-white">{completedCount}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
+                      <p className="text-slate-400">Current</p>
+                      <p className="mt-1 font-semibold text-white">{currentTask ? 1 : 0}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
+                      <p className="text-slate-400">Apps</p>
+                      <p className="mt-1 font-semibold text-white">{submittedApps.length}</p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="border-white/10 bg-[#101a2d] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                      <Mail className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold text-white">KZero Contact</h3>
+                      <p className="mt-1 text-sm text-slate-300">Your Sales Engineer for this onboarding plan.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
+                    <div className="grid gap-4">
+                      <div>
+                        <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
+                        <p className="mt-1 text-sm text-slate-300">KZero Sales Engineer</p>
+                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:b.eakin@kzero.com">
+                          b.eakin@kzero.com
+                        </a>
+                        <a
+                          className={`${buttonVariants({ variant: "outline" })} mt-3 w-full justify-center`}
+                          href={BOOKING_URL}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Book Meeting
+                        </a>
+                      </div>
+                      <div className="border-t border-white/10 pt-4">
+                        <p className="font-medium text-white">KZero Support</p>
+                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:support@kzero.com">
+                          support@kzero.com
+                        </a>
+                      </div>
+                      <div className="border-t border-white/10 pt-4">
+                        <p className="font-medium text-white">KZero Sales Team</p>
+                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:partners@kzero.com">
+                          partners@kzero.com
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="border-white/10 bg-[#101a2d] p-4 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-white">Blockers and Notes</h3>
+                  <div className="mt-3 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4 text-sm text-slate-300">
+                    <p className="font-medium text-white">{blockerStatus}</p>
+                    <p className="mt-2 leading-6">Recent notes and rollout updates stay here so your team can scan open items quickly.</p>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {bundle.comments.slice(0, 2).map((comment) => (
+                      <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
+                        <p className="font-medium text-white">{comment.author}</p>
+                        <p className="mt-2 leading-6">{comment.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+            ) : null}
+
+            {activeTab === "tasks" && currentTask && isKZeroOwnedTask(currentTask) ? (
               <Card className="border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.08),rgba(59,130,246,0.06))] p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
@@ -342,23 +534,24 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                       <Clock3 className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">Waiting on KZero</p>
+                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
                       <p className="mt-1 text-lg font-semibold text-white">{currentTask.title}</p>
                       <p className="mt-1 text-sm leading-6 text-slate-300">{currentTask.description}</p>
                     </div>
                   </div>
-                  <Badge status="waiting_on_kzero">waiting on kzero</Badge>
+                  <Badge status="waiting_on_kzero">KZero is working on this</Badge>
                 </div>
               </Card>
             ) : null}
 
+            {activeTab === "tasks" ? (
             <Card className="border-white/10 bg-[#101a2d] p-5">
               <div className="mb-5 flex items-start gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                   <CalendarDays className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold text-white">Guided onboarding steps</h3>
+                  <h3 className="text-xl font-semibold text-white">Guided Onboarding Steps</h3>
                   <p className="text-sm text-slate-300">Complete each step in order to unlock the next part of the rollout.</p>
                 </div>
               </div>
@@ -399,9 +592,9 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                         <CheckCircle2 className="h-4 w-4" />
                                         <span>Complete</span>
                                       </div>
-                                      <p className="mt-2 text-base font-semibold text-white">{task.title}</p>
-                                    </div>
-                                    <p className="text-sm text-slate-300">{task.owner === "kzero_se" ? "KZero SE" : task.owner.toUpperCase()}</p>
+                                    <p className="mt-2 text-base font-semibold text-white">{task.title}</p>
+                                  </div>
+                                    <p className="text-sm text-slate-300">{formatTaskOwnerLabel(task.owner)}</p>
                                   </div>
                                 ) : null}
 
@@ -421,9 +614,9 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                 {taskViewState === "active" ? (
                                   <div className="grid gap-4">
                                     <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-slate-300">
-                                      <span>{isKZeroOwnedTask(task) ? "Waiting on KZero" : "Waiting on MSP"}</span>
+                                      <span>{formatWorkflowOwnerLabel(isKZeroOwnedTask(task))}</span>
                                       <span className="text-slate-600">/</span>
-                                      <span>{task.owner === "kzero_se" ? "KZero SE" : task.owner.toUpperCase()}</span>
+                                      <span>{formatTaskOwnerLabel(task.owner)}</span>
                                     </div>
                                     <div>
                                       <h5 className="text-lg font-semibold text-white">{task.title}</h5>
@@ -439,7 +632,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                       {isKZeroOwnedTask(task) ? (
                                         <div className="flex items-center gap-2 text-amber-100/85">
                                           <CircleAlert className="h-4 w-4 text-amber-200" />
-                                          <span>Waiting on KZero</span>
+                                          <span>{formatWaitingLabel(true)}</span>
                                         </div>
                                       ) : null}
                                     </div>
@@ -555,99 +748,49 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                 ))}
               </div>
             </Card>
-          </section>
+            ) : null}
 
-          <aside className="grid gap-4 lg:col-span-4 lg:self-start lg:sticky lg:top-6">
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Workflow status</p>
-                  <h3 className="mt-1 text-2xl font-semibold text-white">{currentOwnerState}</h3>
-                </div>
-                <Badge status={currentStatusBadge}>{formatLabel(currentStatusBadge)}</Badge>
-              </div>
-              <div className="mt-4 h-2 rounded-full bg-white/10">
-                <div
-                  className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-                <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                  <p className="text-slate-400">Done</p>
-                  <p className="mt-1 font-semibold text-white">{completedCount}</p>
-                </div>
-                <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                  <p className="text-slate-400">Current</p>
-                  <p className="mt-1 font-semibold text-white">{currentTask ? 1 : 0}</p>
-                </div>
-                <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                  <p className="text-slate-400">Apps</p>
-                  <p className="mt-1 font-semibold text-white">{submittedApps.length}</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <Mail className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-lg font-semibold text-white">KZero contact</h3>
-                  <p className="mt-1 text-sm text-slate-300">Your Sales Engineer for this onboarding plan.</p>
-                </div>
-              </div>
-              <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
-                <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
-                <p className="mt-1 text-sm text-slate-300">{kzeroContact?.email ?? "ben@kzero.com"}</p>
-                <a
-                  className={`${buttonVariants({ variant: "outline" })} mt-4 w-full justify-center`}
-                  href={BOOKING_URL}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open Microsoft Bookings
-                </a>
-              </div>
-            </Card>
-
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <h3 className="text-lg font-semibold text-white">Submitted SaaS apps</h3>
-              <p className="mt-1 text-sm text-slate-300">Applications added here are saved in this browser for now.</p>
-              <div className="mt-4 grid gap-3">
-                {submittedApps.length === 0 ? (
-                  <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-3.5 py-4 text-sm text-slate-400">
-                    No SaaS apps submitted yet.
-                  </div>
-                ) : null}
-                {submittedApps.map((app) => (
-                  <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium text-white">{app.name}</p>
-                      <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">{app.priority}</span>
+            {activeTab === "apps" ? (
+              <Card className="border-white/10 bg-[#101a2d] p-4">
+                <h3 className="text-lg font-semibold text-white">Submitted SaaS Apps</h3>
+                <p className="mt-1 text-sm text-slate-300">Applications added here are saved in this browser for now.</p>
+                <div className="mt-4 grid gap-3">
+                  {submittedApps.length === 0 ? (
+                    <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-3.5 py-4 text-sm text-slate-400">
+                      No SaaS apps submitted yet.
                     </div>
-                    <p className="mt-2 text-sm text-slate-300">{app.loginUrl}</p>
-                    {app.notes ? <p className="mt-2 text-sm text-slate-400">{app.notes}</p> : null}
-                  </div>
-                ))}
-              </div>
-            </Card>
+                  ) : null}
+                  {submittedApps.map((app) => (
+                    <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium text-white">{app.name}</p>
+                        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">{app.priority}</span>
+                      </div>
+                      <p className="mt-2 text-sm text-slate-300">{app.loginUrl}</p>
+                      {app.notes ? <p className="mt-2 text-sm text-slate-400">{app.notes}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
 
-            <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} />
+            {activeTab === "documents" ? <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} /> : null}
 
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <h3 className="text-lg font-semibold text-white">Blockers and notes</h3>
-              <div className="mt-4 grid gap-3">
-                {bundle.comments.map((comment) => (
-                  <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
-                    <p className="font-medium text-white">{comment.author}</p>
-                    <p className="mt-2 leading-6">{comment.body}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </aside>
+            {activeTab === "activity" ? (
+              <Card className="border-white/10 bg-[#101a2d] p-4">
+                <h3 className="text-lg font-semibold text-white">Activity</h3>
+                <p className="mt-1 text-sm text-slate-300">Recent onboarding notes, blockers, and plan updates.</p>
+                <div className="mt-4 grid gap-3">
+                  {bundle.comments.map((comment) => (
+                    <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
+                      <p className="font-medium text-white">{comment.author}</p>
+                      <p className="mt-2 leading-6">{comment.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+          </section>
         </div>
       </main>
     </div>

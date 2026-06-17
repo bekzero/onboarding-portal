@@ -118,7 +118,7 @@ function enrollmentToCase(enrollment: DemoEnrollment): OnboardingCase {
 }
 
 function getAccessLabel(item: OnboardingCase) {
-  return item.accessMode === "temporary" ? "Temporary access" : "KZero OIDC";
+  return item.accessMode === "temporary" ? "Temporary Access" : "KZero OIDC";
 }
 
 function getWaitingLabel(item: OnboardingCase) {
@@ -134,7 +134,7 @@ function getWaitingLabel(item: OnboardingCase) {
     return "Waiting on MSP";
   }
 
-  return "In progress";
+  return "In Progress";
 }
 
 function getStatusTone(item: OnboardingCase) {
@@ -263,9 +263,9 @@ function DashboardTable({
                   <th className="px-4 py-3 font-medium">Tenant</th>
                   <th className="px-4 py-3 font-medium">Stage</th>
                   <th className="px-4 py-3 font-medium">Progress</th>
-                  <th className="px-4 py-3 font-medium">Waiting on</th>
+                  <th className="px-4 py-3 font-medium">Waiting On</th>
                   <th className="px-4 py-3 font-medium">Apps</th>
-                  <th className="px-4 py-3 font-medium">Last activity</th>
+                  <th className="px-4 py-3 font-medium">Last Activity</th>
                   <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -796,7 +796,7 @@ export function InternalDashboard({
                 <Gauge className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm text-slate-300">In progress</p>
+                <p className="text-sm text-slate-300">In Progress</p>
                 <p className="mt-1 text-3xl font-semibold text-white">{inProgressCases.length}</p>
               </div>
             </div>
@@ -1059,7 +1059,7 @@ export function InternalDashboard({
                     </select>
                   </label>
                   <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Last activity</span>
+                    <span>Last Activity</span>
                     <input
                       className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
                       onChange={(event) =>
@@ -1071,7 +1071,7 @@ export function InternalDashboard({
                 </div>
                 <div className="flex gap-3">
                   <Button className="flex-1" onClick={handleSaveEdit}>
-                    Save MSP details
+                    Save MSP Details
                   </Button>
                   <Button onClick={closePanel} variant="outline">
                     Cancel
@@ -1179,7 +1179,7 @@ export function InternalDashboard({
                 ) : null}
                 <div className="flex gap-3">
                   <Button className="flex-1" onClick={handleSaveOidc}>
-                    Save OIDC config
+                    Save OIDC Config
                   </Button>
                   <Button onClick={closePanel} variant="outline">
                     Cancel
@@ -1283,7 +1283,7 @@ export function InternalDashboard({
                     </select>
                   </label>
                   <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Last activity</span>
+                    <span>Last Activity</span>
                     <input
                       className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
                       onChange={(event) =>
@@ -1341,7 +1341,7 @@ export function InternalDashboard({
                 </div>
                 <div className="flex gap-3">
                   <Button className="flex-1" onClick={handleEnroll}>
-                    Save MSP case
+                    Save MSP Case
                   </Button>
                   <Button onClick={closePanel} variant="outline">
                     Cancel

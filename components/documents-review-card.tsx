@@ -186,7 +186,7 @@ export function DocumentsReviewCard({
           <FileText className="h-4 w-4" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold text-white">Documents for review</h3>
+          <h3 className="text-lg font-semibold text-white">Documents for Review</h3>
           <p className="text-sm text-slate-300">
             Share supporting files for rollout review. File metadata stays in this browser for now.
           </p>

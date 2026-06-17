@@ -5,17 +5,17 @@ import { Card } from "@/components/ui/card";
 
 const onboardingCards = [
   {
-    title: "Book your kickoff",
+    title: "Book Your Kickoff",
     body: "Schedule your first session with a KZero Sales Engineer and get your onboarding plan moving.",
     icon: CalendarDays
   },
   {
-    title: "Prepare your tenant",
+    title: "Prepare Your Tenant",
     body: "Set up admins, add users, and work through the steps needed for your MSP rollout.",
     icon: ShieldCheck
   },
   {
-    title: "Roll out to customers",
+    title: "Roll Out to Customers",
     body: "Follow the same guided process for customer tenants once your NFR environment is ready.",
     icon: Users
   }
@@ -55,10 +55,10 @@ export default function HomePage() {
               </div>
               <div className="flex flex-wrap gap-3">
                 <Link href="/start">
-                  <Button>Start onboarding</Button>
+                  <Button>Start Onboarding</Button>
                 </Link>
                 <Link href="/demo/abcmsp-nfr">
-                  <Button variant="outline">View setup checklist</Button>
+                  <Button variant="outline">View Setup Checklist</Button>
                 </Link>
               </div>
             </div>
@@ -69,7 +69,7 @@ export default function HomePage() {
                   <ShieldCheck className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">What you can do here</p>
+                  <p className="text-sm font-semibold text-white">What You Can Do Here</p>
                   <p className="text-sm text-slate-300">A guided view of your onboarding progress</p>
                 </div>
               </div>

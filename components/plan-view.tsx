@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -15,8 +18,59 @@ import { DocumentsReviewCard } from "@/components/documents-review-card";
 import type { PlanBundle } from "@/lib/mock-data";
 import { users } from "@/lib/mock-data";
 
+const BOOKING_URL =
+  "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
+
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function formatTaskStatusLabel(status: string) {
+  if (status === "waiting_on_msp") {
+    return "Action needed from you";
+  }
+
+  if (status === "waiting_on_kzero") {
+    return "KZero is working on this";
+  }
+
+  if (status === "not_started") {
+    return "Upcoming";
+  }
+
+  return formatLabel(status);
+}
+
+function formatTaskOwnerLabel(owner: string) {
+  if (owner === "kzero_se") {
+    return "KZero Sales Engineer";
+  }
+
+  if (owner === "shared") {
+    return "Joint step";
+  }
+
+  if (owner === "msp") {
+    return "You";
+  }
+
+  return formatLabel(owner);
+}
+
+function formatWaitingLabel(waitingOn: "msp" | "kzero") {
+  return waitingOn === "kzero" ? "KZero action in progress" : "Action needed from you";
+}
+
+function formatTaskOwnerLabelShort(owner: string) {
+  if (owner === "kzero_se") {
+    return "KZero";
+  }
+
+  if (owner === "shared") {
+    return "You and KZero";
+  }
+
+  return "You";
 }
 
 function taskTone(status: string) {
@@ -35,12 +89,20 @@ function taskTone(status: string) {
   return "border-white/10 bg-[#0a1424]";
 }
 
+type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
+
 export function PlanView({
   bundle
 }: {
   bundle: PlanBundle;
 }) {
+  const [activeTab, setActiveTab] = useState<PlanTab>("overview");
+  const orderedTasks = bundle.plan.taskIds
+    .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
+    .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
   const nextTask = bundle.nextTask;
+  const nextTaskIndex = orderedTasks.findIndex((task) => task.id === nextTask.id);
+  const followingTask = nextTaskIndex >= 0 ? orderedTasks[nextTaskIndex + 1] ?? null : null;
   const completedTasks = bundle.tasks.filter((task) => task.status === "complete").length;
   const waitingOnKZeroTasks = bundle.tasks.filter((task) => task.status === "waiting_on_kzero").length;
   const activeTasks = bundle.tasks.filter((task) => ["in_progress", "waiting_on_msp"].includes(task.status)).length;
@@ -50,6 +112,36 @@ export function PlanView({
     tasks: bundle.tasks.filter((task) => task.phaseId === phase.id)
   }));
   const kzeroContact = users.find((user) => user.role === "sales_engineer");
+  const isKZeroOwnedCurrentTask = nextTask.owner === "kzero_se";
+  const yourNextAction = isKZeroOwnedCurrentTask ? "No action needed from you right now." : nextTask.title;
+  const yourNextActionDetail = isKZeroOwnedCurrentTask
+    ? "KZero is currently moving this step forward. We will let you know when your team needs to step back in."
+    : nextTask.description;
+  const kzeroCurrentAction = isKZeroOwnedCurrentTask
+    ? nextTask.title
+    : followingTask?.owner === "kzero_se"
+      ? followingTask.title
+      : "KZero Sales Engineer is standing by for your current step.";
+  const kzeroCurrentActionDetail = isKZeroOwnedCurrentTask
+    ? nextTask.description
+    : followingTask?.owner === "kzero_se"
+      ? "This is the next KZero-owned step after you complete the current action."
+      : "Your KZero Sales Engineer will continue with implementation support once your current action is complete.";
+  const blockerStatus = isKZeroOwnedCurrentTask
+    ? "No blocker for your team. KZero is actively working this step."
+    : nextTask.waitingOn === "kzero"
+      ? "KZero action in progress."
+      : "This plan is waiting on your team to complete the current action.";
+  const whatHappensNext = followingTask
+    ? `${followingTask.title} (${formatTaskOwnerLabelShort(followingTask.owner)})`
+    : "This completes the current onboarding milestone.";
+  const tabs: { id: PlanTab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "tasks", label: "Tasks" },
+    { id: "apps", label: "Apps" },
+    { id: "documents", label: "Documents" },
+    { id: "activity", label: "Activity" }
+  ];
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 md:px-6 md:py-6">
@@ -101,6 +193,24 @@ export function PlanView({
         </div>
       </header>
 
+      <nav className="mt-4 flex flex-wrap gap-2" aria-label="Portal sections">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            aria-pressed={activeTab === tab.id}
+            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+              activeTab === tab.id
+                ? "border-primary/40 bg-primary/15 text-white"
+                : "border-white/10 bg-[#0d1627] text-slate-300 hover:border-white/20 hover:text-white"
+            }`}
+            onClick={() => setActiveTab(tab.id)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
       <main className="mt-5 grid gap-5">
         <div className="grid gap-5 lg:grid-cols-12">
           <section className="grid gap-5 lg:col-span-8">
@@ -109,53 +219,141 @@ export function PlanView({
                 <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.26em] text-blue-100/80">
                   <span>{safeNextStepPhase?.title ?? "Kickoff"}</span>
                   <span className="text-slate-500">/</span>
-                  <span>Next action</span>
+                  <span>Current Action</span>
                 </div>
-                <div className="grid gap-4 md:grid-cols-[1.4fr_0.6fr] md:items-start">
+                <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-start">
                   <div className="space-y-3">
                     <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-white md:text-[2.8rem]">
-                      {nextTask.title}
+                      {yourNextAction}
                     </h2>
-                    <p className="max-w-2xl text-sm leading-7 text-blue-100/78">{nextTask.description}</p>
+                    <p className="max-w-2xl text-sm leading-7 text-blue-100/78">{yourNextActionDetail}</p>
                     <div className="flex flex-wrap items-center gap-3 text-sm text-blue-100/78">
-                      <span className="rounded-full bg-white/10 px-3 py-1">{formatLabel(nextTask.status)}</span>
-                      <span>Owner: {nextTask.owner === "kzero_se" ? "KZero SE" : nextTask.owner.toUpperCase()}</span>
+                      <span className="rounded-full bg-white/10 px-3 py-1">{formatTaskStatusLabel(nextTask.status)}</span>
+                      <span>Current Milestone: {safeNextStepPhase?.title ?? "Kickoff"}</span>
                       {nextTask.dueLabel ? <span>Due: {nextTask.dueLabel}</span> : null}
                     </div>
                   </div>
-                  <div className="grid gap-3 rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4">
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Done</p>
-                        <p className="mt-1 text-2xl font-semibold text-white">{completedTasks}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Active</p>
-                        <p className="mt-1 text-2xl font-semibold text-white">{activeTasks}</p>
-                      </div>
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">KZero</p>
-                        <p className="mt-1 text-2xl font-semibold text-white">{waitingOnKZeroTasks}</p>
-                      </div>
+                  <div className="grid gap-3 rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4 text-sm">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">KZero Current Action</p>
+                      <p className="mt-2 font-medium text-white">{kzeroCurrentAction}</p>
+                      <p className="mt-1 text-slate-300">{kzeroCurrentActionDetail}</p>
                     </div>
-                    <div className="text-sm text-slate-300">
-                      <p>Current phase</p>
-                      <p className="mt-1 font-medium text-white">{safeNextStepPhase?.title ?? "Kickoff"}</p>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Blocker Status</p>
+                      <p className="mt-2 font-medium text-white">{blockerStatus}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">What Happens Next</p>
+                      <p className="mt-2 font-medium text-white">{whatHappensNext}</p>
                     </div>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <Button className="h-11 px-5">
-                    {nextTask.meetingCta ?? "Open Microsoft Bookings"}
-                  </Button>
-                  <Button variant="outline" className="h-11 px-5">
-                    View full checklist
+                  {!isKZeroOwnedCurrentTask && nextTask.meetingCta ? (
+                    <Button className="h-11 px-5">{nextTask.meetingCta}</Button>
+                  ) : null}
+                  <Button variant="outline" className="h-11 px-5" onClick={() => setActiveTab("tasks")}>
+                    View Full Checklist
                   </Button>
                 </div>
               </div>
             </Card>
 
-            {waitingOnKZeroTasks > 0 ? (
+            {activeTab === "overview" ? (
+              <div className="grid gap-5 lg:grid-cols-2">
+                <Card className="border-white/10 bg-[#101a2d] p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Progress</p>
+                      <h3 className="mt-1 text-2xl font-semibold text-white">{bundle.plan.progress}% complete</h3>
+                    </div>
+                    <Badge status={nextTask.status}>{formatTaskStatusLabel(nextTask.status)}</Badge>
+                  </div>
+                  <div className="mt-4 h-2 rounded-full bg-white/10">
+                    <div
+                      className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
+                      style={{ width: `${bundle.plan.progress}%` }}
+                    />
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
+                      <p className="text-slate-400">Done</p>
+                      <p className="mt-1 font-semibold text-white">{completedTasks}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
+                      <p className="text-slate-400">Active</p>
+                      <p className="mt-1 font-semibold text-white">{activeTasks}</p>
+                    </div>
+                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
+                      <p className="text-slate-400">KZero</p>
+                      <p className="mt-1 font-semibold text-white">{waitingOnKZeroTasks}</p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="border-white/10 bg-[#101a2d] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                      <Mail className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold text-white">KZero Contact</h3>
+                      <p className="mt-1 text-sm text-slate-300">Your Sales Engineer for this onboarding plan.</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
+                    <div className="grid gap-4">
+                      <div>
+                        <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
+                        <p className="mt-1 text-sm text-slate-300">KZero Sales Engineer</p>
+                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:b.eakin@kzero.com">
+                          b.eakin@kzero.com
+                        </a>
+                        <a
+                          className="mt-3 inline-flex h-10 items-center justify-center rounded-xl border border-white/10 px-4 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/[0.03]"
+                          href={BOOKING_URL}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          Book Meeting
+                        </a>
+                      </div>
+                      <div className="border-t border-white/10 pt-4">
+                        <p className="font-medium text-white">KZero Support</p>
+                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:support@kzero.com">
+                          support@kzero.com
+                        </a>
+                      </div>
+                      <div className="border-t border-white/10 pt-4">
+                        <p className="font-medium text-white">KZero Sales Team</p>
+                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:partners@kzero.com">
+                          partners@kzero.com
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="border-white/10 bg-[#101a2d] p-4 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-white">Blockers and Notes</h3>
+                  <div className="mt-3 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4 text-sm text-slate-300">
+                    <p className="font-medium text-white">{blockerStatus}</p>
+                    <p className="mt-2 leading-6">Latest notes and updates are collected below so your team can quickly scan open items.</p>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {bundle.comments.slice(0, 2).map((comment) => (
+                      <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
+                        <p className="font-medium text-white">{comment.author}</p>
+                        <p className="mt-2 leading-6">{comment.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+            ) : null}
+
+            {activeTab === "tasks" && waitingOnKZeroTasks > 0 ? (
               <Card className="border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.08),rgba(59,130,246,0.06))] p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
@@ -163,7 +361,7 @@ export function PlanView({
                       <Clock3 className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">Waiting on KZero</p>
+                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
                       <p className="mt-1 text-lg font-semibold text-white">Compatibility review is in progress.</p>
                       <p className="mt-1 text-sm leading-6 text-slate-300">
                         Your Sales Engineer is reviewing submitted SaaS applications and preparing the onboarding plan.
@@ -175,166 +373,125 @@ export function PlanView({
               </Card>
             ) : null}
 
-            <Card className="border-white/10 bg-[#101a2d] p-5">
-              <div className="mb-5 flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <ListChecks className="h-5 w-5" />
+            {activeTab === "tasks" ? (
+              <Card className="border-white/10 bg-[#101a2d] p-5">
+                <div className="mb-5 flex items-start gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                    <ListChecks className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-white">Phase Checklist</h3>
+                    <p className="text-sm text-slate-300">A tighter view of what happens next, who owns it, and where meetings are needed.</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-white">Phase checklist</h3>
-                  <p className="text-sm text-slate-300">A tighter view of what happens next, who owns it, and where meetings are needed.</p>
-                </div>
-              </div>
 
-              <div className="grid gap-4">
-                {phaseTasks.map(({ phase, tasks }, index) => (
-                  <div key={phase.id} className="rounded-[1.5rem] border border-white/10 bg-[#0d1627] p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
-                        {index + 1}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                          <div>
-                            <h4 className="text-lg font-semibold text-white">{phase.title}</h4>
-                            <p className="text-sm text-slate-300">{phase.description}</p>
-                          </div>
-                          <p className="text-sm text-slate-400">{tasks.length} tasks</p>
+                <div className="grid gap-4">
+                  {phaseTasks.map(({ phase, tasks }, index) => (
+                    <div key={phase.id} className="rounded-[1.5rem] border border-white/10 bg-[#0d1627] p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                          {index + 1}
                         </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                              <h4 className="text-lg font-semibold text-white">{phase.title}</h4>
+                              <p className="text-sm text-slate-300">{phase.description}</p>
+                            </div>
+                            <p className="text-sm text-slate-400">{tasks.length} tasks</p>
+                          </div>
 
-                        <div className="mt-4 border-l border-white/10 pl-4">
-                          <div className="grid gap-3">
-                            {tasks.map((task) => (
-                              <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskTone(task.status)}`}>
-                                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                  <div className="min-w-0">
-                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                                      <span>{formatLabel(task.status)}</span>
-                                      <span className="text-slate-600">/</span>
-                                      <span>{task.owner === "kzero_se" ? "KZero SE" : task.owner.toUpperCase()}</span>
+                          <div className="mt-4 border-l border-white/10 pl-4">
+                            <div className="grid gap-3">
+                              {tasks.map((task) => (
+                                <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskTone(task.status)}`}>
+                                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
+                                        <span>{formatTaskStatusLabel(task.status)}</span>
+                                        <span className="text-slate-600">/</span>
+                                        <span>{formatTaskOwnerLabel(task.owner)}</span>
+                                        {task.waitingOn ? (
+                                          <>
+                                            <span className="text-slate-600">/</span>
+                                            <span>{formatWaitingLabel(task.waitingOn)}</span>
+                                          </>
+                                        ) : null}
+                                      </div>
+                                      <h5 className="mt-2 text-base font-semibold text-white">{task.title}</h5>
+                                      <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
+                                    </div>
+
+                                    <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
+                                      {task.dueLabel ? (
+                                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                                          <CalendarDays className="h-4 w-4 text-blue-200" />
+                                          <span>{task.dueLabel}</span>
+                                        </div>
+                                      ) : null}
                                       {task.waitingOn ? (
-                                        <>
-                                          <span className="text-slate-600">/</span>
-                                          <span>{task.waitingOn === "kzero" ? "Waiting on KZero" : "Waiting on MSP"}</span>
-                                        </>
+                                        <div className="flex items-center gap-2 text-sm text-amber-100/85">
+                                          <CircleAlert className="h-4 w-4 text-amber-200" />
+                                          <span>{formatWaitingLabel(task.waitingOn)}</span>
+                                        </div>
+                                      ) : null}
+                                      {task.meetingCta ? (
+                                        <Button variant="secondary" className="h-10 px-4">
+                                          {task.meetingCta}
+                                          <ArrowRight className="ml-2 h-4 w-4" />
+                                        </Button>
                                       ) : null}
                                     </div>
-                                    <h5 className="mt-2 text-base font-semibold text-white">{task.title}</h5>
-                                    <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
-                                  </div>
-
-                                  <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
-                                    {task.dueLabel ? (
-                                      <div className="flex items-center gap-2 text-sm text-slate-300">
-                                        <CalendarDays className="h-4 w-4 text-blue-200" />
-                                        <span>{task.dueLabel}</span>
-                                      </div>
-                                    ) : null}
-                                    {task.waitingOn ? (
-                                      <div className="flex items-center gap-2 text-sm text-amber-100/85">
-                                        <CircleAlert className="h-4 w-4 text-amber-200" />
-                                        <span>{task.waitingOn === "msp" ? "Action needed from MSP" : "Action needed from KZero"}</span>
-                                      </div>
-                                    ) : null}
-                                    {task.meetingCta ? (
-                                      <Button variant="secondary" className="h-10 px-4">
-                                        {task.meetingCta}
-                                        <ArrowRight className="ml-2 h-4 w-4" />
-                                      </Button>
-                                    ) : null}
                                   </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
+            {activeTab === "apps" ? (
+              <Card className="border-white/10 bg-[#101a2d] p-4">
+                <h3 className="text-lg font-semibold text-white">SaaS App Submissions</h3>
+                <p className="mt-1 text-sm text-slate-300">Apps currently in the compatibility review queue.</p>
+                <div className="mt-4 grid gap-3">
+                  {bundle.apps.map((app) => (
+                    <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium text-white">{app.name}</p>
+                        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">
+                          {formatLabel(app.status)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
+            {activeTab === "documents" ? <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} /> : null}
+
+            {activeTab === "activity" ? (
+              <Card className="border-white/10 bg-[#101a2d] p-4">
+                <h3 className="text-lg font-semibold text-white">Activity</h3>
+                <p className="mt-1 text-sm text-slate-300">Recent onboarding notes, blockers, and handoff updates.</p>
+                <div className="mt-4 grid gap-3">
+                  {bundle.comments.map((comment) => (
+                    <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
+                      <p className="font-medium text-white">{comment.author}</p>
+                      <p className="mt-2 leading-6">{comment.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
           </section>
 
-          <aside className="grid gap-4 lg:col-span-4 lg:self-start lg:sticky lg:top-6">
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Progress</p>
-                  <h3 className="mt-1 text-2xl font-semibold text-white">{bundle.plan.progress}% complete</h3>
-                </div>
-                <Badge status={nextTask.status}>{formatLabel(nextTask.status)}</Badge>
-              </div>
-              <div className="mt-4 h-2 rounded-full bg-white/10">
-                <div
-                  className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
-                  style={{ width: `${bundle.plan.progress}%` }}
-                />
-              </div>
-              <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-                <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                  <p className="text-slate-400">Done</p>
-                  <p className="mt-1 font-semibold text-white">{completedTasks}</p>
-                </div>
-                <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                  <p className="text-slate-400">Active</p>
-                  <p className="mt-1 font-semibold text-white">{activeTasks}</p>
-                </div>
-                <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                  <p className="text-slate-400">KZero</p>
-                  <p className="mt-1 font-semibold text-white">{waitingOnKZeroTasks}</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                  <Mail className="h-4 w-4" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-lg font-semibold text-white">KZero contact</h3>
-                  <p className="mt-1 text-sm text-slate-300">Your Sales Engineer for this onboarding plan.</p>
-                </div>
-              </div>
-              <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
-                <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
-                <p className="mt-1 text-sm text-slate-300">{kzeroContact?.email ?? "ben@kzero.com"}</p>
-                <p className="mt-3 text-sm text-slate-300">Use Microsoft Bookings to schedule implementation help.</p>
-              </div>
-            </Card>
-
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <h3 className="text-lg font-semibold text-white">SaaS app submissions</h3>
-              <p className="mt-1 text-sm text-slate-300">Apps currently in the compatibility review queue.</p>
-              <div className="mt-4 grid gap-3">
-                {bundle.apps.map((app) => (
-                  <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium text-white">{app.name}</p>
-                      <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">
-                        {formatLabel(app.status)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} />
-
-            <Card className="border-white/10 bg-[#101a2d] p-4">
-              <h3 className="text-lg font-semibold text-white">Blockers and notes</h3>
-              <div className="mt-4 grid gap-3">
-                {bundle.comments.map((comment) => (
-                  <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
-                    <p className="font-medium text-white">{comment.author}</p>
-                    <p className="mt-2 leading-6">{comment.body}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </aside>
         </div>
       </main>
     </div>

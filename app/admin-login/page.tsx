@@ -35,7 +35,7 @@ export default async function AdminLoginPage({
               </div>
               <div className="space-y-3">
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-5xl">
-                  Admin access
+                  Admin Access
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-blue-100/78">
                   Enter the temporary access code provided by KZero to open the onboarding dashboard.
@@ -49,7 +49,7 @@ export default async function AdminLoginPage({
                   <LockKeyhole className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">Secure entry</p>
+                  <p className="text-sm font-semibold text-white">Secure Entry</p>
                   <p className="text-sm text-slate-300">Validated on the server before dashboard access is granted.</p>
                 </div>
               </div>
@@ -77,7 +77,7 @@ export default async function AdminLoginPage({
                 ) : null}
 
                 <Button className="h-11 px-5" disabled={!isConfigured} type="submit">
-                  Sign in
+                  Sign In
                 </Button>
               </form>
             </div>

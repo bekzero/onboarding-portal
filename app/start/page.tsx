@@ -113,7 +113,7 @@ export default function StartPage() {
               </div>
               <div className="space-y-3">
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-5xl">
-                  Find your KZero onboarding portal
+                  Find Your KZero Onboarding Portal
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-blue-100/78">
                   Enter your MSP name or KZero tenant name to continue into your onboarding plan.
@@ -142,7 +142,7 @@ export default function StartPage() {
                   </Button>
                   <Link href="/demo/abcmsp-nfr">
                     <Button className="h-11 px-5" variant="outline">
-                      View setup checklist
+                      View Setup Checklist
                     </Button>
                   </Link>
                 </div>
@@ -157,7 +157,7 @@ export default function StartPage() {
                   <Building2 className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">Access options</p>
+                  <p className="text-sm font-semibold text-white">Access Options</p>
                   <p className="text-sm text-slate-300">Flexible onboarding access for every stage of rollout.</p>
                 </div>
               </div>
