@@ -180,7 +180,7 @@ const demoCaseConfigs: DemoCaseConfig[] = [
     submittedSaasAppCount: 0,
     tenantSlug: "abcmsp",
     tenantType: "nfr",
-    tenantName: "abcmsp"
+    tenantName: "ABCMSP"
   },
   {
     accessMode: "oidc",

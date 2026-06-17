@@ -14,15 +14,19 @@ function getBaseUrl() {
   return process.env.KZERO_OIDC_BASE_URL?.trim() || "https://ca.auth.kzero.com";
 }
 
+function joinUrl(baseUrl: string, path: string) {
+  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
 export function getKzeroRedirectUri() {
   const configuredRedirectUri = process.env.KZERO_OIDC_REDIRECT_URI?.trim();
 
   if (configuredRedirectUri) {
-    return configuredRedirectUri;
+    return configuredRedirectUri.replace(/\/+$/, "");
   }
 
   const authUrl = process.env.AUTH_URL?.trim() || "http://localhost:3000";
-  return `${authUrl}/api/oidc/callback`;
+  return joinUrl(authUrl, "/api/oidc/callback");
 }
 
 function getClientIdEnvKey(mspSlug: string) {
@@ -69,7 +73,7 @@ export function findServerTenantOidcConfigByPlanId(planId?: string | null) {
 }
 
 export function buildKzeroIssuerFromConfig(config: Pick<ServerTenantOidcConfig, "tenantName">) {
-  return `${getBaseUrl()}/realms/${config.tenantName}`;
+  return joinUrl(getBaseUrl(), `/realms/${config.tenantName}`);
 }
 
 export function buildAuthorizationUrl(config: ServerTenantOidcConfig) {

@@ -862,6 +862,18 @@ export function InternalDashboard({
                     value={oidcState.tenantName}
                   />
                 </label>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">App slug</p>
+                    <p className="mt-2 text-sm text-white">{selectedCase.mspSlug}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">KZero realm</p>
+                    <p className="mt-2 text-sm text-white">
+                      {oidcState.tenantName.trim() || "Enter the tenant name exactly as it appears in KZero."}
+                    </p>
+                  </div>
+                </div>
                 <label className="grid gap-2 text-sm text-slate-300">
                   <span>OIDC client ID</span>
                   <input
