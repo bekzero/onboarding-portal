@@ -17,7 +17,7 @@ function redirectToStart(request: NextRequest, error: string) {
 
 export async function GET(request: NextRequest) {
   const lookupValue = request.nextUrl.searchParams.get("tenant")?.trim() || "";
-  const tenantConfig = findServerTenantOidcConfigByInput(lookupValue);
+  const tenantConfig = await findServerTenantOidcConfigByInput(lookupValue);
 
   if (!lookupValue || !tenantConfig) {
     return redirectToStart(request, "not_found");

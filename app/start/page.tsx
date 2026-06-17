@@ -7,13 +7,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { readAdminCaseOverridesFromStorage } from "@/lib/admin-case-storage";
-import {
-  buildTenantRegistry,
-  findTenantByInputWithRegistry,
-  readDemoEnrollmentsFromStorage,
-  tenantRegistry,
-  type TenantRegistryEntry
-} from "@/lib/tenant-routing";
+import { buildTenantRegistry, readDemoEnrollmentsFromStorage, tenantRegistry, type TenantRegistryEntry } from "@/lib/tenant-routing";
 
 const TENANT_STORAGE_KEY = "kzero-demo-tenant";
 
@@ -53,26 +47,45 @@ export default function StartPage() {
     setError(messages[errorCode] ?? messages.not_found);
   }, []);
 
-  function handleContinue() {
-    const tenant = findTenantByInputWithRegistry(tenantName, registry);
+  async function handleContinue() {
+    const lookupValue = tenantName.trim();
 
-    window.localStorage.setItem(TENANT_STORAGE_KEY, tenantName);
+    window.localStorage.setItem(TENANT_STORAGE_KEY, lookupValue);
 
-    if (!tenant) {
+    try {
+      const response = await fetch(`/api/tenant-lookup?lookup=${encodeURIComponent(lookupValue)}`, {
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        throw new Error("lookup_failed");
+      }
+
+      const payload = (await response.json()) as {
+        found: boolean;
+        msp?: {
+          accessMode: "temporary" | "oidc";
+          planId: string;
+        };
+      };
+
+      if (!payload.found || !payload.msp) {
+        throw new Error("not_found");
+      }
+
+      setError("");
+
+      if (payload.msp.accessMode === "oidc") {
+        window.location.assign(`/api/oidc/start?tenant=${encodeURIComponent(lookupValue)}`);
+        return;
+      }
+
+      router.push(`/demo/${payload.msp.planId}`);
+    } catch {
       setError(
         "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer."
       );
-      return;
     }
-
-    setError("");
-
-    if (tenant.accessMode === "oidc") {
-      window.location.assign(`/api/oidc/start?tenant=${encodeURIComponent(tenantName)}`);
-      return;
-    }
-
-    router.push(`/demo/${tenant.planId}`);
   }
 
   return (

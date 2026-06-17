@@ -1,4 +1,10 @@
 import { onboardingCases } from "@/lib/mock-data";
+import {
+  decryptOidcClientSecret,
+  getMspWithOidcByLookupServer,
+  getMspWithOidcByPlanIdServer,
+  isDatabasePersistenceConfigured
+} from "@/lib/msp-persistence";
 import { normalizeTenantName } from "@/lib/tenant-routing";
 
 export type ServerTenantOidcConfig = {
@@ -50,23 +56,83 @@ function buildServerOidcRegistry() {
     }));
 }
 
+async function getDatabaseTenantOidcConfigByLookup(input: string) {
+  if (!isDatabasePersistenceConfigured()) {
+    return null;
+  }
+
+  const msp = await getMspWithOidcByLookupServer(input).catch(() => null);
+  if (!msp?.oidcConfig) {
+    return null;
+  }
+
+  const clientSecret = await decryptOidcClientSecret(msp.id).catch(() => null);
+  if (!clientSecret) {
+    return null;
+  }
+
+  return {
+    clientId: msp.oidcConfig.clientId,
+    clientSecret,
+    mspName: msp.name,
+    mspSlug: msp.slug,
+    planId: msp.onboardingPlans[0]?.planId ?? `${msp.slug}-nfr`,
+    tenantName: msp.oidcConfig.tenantRealm
+  } satisfies ServerTenantOidcConfig;
+}
+
+async function getDatabaseTenantOidcConfigByPlanId(planId: string) {
+  if (!isDatabasePersistenceConfigured()) {
+    return null;
+  }
+
+  const msp = await getMspWithOidcByPlanIdServer(planId).catch(() => null);
+  if (!msp?.oidcConfig) {
+    return null;
+  }
+
+  const clientSecret = await decryptOidcClientSecret(msp.id).catch(() => null);
+  if (!clientSecret) {
+    return null;
+  }
+
+  return {
+    clientId: msp.oidcConfig.clientId,
+    clientSecret,
+    mspName: msp.name,
+    mspSlug: msp.slug,
+    planId,
+    tenantName: msp.oidcConfig.tenantRealm
+  } satisfies ServerTenantOidcConfig;
+}
+
 function matchesLookup(config: ServerTenantOidcConfig, input: string) {
   const normalizedInput = normalizeTenantName(input);
   const candidates = [config.tenantName, config.mspName, config.mspSlug];
   return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedInput);
 }
 
-export function findServerTenantOidcConfigByInput(input?: string | null) {
+export async function findServerTenantOidcConfigByInput(input?: string | null) {
   if (!input?.trim()) {
     return null;
+  }
+
+  const databaseConfig = await getDatabaseTenantOidcConfigByLookup(input);
+  if (databaseConfig) {
+    return databaseConfig;
   }
 
   return buildServerOidcRegistry().find((config) => matchesLookup(config, input)) ?? null;
 }
 
-export function findServerTenantOidcConfigByPlanId(planId?: string | null) {
+export async function findServerTenantOidcConfigByPlanId(planId?: string | null) {
   if (!planId?.trim()) {
     return null;
+  }
+
+  const databaseConfig = await getDatabaseTenantOidcConfigByPlanId(planId);
+  if (databaseConfig) {
+    return databaseConfig;
   }
 
   return buildServerOidcRegistry().find((config) => config.planId === planId) ?? null;

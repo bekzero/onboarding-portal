@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccessMode {
+  temporary
+  oidc
+}
+
+model Msp {
+  id                   String           @id @default(cuid())
+  name                 String
+  slug                 String           @unique
+  primaryContactEmail  String
+  assignedSalesEngineer String          @default("Ben Eakin")
+  accessMode           AccessMode
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  oidcConfig           OidcConfig?
+  onboardingPlans      OnboardingPlan[]
+
+  @@map("msps")
+}
+
+model OidcConfig {
+  id                    String   @id @default(cuid())
+  mspId                 String   @unique
+  tenantRealm           String
+  clientId              String
+  encryptedClientSecret String
+  secretIv              String
+  secretAuthTag         String
+  issuerUrl             String
+  redirectUri           String
+  configuredAt          DateTime @default(now())
+  msp                   Msp      @relation(fields: [mspId], references: [id], onDelete: Cascade)
+
+  @@map("oidc_configs")
+}
+
+model OnboardingPlan {
+  id                   String               @id @default(cuid())
+  mspId                String
+  planId               String               @unique
+  title                String?
+  tenantType           String?
+  progress             Int                  @default(0)
+  currentStage         String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  msp                  Msp                  @relation(fields: [mspId], references: [id], onDelete: Cascade)
+  onboardingTasks      OnboardingTask[]
+  saasAppSubmissions   SaaSAppSubmission[]
+  documents            Document[]
+
+  @@map("onboarding_plans")
+}
+
+model OnboardingTask {
+  id               String          @id @default(cuid())
+  onboardingPlanId String
+  title            String
+  description      String?
+  status           String
+  owner            String?
+  order            Int             @default(0)
+  dueLabel         String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  onboardingPlan   OnboardingPlan  @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_tasks")
+}
+
+model SaaSAppSubmission {
+  id               String          @id @default(cuid())
+  onboardingPlanId String
+  appName          String
+  loginUrl         String?
+  priority         String?
+  notes            String?
+  status           String          @default("submitted")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  onboardingPlan   OnboardingPlan  @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+
+  @@map("saas_app_submissions")
+}
+
+model Document {
+  id               String          @id @default(cuid())
+  onboardingPlanId String
+  fileName         String
+  mimeType         String?
+  fileSize         Int?
+  uploadedBy       String?
+  status           String          @default("submitted")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  onboardingPlan   OnboardingPlan  @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}

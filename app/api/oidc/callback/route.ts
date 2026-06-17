@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     return redirectToStart(request, "session_required");
   }
 
-  const tenantConfig = findServerTenantOidcConfigByPlanId(stateSession.planId);
+  const tenantConfig = await findServerTenantOidcConfigByPlanId(stateSession.planId);
 
   if (!tenantConfig?.clientId || !tenantConfig.clientSecret) {
     await clearOidcStateSession();
