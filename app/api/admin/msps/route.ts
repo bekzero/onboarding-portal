@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
-import { createMsp, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
-import { prisma } from "@/lib/prisma";
+import { createMsp, getAdminDashboardCases, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
 export async function GET() {
   await requireAdminSession();
@@ -10,27 +9,8 @@ export async function GET() {
     return NextResponse.json({ error: "DATABASE_URL is not configured." }, { status: 503 });
   }
 
-  const msps = await prisma.msp.findMany({
-    include: {
-      oidcConfig: true
-    },
-    orderBy: {
-      createdAt: "desc"
-    }
-  });
-
   return NextResponse.json({
-    msps: msps.map((msp) => ({
-      accessMode: msp.accessMode,
-      assignedSalesEngineer: msp.assignedSalesEngineer,
-      createdAt: msp.createdAt,
-      id: msp.id,
-      name: msp.name,
-      primaryContactEmail: msp.primaryContactEmail,
-      slug: msp.slug,
-      tenantRealm: msp.oidcConfig?.tenantRealm,
-      updatedAt: msp.updatedAt
-    }))
+    msps: await getAdminDashboardCases()
   });
 }
 
@@ -46,8 +26,8 @@ export async function POST(request: NextRequest) {
       slug?: string;
     };
 
-    const msp = await createMsp(body);
-    return NextResponse.json({ msp }, { status: 201 });
+    const adminCase = await createMsp(body);
+    return NextResponse.json({ msp: adminCase }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not create MSP.";
     return NextResponse.json({ error: message }, { status: 400 });

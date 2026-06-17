@@ -31,8 +31,28 @@ import {
 } from "@/lib/tenant-routing";
 
 const SALES_ENGINEER_NAME = "Ben Eakin";
+const PRODUCTION_REDIRECT_URI = "https://onboarding-portal20.vercel.app/api/oidc/callback";
+const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll";
+type DashboardCase = OnboardingCase & { mspId?: string };
+type AdminApiCase = {
+  accessMode: OnboardingCase["accessMode"];
+  assignedSalesEngineer: string;
+  currentStage: string;
+  id: string;
+  lastActivity: string;
+  mspName: string;
+  mspSlug: string;
+  oidcClientId?: string;
+  oidcConfigured: boolean;
+  planId: string;
+  primaryContactEmail: string;
+  progress: number;
+  status: OnboardingCase["status"];
+  submittedSaasAppCount: number;
+  tenantRealm?: string;
+};
 
 type EnrollmentFormState = {
   accessMode: OnboardingCase["accessMode"];
@@ -172,6 +192,29 @@ function createOidcState(item: OnboardingCase): OidcFormState {
   };
 }
 
+function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
+  return {
+    accessMode: item.accessMode,
+    actionHref: `/demo/${item.planId}`,
+    assignedSalesEngineer: SALES_ENGINEER_NAME,
+    currentStage: item.currentStage,
+    lastActivity: item.lastActivity,
+    mspId: item.id,
+    mspName: item.mspName,
+    mspSlug: item.mspSlug,
+    oidcClientId: item.oidcClientId,
+    oidcClientSecretConfigured: item.oidcConfigured,
+    oidcStatus: item.oidcConfigured ? "configured" : "not_configured",
+    onboardingPlanId: item.planId,
+    primaryContactEmail: item.primaryContactEmail,
+    progress: item.progress,
+    status: item.status,
+    startingPlanType: "nfr",
+    submittedSaasAppCount: item.submittedSaasAppCount,
+    tenantName: item.tenantRealm
+  };
+}
+
 function DashboardTable({
   emptyLabel,
   items,
@@ -181,10 +224,10 @@ function DashboardTable({
   title
 }: {
   emptyLabel: string;
-  items: OnboardingCase[];
-  onConfigureOidc: (item: OnboardingCase) => void;
-  onEdit: (item: OnboardingCase) => void;
-  onView: (item: OnboardingCase) => void;
+  items: DashboardCase[];
+  onConfigureOidc: (item: DashboardCase) => void;
+  onEdit: (item: DashboardCase) => void;
+  onView: (item: DashboardCase) => void;
   title: string;
 }) {
   return (
@@ -308,18 +351,39 @@ export function InternalDashboard({
 }) {
   const [demoEnrollments, setDemoEnrollments] = useState<DemoEnrollment[]>([]);
   const [caseOverrides, setCaseOverrides] = useState<Record<string, AdminCaseOverride>>({});
+  const [apiCases, setApiCases] = useState<DashboardCase[]>([]);
+  const [useServerData, setUseServerData] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("preview");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
 
+  async function loadDashboardCases() {
+    try {
+      const response = await fetch("/api/admin/msps", { cache: "no-store" });
+
+      if (!response.ok) {
+        throw new Error("api_unavailable");
+      }
+
+      const payload = (await response.json()) as { msps: AdminApiCase[] };
+      setApiCases(payload.msps.map(adminApiCaseToDashboardCase));
+      setUseServerData(true);
+      return true;
+    } catch {
+      setUseServerData(false);
+      return false;
+    }
+  }
+
   useEffect(() => {
     setDemoEnrollments(readDemoEnrollmentsFromStorage());
     setCaseOverrides(readAdminCaseOverridesFromStorage());
+    void loadDashboardCases();
   }, []);
 
-  const onboardingCases = useMemo(() => {
+  const fallbackCases = useMemo<DashboardCase[]>(() => {
     const enrolledCases = demoEnrollments.map(enrollmentToCase);
     return [...enrolledCases, ...baseCases].map((item) => ({
       ...item,
@@ -327,6 +391,8 @@ export function InternalDashboard({
       assignedSalesEngineer: SALES_ENGINEER_NAME
     }));
   }, [baseCases, caseOverrides, demoEnrollments]);
+
+  const onboardingCases: DashboardCase[] = useServerData ? apiCases : fallbackCases;
 
   const selectedCase = selectedCaseId
     ? onboardingCases.find((item) => item.onboardingPlanId === selectedCaseId) ?? null
@@ -344,8 +410,6 @@ export function InternalDashboard({
   const tokenUrlPreview = issuerPreview ? `${issuerPreview}/protocol/openid-connect/token` : null;
   const userInfoUrlPreview = issuerPreview ? `${issuerPreview}/protocol/openid-connect/userinfo` : null;
   const logoutUrlPreview = issuerPreview ? `${issuerPreview}/protocol/openid-connect/logout` : null;
-  const productionRedirectUri = "https://onboarding-portal20.vercel.app/api/auth/callback/keycloak";
-  const localRedirectUri = "http://localhost:3000/api/auth/callback/keycloak";
 
   function persistOverrides(nextOverrides: Record<string, AdminCaseOverride>) {
     setCaseOverrides(nextOverrides);
@@ -359,18 +423,18 @@ export function InternalDashboard({
     setOidcState(null);
   }
 
-  function openPreview(item: OnboardingCase) {
+  function openPreview(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
     setPanelMode("preview");
   }
 
-  function openEdit(item: OnboardingCase) {
+  function openEdit(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
     setEditState(createEditState(item));
     setPanelMode("edit");
   }
 
-  function openOidc(item: OnboardingCase) {
+  function openOidc(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
     setOidcState(createOidcState(item));
     setPanelMode("oidc");
@@ -384,7 +448,7 @@ export function InternalDashboard({
     setPanelMode("enroll");
   }
 
-  function handleEnroll() {
+  async function handleEnroll() {
     const normalizedMspSlug = normalizeTenantName(enrollmentState.mspName);
     const exactTenantName = enrollmentState.tenantName.trim();
     const trimmedMspName = enrollmentState.mspName.trim();
@@ -398,6 +462,84 @@ export function InternalDashboard({
 
     if (!trimmedMspName || !trimmedPrimaryContactEmail || !normalizedMspSlug) {
       return;
+    }
+
+    if (useServerData) {
+      try {
+        const createResponse = await fetch("/api/admin/msps", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            accessMode,
+            assignedSalesEngineer: SALES_ENGINEER_NAME,
+            name: trimmedMspName,
+            primaryContactEmail: trimmedPrimaryContactEmail,
+            slug: normalizedMspSlug
+          })
+        });
+
+        if (!createResponse.ok) {
+          throw new Error("create_failed");
+        }
+
+        const createdPayload = (await createResponse.json()) as { msp: AdminApiCase };
+        const createdMspId = createdPayload.msp.id;
+        const createdPlanId = createdPayload.msp.planId;
+
+        if (createdMspId) {
+          const updateResponse = await fetch(`/api/admin/msps/${createdMspId}`, {
+            method: "PATCH",
+            headers: {
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              accessMode,
+              assignedSalesEngineer: SALES_ENGINEER_NAME,
+              currentStage: enrollmentState.currentStage,
+              lastActivity: enrollmentState.lastActivity,
+              name: trimmedMspName,
+              primaryContactEmail: trimmedPrimaryContactEmail,
+              progress,
+              slug: normalizedMspSlug,
+              status: progress >= 100 ? "complete" : enrollmentState.status,
+              submittedSaasAppCount: enrollmentState.submittedSaasAppCount,
+              tenantRealm: exactTenantName || undefined
+            })
+          });
+
+          if (!updateResponse.ok) {
+            throw new Error("update_failed");
+          }
+
+          if (hasFullOidcConfig) {
+            const oidcResponse = await fetch(`/api/admin/msps/${createdMspId}/oidc`, {
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({
+                clientId: trimmedClientId,
+                clientSecret: enrollmentState.clientSecret,
+                redirectUri: PRODUCTION_REDIRECT_URI,
+                tenantRealm: exactTenantName
+              })
+            });
+
+            if (!oidcResponse.ok) {
+              throw new Error("oidc_failed");
+            }
+          }
+        }
+
+        await loadDashboardCases();
+        setSelectedCaseId(createdPlanId);
+        setPanelMode("preview");
+        return;
+      } catch {
+        setUseServerData(false);
+      }
     }
 
     const nextEnrollment: DemoEnrollment = {
@@ -441,7 +583,7 @@ export function InternalDashboard({
     setPanelMode("preview");
   }
 
-  function handleSaveEdit() {
+  async function handleSaveEdit() {
     if (!selectedCase || !editState) {
       return;
     }
@@ -456,6 +598,40 @@ export function InternalDashboard({
     const nextOidcStatus: OnboardingCase["oidcStatus"] =
       nextAccessMode === "oidc" ? "configured" : "not_configured";
     const waitingStatus: OnboardingCase["status"] = nextProgress >= 100 ? "complete" : editState.status;
+
+    if (useServerData && selectedCase.mspId) {
+      try {
+        const response = await fetch(`/api/admin/msps/${selectedCase.mspId}`, {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            accessMode: nextAccessMode,
+            assignedSalesEngineer: SALES_ENGINEER_NAME,
+            currentStage: editState.currentStage,
+            lastActivity: editState.lastActivity,
+            name: editState.mspName,
+            primaryContactEmail: editState.primaryContactEmail,
+            progress: nextProgress,
+            slug: selectedCase.mspSlug,
+            status: waitingStatus,
+            submittedSaasAppCount: Math.max(0, Number(editState.submittedSaasAppCount) || 0),
+            tenantRealm: exactTenantName || undefined
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error("update_failed");
+        }
+
+        await loadDashboardCases();
+        setPanelMode("preview");
+        return;
+      } catch {
+        setUseServerData(false);
+      }
+    }
 
     const nextOverrides = {
       ...caseOverrides,
@@ -478,7 +654,7 @@ export function InternalDashboard({
     setPanelMode("preview");
   }
 
-  function handleSaveOidc() {
+  async function handleSaveOidc() {
     if (!selectedCase || !oidcState) {
       return;
     }
@@ -494,6 +670,61 @@ export function InternalDashboard({
         : hasFullOidcConfig
           ? "waiting_on_kzero"
           : "waiting_on_msp";
+    if (useServerData && selectedCase.mspId) {
+      try {
+        if (!selectedCase.oidcClientSecretConfigured && !oidcState.clientSecret.trim()) {
+          return;
+        }
+
+        const oidcResponse = await fetch(`/api/admin/msps/${selectedCase.mspId}/oidc`, {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            clientId: trimmedClientId,
+            clientSecret: oidcState.clientSecret,
+            redirectUri: PRODUCTION_REDIRECT_URI,
+            tenantRealm: exactTenantName
+          })
+        });
+
+        if (!oidcResponse.ok) {
+          throw new Error("oidc_failed");
+        }
+
+        const updateResponse = await fetch(`/api/admin/msps/${selectedCase.mspId}`, {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            accessMode,
+            assignedSalesEngineer: SALES_ENGINEER_NAME,
+            currentStage: selectedCase.currentStage,
+            lastActivity: formatDateLabel(),
+            name: selectedCase.mspName,
+            primaryContactEmail: selectedCase.primaryContactEmail,
+            progress: selectedCase.progress,
+            slug: selectedCase.mspSlug,
+            status: nextStatus,
+            submittedSaasAppCount: selectedCase.submittedSaasAppCount,
+            tenantRealm: exactTenantName || undefined
+          })
+        });
+
+        if (!updateResponse.ok) {
+          throw new Error("update_failed");
+        }
+
+        await loadDashboardCases();
+        setPanelMode("preview");
+        return;
+      } catch {
+        setUseServerData(false);
+      }
+    }
+
     const nextOverrides = {
       ...caseOverrides,
       [selectedCase.onboardingPlanId]: {
@@ -933,11 +1164,11 @@ export function InternalDashboard({
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Redirect URI</p>
-                    <p className="mt-2 break-all text-sm text-white">{productionRedirectUri}</p>
+                    <p className="mt-2 break-all text-sm text-white">{PRODUCTION_REDIRECT_URI}</p>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Local redirect URI</p>
-                    <p className="mt-2 break-all text-sm text-white">{localRedirectUri}</p>
+                    <p className="mt-2 break-all text-sm text-white">{LOCAL_REDIRECT_URI}</p>
                   </div>
                 </div>
                 {selectedCase.oidcClientSecretConfigured ? (

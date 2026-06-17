@@ -6,6 +6,14 @@ import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-rou
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 
+function formatDateLabel() {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).format(new Date());
+}
+
 export type PublicMspRecord = {
   accessMode: AccessMode;
   assignedSalesEngineer: string;
@@ -28,6 +36,24 @@ export type PublicOidcConfig = {
   tenantRealm: string;
 };
 
+export type AdminDashboardCase = {
+  accessMode: AccessMode;
+  assignedSalesEngineer: string;
+  currentStage: string;
+  id: string;
+  lastActivity: string;
+  mspName: string;
+  mspSlug: string;
+  oidcClientId?: string;
+  oidcConfigured: boolean;
+  planId: string;
+  primaryContactEmail: string;
+  progress: number;
+  status: string;
+  submittedSaasAppCount: number;
+  tenantRealm?: string;
+};
+
 type CreateMspInput = {
   accessMode: AccessMode;
   assignedSalesEngineer?: string;
@@ -39,9 +65,15 @@ type CreateMspInput = {
 type UpdateMspInput = {
   accessMode?: AccessMode;
   assignedSalesEngineer?: string;
+  currentStage?: string;
+  lastActivity?: string;
   name?: string;
   primaryContactEmail?: string;
+  progress?: number;
   slug?: string;
+  status?: string;
+  submittedSaasAppCount?: number;
+  tenantRealm?: string;
 };
 
 type ConfigureOidcInput = {
@@ -91,6 +123,39 @@ function toPublicOidcConfig(oidcConfig: OidcConfig): PublicOidcConfig {
   };
 }
 
+function toAdminDashboardCase(
+  msp: Prisma.MspGetPayload<{
+    include: {
+      oidcConfig: true;
+      onboardingPlans: {
+        orderBy: { createdAt: "asc" };
+        take: 1;
+      };
+    };
+  }>
+): AdminDashboardCase {
+  const plan = msp.onboardingPlans[0];
+  const planId = plan?.planId ?? `${msp.slug}-nfr`;
+
+  return {
+    accessMode: msp.accessMode,
+    assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
+    currentStage: plan?.currentStage ?? "Kickoff",
+    id: msp.id,
+    lastActivity: plan?.lastActivity ?? formatDateLabel(),
+    mspName: msp.name,
+    mspSlug: msp.slug,
+    oidcClientId: msp.oidcConfig?.clientId,
+    oidcConfigured: Boolean(msp.oidcConfig),
+    planId,
+    primaryContactEmail: msp.primaryContactEmail,
+    progress: plan?.progress ?? 0,
+    status: plan?.status ?? "waiting_on_msp",
+    submittedSaasAppCount: plan?.submittedSaasAppCount ?? 0,
+    tenantRealm: msp.oidcConfig?.tenantRealm
+  };
+}
+
 export async function createMsp(input: CreateMspInput) {
   ensureDatabaseConfigured();
 
@@ -104,15 +169,33 @@ export async function createMsp(input: CreateMspInput) {
       accessMode: input.accessMode,
       assignedSalesEngineer: input.assignedSalesEngineer?.trim() || DEFAULT_SALES_ENGINEER,
       name: input.name.trim(),
+      onboardingPlans: {
+        create: {
+          currentStage: "Kickoff",
+          lastActivity: formatDateLabel(),
+          planId: `${slug}-nfr`,
+          progress: 0,
+          status: "waiting_on_msp",
+          submittedSaasAppCount: 0,
+          tenantType: "nfr",
+          title: `${input.name.trim()} onboarding`
+        }
+      },
       primaryContactEmail: input.primaryContactEmail.trim(),
       slug
     },
     include: {
-      oidcConfig: true
+      oidcConfig: true,
+      onboardingPlans: {
+        orderBy: {
+          createdAt: "asc"
+        },
+        take: 1
+      }
     }
   });
 
-  return toPublicMspRecord(msp);
+  return toAdminDashboardCase(msp);
 }
 
 export async function updateMsp(mspId: string, input: UpdateMspInput) {
@@ -124,15 +207,42 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
       accessMode: input.accessMode,
       assignedSalesEngineer: input.assignedSalesEngineer?.trim(),
       name: input.name?.trim(),
+      oidcConfig:
+        input.tenantRealm !== undefined
+          ? {
+              update: {
+                issuerUrl: buildKzeroIssuerForTenant(input.tenantRealm.trim()) ?? undefined,
+                tenantRealm: input.tenantRealm.trim()
+              }
+            }
+          : undefined,
+      onboardingPlans: {
+        updateMany: {
+          where: {},
+          data: {
+            currentStage: input.currentStage?.trim(),
+            lastActivity: input.lastActivity?.trim(),
+            progress: input.progress,
+            status: input.status?.trim(),
+            submittedSaasAppCount: input.submittedSaasAppCount
+          }
+        }
+      },
       primaryContactEmail: input.primaryContactEmail?.trim(),
       slug: input.slug?.trim() || undefined
     },
     include: {
-      oidcConfig: true
+      oidcConfig: true,
+      onboardingPlans: {
+        orderBy: {
+          createdAt: "asc"
+        },
+        take: 1
+      }
     }
   });
 
-  return toPublicMspRecord(msp);
+  return toAdminDashboardCase(msp);
 }
 
 export async function configureOidcForMsp(mspId: string, input: ConfigureOidcInput) {
@@ -148,7 +258,17 @@ export async function configureOidcForMsp(mspId: string, input: ConfigureOidcInp
     throw new Error("Could not build issuer URL for the supplied KZero tenant realm.");
   }
 
-  const encryptedSecret = encryptOidcClientSecret(input.clientSecret);
+  const existingOidcConfig = await prisma.oidcConfig.findUnique({
+    where: { mspId }
+  });
+  const encryptedSecret =
+    input.clientSecret.trim() || !existingOidcConfig
+      ? encryptOidcClientSecret(input.clientSecret)
+      : {
+          encryptedClientSecret: existingOidcConfig.encryptedClientSecret,
+          secretAuthTag: existingOidcConfig.secretAuthTag,
+          secretIv: existingOidcConfig.secretIv
+        };
 
   const oidcConfig = await prisma.oidcConfig.upsert({
     where: { mspId },
@@ -190,7 +310,13 @@ export async function getMspByLookup(lookupValue: string) {
 
   const msps = await prisma.msp.findMany({
     include: {
-      oidcConfig: true
+      oidcConfig: true,
+      onboardingPlans: {
+        orderBy: {
+          createdAt: "asc"
+        },
+        take: 1
+      }
     }
   });
 
@@ -200,6 +326,27 @@ export async function getMspByLookup(lookupValue: string) {
   });
 
   return match ? toPublicMspRecord(match) : null;
+}
+
+export async function getAdminDashboardCases() {
+  ensureDatabaseConfigured();
+
+  const msps = await prisma.msp.findMany({
+    include: {
+      oidcConfig: true,
+      onboardingPlans: {
+        orderBy: {
+          createdAt: "asc"
+        },
+        take: 1
+      }
+    },
+    orderBy: {
+      createdAt: "desc"
+    }
+  });
+
+  return msps.map(toAdminDashboardCase);
 }
 
 export async function getOidcConfigForMsp(mspId: string) {

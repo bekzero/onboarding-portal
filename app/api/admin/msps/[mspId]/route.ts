@@ -12,13 +12,19 @@ export async function PATCH(
     const body = (await request.json()) as {
       accessMode?: "temporary" | "oidc";
       assignedSalesEngineer?: string;
+      currentStage?: string;
+      lastActivity?: string;
       name?: string;
       primaryContactEmail?: string;
+      progress?: number;
       slug?: string;
+      status?: string;
+      submittedSaasAppCount?: number;
+      tenantRealm?: string;
     };
     const { mspId } = await params;
-    const msp = await updateMsp(mspId, body);
-    return NextResponse.json({ msp });
+    const adminCase = await updateMsp(mspId, body);
+    return NextResponse.json({ msp: adminCase });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not update MSP.";
     return NextResponse.json({ error: message }, { status: 400 });
