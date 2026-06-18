@@ -494,12 +494,12 @@ export function PlanView({
                       <p className="mt-1 font-semibold text-white">{completedTasks}</p>
                     </div>
                     <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                      <p className="text-slate-400">Active</p>
+                      <p className="text-slate-400">Current</p>
                       <p className="mt-1 font-semibold text-white">{activeTasks}</p>
                     </div>
                     <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                      <p className="text-slate-400">KZero</p>
-                      <p className="mt-1 font-semibold text-white">{waitingOnKZeroTasks}</p>
+                      <p className="text-slate-400">Submitted Apps</p>
+                      <p className="mt-1 font-semibold text-white">{bundle.apps.length}</p>
                     </div>
                   </div>
                 </Card>
