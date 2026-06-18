@@ -222,6 +222,10 @@ export function PlanView({
   const isKZeroOwnedCurrentTask = !isPlanComplete && nextTask.owner === "kzero_se";
   const isKickoffBookingTask = isBookingTask(nextTask.title);
   const isBlocked = nextTask.waitingOn === "kzero" && !isKZeroOwnedCurrentTask;
+  const showCurrentKzeroBanner =
+    activeTab === "tasks" &&
+    !isPlanComplete &&
+    (isKZeroOwnedCurrentTask || nextTask.status === "waiting_on_kzero" || nextTask.waitingOn === "kzero");
   const meaningfulComments = bundle.comments.filter((comment) => isMeaningfulComment(comment.body));
   const yourNextAction = isPlanComplete
     ? "Onboarding complete"
@@ -357,12 +361,7 @@ export function PlanView({
             <div className="flex flex-wrap gap-2">
               <Link href="/">
                 <Button variant="outline" className="h-9 px-4">
-                  Overview
-                </Button>
-              </Link>
-              <Link href="/portal/northwind-nfr">
-                <Button variant="secondary" className="h-9 px-4">
-                  MSP Portal
+                  Home
                 </Button>
               </Link>
             </div>
@@ -607,7 +606,7 @@ export function PlanView({
               </div>
             ) : null}
 
-            {activeTab === "tasks" && waitingOnKZeroTasks > 0 ? (
+            {showCurrentKzeroBanner ? (
               <Card className="border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.08),rgba(59,130,246,0.06))] p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
@@ -616,13 +615,11 @@ export function PlanView({
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
-                      <p className="mt-1 text-lg font-semibold text-white">Compatibility review is in progress.</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-300">
-                        Your Sales Engineer is reviewing submitted SaaS applications and preparing the onboarding plan.
-                      </p>
+                      <p className="mt-1 text-lg font-semibold text-white">{nextTask.title}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-300">{nextTask.description}</p>
                     </div>
                   </div>
-                  <div className="text-sm text-amber-100/85">1 task currently owned by KZero</div>
+                  <div className="text-sm text-amber-100/85">{formatTaskStatusLabel(nextTask.status)}</div>
                 </div>
               </Card>
             ) : null}
