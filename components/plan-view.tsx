@@ -706,16 +706,23 @@ export function PlanView({
                 <h3 className="text-lg font-semibold text-white">SaaS App Submissions</h3>
                 <p className="mt-1 text-sm text-slate-300">Apps currently in the compatibility review queue.</p>
                 <div className="mt-4 grid gap-3">
-                  {bundle.apps.map((app) => (
-                    <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-white">{app.name}</p>
-                        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">
-                          {formatLabel(app.status)}
-                        </span>
+                  {bundle.apps.length > 0 ? (
+                    bundle.apps.map((app) => (
+                      <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-medium text-white">{app.name}</p>
+                          <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">
+                            {formatLabel(app.status)}
+                          </span>
+                        </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] p-4 text-sm text-slate-400">
+                      <p>No SaaS apps submitted yet.</p>
+                      <p className="mt-1">Submit the SaaS applications you want KZero to review for SSO readiness.</p>
                     </div>
-                  ))}
+                  )}
                 </div>
               </Card>
             ) : null}

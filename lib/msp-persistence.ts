@@ -1,7 +1,7 @@
 import "server-only";
 import type { AccessMode, OidcConfig, Prisma } from "@prisma/client";
 import { decryptStoredOidcClientSecret, encryptOidcClientSecret } from "@/lib/oidc-secret-crypto";
-import { getPlanBundle, type PlanBundle, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
+import { getPlanBundle, type PlanBundle, type SaaSApp as MockSaaSApp, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-routing";
 
@@ -157,6 +157,7 @@ function getPlanMetrics(bundle: PlanBundle, persistedTasks: PortalTaskRecord[]) 
 function buildBundleFromPersistedState(
   bundle: PlanBundle,
   persistedTasks: PortalTaskRecord[],
+  persistedApps: MockSaaSApp[],
   persistedPlan?: {
     currentStage: string | null;
     progress: number;
@@ -193,6 +194,7 @@ function buildBundleFromPersistedState(
 
   return {
     ...bundle,
+    apps: persistedApps,
     nextTask,
     plan: {
       ...bundle.plan,
@@ -201,6 +203,22 @@ function buildBundleFromPersistedState(
     },
     tasks
   } satisfies PlanBundle;
+}
+
+function mapPersistedAppsToBundleApps(planBundle: PlanBundle, statuses: Array<{
+  appName: string;
+  id: string;
+  status: string;
+}>) {
+  return statuses.map((submission) => ({
+    id: submission.id,
+    name: submission.appName,
+    organizationId: planBundle.organization.id,
+    status:
+      submission.status === "approved_for_sso" || submission.status === "under_review"
+        ? submission.status
+        : "submitted"
+  })) satisfies MockSaaSApp[];
 }
 
 export type PublicMspRecord = {
@@ -531,6 +549,11 @@ export async function getPortalPlanBundle(planId: string) {
   const onboardingPlan = await prisma.onboardingPlan.findUnique({
     where: { planId },
     include: {
+      saasAppSubmissions: {
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
       onboardingTasks: {
         orderBy: {
           order: "asc"
@@ -544,9 +567,12 @@ export async function getPortalPlanBundle(planId: string) {
   }
 
   const persistedTasks = await ensurePortalTasksSeeded(onboardingPlan.id, planId);
+  const persistedApps = mapPersistedAppsToBundleApps(templateBundle, onboardingPlan.saasAppSubmissions);
+
   return buildBundleFromPersistedState(
     templateBundle,
     buildPortalTaskRecords(templateBundle, persistedTasks),
+    persistedApps,
     {
       currentStage: onboardingPlan.currentStage,
       progress: onboardingPlan.progress
@@ -565,6 +591,11 @@ export async function completePortalTask(planId: string, templateTaskId: string)
   const onboardingPlan = await prisma.onboardingPlan.findUnique({
     where: { planId },
     include: {
+      saasAppSubmissions: {
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
       onboardingTasks: {
         orderBy: {
           order: "asc"
@@ -582,9 +613,10 @@ export async function completePortalTask(planId: string, templateTaskId: string)
   const portalTasks = buildPortalTaskRecords(templateBundle, persistedTasks);
   const activeTaskIndex = portalTasks.findIndex((task) => task.status !== "complete");
   const requestedTaskIndex = orderedTemplateTasks.findIndex((task) => task.id === templateTaskId);
+  const persistedApps = mapPersistedAppsToBundleApps(templateBundle, onboardingPlan.saasAppSubmissions);
 
   if (requestedTaskIndex === -1 || requestedTaskIndex !== activeTaskIndex) {
-    return buildBundleFromPersistedState(templateBundle, portalTasks, {
+    return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
       progress: onboardingPlan.progress
     });
@@ -631,8 +663,8 @@ export async function completePortalTask(planId: string, templateTaskId: string)
     })
   ]);
 
-  return buildBundleFromPersistedState(templateBundle, nextPortalTasks, {
-    currentStage: metrics.currentStage,
+  return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
+    currentStage: onboardingPlan.currentStage,
     progress: metrics.progress
   });
 }
