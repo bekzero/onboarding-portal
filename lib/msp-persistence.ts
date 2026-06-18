@@ -9,6 +9,19 @@ const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 const onboardingPlanSelection = {
   currentStage: true,
   lastActivityAt: true,
+  onboardingTasks: {
+    orderBy: {
+      order: "asc" as const
+    },
+    select: {
+      description: true,
+      dueLabel: true,
+      order: true,
+      owner: true,
+      status: true,
+      title: true
+    }
+  },
   planId: true,
   progress: true,
   status: true,
@@ -139,12 +152,12 @@ function getPlanStatusForTask(task: PortalTaskRecord | undefined) {
     return "waiting_on_kzero";
   }
 
-  if (task.status === "waiting_on_msp" || task.status === "in_progress" || task.status === "not_started") {
-    if (task.owner === "kzero_se") {
-      return "waiting_on_kzero";
-    }
-
+  if (task.status === "waiting_on_msp") {
     return "waiting_on_msp";
+  }
+
+  if (task.owner === "kzero_se") {
+    return "waiting_on_kzero";
   }
 
   return "waiting_on_msp";
@@ -375,11 +388,16 @@ function toAdminDashboardCase(
 ): AdminDashboardCase {
   const plan = msp.onboardingPlans[0];
   const planId = plan?.planId ?? `${msp.slug}-nfr`;
+  const templateBundle = plan ? getTemplateBundle(planId) : null;
+  const derivedMetrics =
+    plan && templateBundle
+      ? getPlanMetrics(templateBundle, buildPortalTaskRecords(templateBundle, plan.onboardingTasks))
+      : null;
 
   return {
     accessMode: msp.accessMode,
     assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
-    currentStage: plan?.currentStage ?? "Kickoff",
+    currentStage: derivedMetrics?.currentStage ?? plan?.currentStage ?? "Kickoff",
     id: msp.id,
     lastActivity: formatDateLabelFromValue(plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt),
     mspName: msp.name,
@@ -388,8 +406,8 @@ function toAdminDashboardCase(
     oidcConfigured: Boolean(msp.oidcConfig),
     planId,
     primaryContactEmail: msp.primaryContactEmail,
-    progress: plan?.progress ?? 0,
-    status: plan?.status ?? "waiting_on_msp",
+    progress: derivedMetrics?.progress ?? plan?.progress ?? 0,
+    status: derivedMetrics?.status ?? plan?.status ?? "waiting_on_msp",
     submittedSaasAppCount: plan?.submittedAppCount ?? 0,
     tenantRealm: msp.oidcConfig?.tenantRealm
   };
