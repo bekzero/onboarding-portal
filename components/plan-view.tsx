@@ -4,31 +4,22 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  CalendarDays,
-  CircleAlert,
   Clock3,
   ListChecks,
   Mail
 } from "lucide-react";
+import { GuidePreviewModal } from "@/components/guide-preview-modal";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DocumentsReviewCard } from "@/components/documents-review-card";
+import { getTaskGuides, type TaskGuide } from "@/lib/guide-previews";
 import type { PlanBundle } from "@/lib/mock-data";
 import { users } from "@/lib/mock-data";
 
 const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
-
-type TaskGuide = {
-  bullets: string[];
-  description: string;
-  effort?: string;
-  href: string;
-  helpsWith: string;
-  title: string;
-};
 
 type GuidePreviewState = {
   guides: TaskGuide[];
@@ -120,78 +111,6 @@ function isMeaningfulComment(body: string) {
     !normalizedBody.includes("demo-generated onboarding case");
 }
 
-function getTaskGuides(title: string): TaskGuide[] {
-  const normalizedTitle = title.toLowerCase();
-
-  if (normalizedTitle.includes("add backup admins")) {
-    return [
-      {
-        bullets: [
-          "Add backup administrators so the tenant never depends on a single person.",
-          "Set up break-glass coverage for emergency access.",
-          "Confirm each admin has the right dashboard access before rollout starts.",
-          "Verify the backup admins are available for the onboarding timeline."
-        ],
-        title: "Create a New Dashboard Administrator",
-        description: "Review the admin dashboard steps for adding backup administrators and break-glass coverage.",
-        effort: "10-15 minutes",
-        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-creating-a-new-administrator-in-the-dashboard",
-        helpsWith: "Adding backup administrators, protecting break-glass access, and confirming dashboard coverage."
-      }
-    ];
-  }
-
-  if (normalizedTitle.includes("add employees and contractors")) {
-    return [
-      {
-        bullets: [
-          "Add individual employees and contractors to the tenant.",
-          "Verify each user's details before sending access.",
-          "Assign the right tenant access for onboarding and rollout work.",
-          "Prepare the MSP team so they are ready for the first deployment steps."
-        ],
-        title: "Add Users to a Tenant",
-        description: "Use this guide to add employees and contractors to the tenant with their company email addresses.",
-        effort: "10-20 minutes",
-        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-individually-adding-users-to-a-tenant",
-        helpsWith: "Adding users cleanly, confirming access details, and preparing your team for rollout."
-      }
-    ];
-  }
-
-  if (normalizedTitle.includes("distribute vault") || normalizedTitle.includes("extension guidance")) {
-    return [
-      {
-        bullets: [
-          "Guide users through importing saved passwords into Vault.",
-          "Help the team prepare for a smoother first sign-in experience.",
-          "Reduce friction before browser extension rollout begins."
-        ],
-        title: "Import Passwords",
-        description: "Share the password import guide with end users before rollout begins.",
-        effort: "5-10 minutes per user",
-        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords",
-        helpsWith: "Preparing users to bring existing passwords into Vault before go-live."
-      },
-      {
-        bullets: [
-          "Share end-user instructions for the KZero Vault experience.",
-          "Help users install the supported browser extension.",
-          "Set expectations for first-time Vault adoption and sign-in.",
-          "Prepare users with clear next steps before rollout begins."
-        ],
-        title: "End-User Guides",
-        description: "Point users to the KZero Vault and browser extension guidance for adoption and day-one setup.",
-        effort: "10-15 minutes",
-        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/end-user-guides",
-        helpsWith: "Sharing rollout instructions, extension setup, and user readiness for Vault adoption."
-      }
-    ];
-  }
-
-  return [];
-}
-
 type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
 
 export function PlanView({
@@ -207,9 +126,12 @@ export function PlanView({
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
   const nextTask = bundle.nextTask;
+  const isPlanComplete = bundle.plan.progress >= 100 || orderedTasks.every((task) => task.status === "complete");
+  const activeTaskIndex = isPlanComplete
+    ? -1
+    : orderedTasks.findIndex((task) => task.id === nextTask.id);
   const nextTaskIndex = orderedTasks.findIndex((task) => task.id === nextTask.id);
   const followingTask = nextTaskIndex >= 0 ? orderedTasks[nextTaskIndex + 1] ?? null : null;
-  const isPlanComplete = bundle.plan.progress >= 100 || orderedTasks.every((task) => task.status === "complete");
   const completedTasks = bundle.tasks.filter((task) => task.status === "complete").length;
   const waitingOnKZeroTasks = bundle.tasks.filter((task) => task.status === "waiting_on_kzero").length;
   const activeTasks = bundle.tasks.filter((task) => ["in_progress", "waiting_on_msp"].includes(task.status)).length;
@@ -637,115 +559,144 @@ export function PlanView({
                 </div>
 
                 <div className="grid gap-4">
-                  {phaseTasks.map(({ phase, tasks }, index) => (
-                    <div key={phase.id} className="rounded-[1.5rem] border border-white/10 bg-[#0d1627] p-4">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
-                          {index + 1}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                            <div>
-                              <h4 className="text-lg font-semibold text-white">{phase.title}</h4>
-                              <p className="text-sm text-slate-300">{phase.description}</p>
-                            </div>
-                            <p className="text-sm text-slate-400">{tasks.length} tasks</p>
+                  {phaseTasks.map(({ phase, tasks }, index) => {
+                    const phaseTaskIndexes = tasks.map((task) => orderedTasks.findIndex((item) => item.id === task.id));
+                    const hasCurrentTask = phaseTaskIndexes.includes(activeTaskIndex);
+                    const hasIncompleteTask = tasks.some((task) => task.status !== "complete");
+                    const isPhaseLocked =
+                      !isPlanComplete &&
+                      !hasCurrentTask &&
+                      hasIncompleteTask &&
+                      phaseTaskIndexes.length > 0 &&
+                      phaseTaskIndexes.every((taskIndex) => taskIndex > activeTaskIndex);
+                    const phaseStatusLabel = isPhaseLocked
+                      ? "Locked"
+                      : hasCurrentTask
+                        ? "Current"
+                        : hasIncompleteTask
+                          ? "Upcoming"
+                          : "Complete";
+
+                    return (
+                      <div key={phase.id} className="rounded-[1.5rem] border border-white/10 bg-[#0d1627] p-4">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                            {index + 1}
                           </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <h4 className="text-lg font-semibold text-white">{phase.title}</h4>
+                                <p className="text-sm text-slate-300">{phase.description}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm text-slate-400">{tasks.length} tasks</p>
+                                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">{phaseStatusLabel}</p>
+                              </div>
+                            </div>
 
-                          <div className="mt-4 border-l border-white/10 pl-4">
-                            <div className="grid gap-3">
-                              {tasks.map((task) => (
-                                <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskTone(task.status)}`}>
-                                  {(() => {
-                                    const guides = getTaskGuides(task.title);
-                                    const isCurrentTask = !isPlanComplete && task.id === nextTask.id;
-                                    const taskStatusLabel =
-                                      task.waitingOn === "kzero" && task.status !== "complete"
-                                        ? "Blocked"
-                                        : formatTaskStatusLabel(task.status);
+                            <div className="mt-4 border-l border-white/10 pl-4">
+                              <div className="grid gap-3">
+                                {tasks.map((task) => {
+                                  const guides = getTaskGuides(task.title);
+                                  const taskIndex = orderedTasks.findIndex((item) => item.id === task.id);
+                                  const isCurrentTask = !isPlanComplete && task.id === nextTask.id;
+                                  const isCompleted = task.status === "complete";
+                                  const isLocked = !isCompleted && !isCurrentTask && taskIndex > activeTaskIndex;
+                                  const taskStatusLabel = isLocked
+                                    ? "Locked"
+                                    : task.waitingOn === "kzero" && task.status !== "complete"
+                                      ? "Blocked"
+                                      : formatTaskStatusLabel(task.status);
+                                  const taskToneClass = isLocked ? "border-white/8 bg-[#0b1423]/70" : taskTone(task.status);
 
-                                    return (
-                                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                                    <div className="min-w-0">
-                                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                                        <span>Owner: {formatTaskOwnerLabel(task.owner)}</span>
-                                        {task.dueLabel ? (
-                                          <>
-                                            <span className="text-slate-600">/</span>
-                                            <span>Due: {task.dueLabel}</span>
-                                          </>
-                                        ) : null}
+                                  return (
+                                    <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskToneClass}`}>
+                                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                        <div className="min-w-0">
+                                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
+                                            <span>Owner: {formatTaskOwnerLabel(task.owner)}</span>
+                                            {task.dueLabel ? (
+                                              <>
+                                                <span className="text-slate-600">/</span>
+                                                <span>Due: {task.dueLabel}</span>
+                                              </>
+                                            ) : null}
+                                          </div>
+                                          <div className="mt-2 flex flex-wrap items-center gap-3">
+                                            <h5 className="text-base font-semibold text-white">{task.title}</h5>
+                                            {guides.length > 0 ? (
+                                              <button
+                                                className={`text-sm font-medium transition ${
+                                                  isLocked ? "text-slate-400 hover:text-slate-300" : "text-blue-200 hover:text-blue-100"
+                                                }`}
+                                                onClick={() => setGuidePreview({ guides, stepName: task.title })}
+                                                type="button"
+                                              >
+                                                {guides.length > 1 ? "View Guides" : "View Guide"}
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                          <p className="mt-1 text-sm leading-6 text-slate-300">
+                                            {isLocked ? "Complete previous steps to unlock." : task.description}
+                                          </p>
+                                        </div>
+
+                                        <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
+                                          <Badge status={isLocked ? "not_started" : task.waitingOn === "kzero" && task.status !== "complete" ? "waiting_on_kzero" : task.status}>
+                                            {taskStatusLabel}
+                                          </Badge>
+                                          {guides.length > 0 ? (
+                                            <Button
+                                              className="h-10 px-4"
+                                              onClick={() => setGuidePreview({ guides, stepName: task.title })}
+                                              variant="outline"
+                                            >
+                                              {guides.length > 1 ? "View Guides" : "View Guide"}
+                                            </Button>
+                                          ) : null}
+                                          {isCurrentTask && (task.meetingCta || isBookingTask(task.title)) ? (
+                                            <>
+                                              <a
+                                                className={buttonVariants({ variant: "default", className: "h-10 px-4" })}
+                                                href={BOOKING_URL}
+                                                rel="noreferrer"
+                                                target="_blank"
+                                              >
+                                                {getMeetingButtonLabel(task.title)}
+                                                <ArrowRight className="ml-2 h-4 w-4" />
+                                              </a>
+                                              <Button
+                                                className="h-10 px-4"
+                                                disabled={savingTaskId === task.id}
+                                                onClick={() => markTaskComplete(task.id)}
+                                                variant="outline"
+                                              >
+                                                {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
+                                              </Button>
+                                            </>
+                                          ) : null}
+                                          {isCurrentTask && !isKZeroOwnedCurrentTask && !task.meetingCta && !isBookingTask(task.title) ? (
+                                            <Button
+                                              className="h-10 px-4"
+                                              disabled={savingTaskId === task.id}
+                                              onClick={() => markTaskComplete(task.id)}
+                                            >
+                                              {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
+                                            </Button>
+                                          ) : null}
+                                        </div>
                                       </div>
-                                      <div className="mt-2 flex flex-wrap items-center gap-3">
-                                        <h5 className="text-base font-semibold text-white">{task.title}</h5>
-                                        {guides.length > 0 ? (
-                                          <button
-                                            className="text-sm font-medium text-blue-200 transition hover:text-blue-100"
-                                            onClick={() => setGuidePreview({ guides, stepName: task.title })}
-                                            type="button"
-                                          >
-                                            {guides.length > 1 ? "View Guides" : "View Guide"}
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                      <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
                                     </div>
-
-                                    <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
-                                      <Badge status={task.waitingOn === "kzero" && task.status !== "complete" ? "waiting_on_kzero" : task.status}>
-                                        {taskStatusLabel}
-                                      </Badge>
-                                      {guides.length > 0 ? (
-                                        <Button
-                                          className="h-10 px-4"
-                                          onClick={() => setGuidePreview({ guides, stepName: task.title })}
-                                          variant="outline"
-                                        >
-                                          {guides.length > 1 ? "View Guides" : "View Guide"}
-                                        </Button>
-                                      ) : null}
-                                      {isCurrentTask && (task.meetingCta || isBookingTask(task.title)) ? (
-                                        <>
-                                          <a
-                                            className={buttonVariants({ variant: "default", className: "h-10 px-4" })}
-                                            href={BOOKING_URL}
-                                            rel="noreferrer"
-                                            target="_blank"
-                                          >
-                                            {getMeetingButtonLabel(task.title)}
-                                            <ArrowRight className="ml-2 h-4 w-4" />
-                                          </a>
-                                          <Button
-                                            className="h-10 px-4"
-                                            disabled={savingTaskId === task.id}
-                                            onClick={() => markTaskComplete(task.id)}
-                                            variant="outline"
-                                          >
-                                            {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
-                                          </Button>
-                                        </>
-                                      ) : null}
-                                      {isCurrentTask && !isKZeroOwnedCurrentTask && !task.meetingCta && !isBookingTask(task.title) ? (
-                                        <Button
-                                          className="h-10 px-4"
-                                          disabled={savingTaskId === task.id}
-                                          onClick={() => markTaskComplete(task.id)}
-                                        >
-                                          {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
-                                        </Button>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                    );
-                                  })()}
-                                </div>
-                              ))}
+                                  );
+                                })}
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </Card>
             ) : null}
@@ -789,59 +740,7 @@ export function PlanView({
         </div>
       </main>
 
-      {guidePreview ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#020611]/75 p-4 md:items-center">
-          <div className="w-full max-w-2xl rounded-[1.6rem] border border-white/10 bg-[#0d1627] p-5 shadow-panel">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Guide Preview</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">{guidePreview.stepName}</h3>
-                <p className="mt-1 text-sm text-slate-300">Review the key steps here, then open the full partner guide in a new tab when you are ready.</p>
-              </div>
-              <Button onClick={() => setGuidePreview(null)} variant="outline">
-                Close
-              </Button>
-            </div>
-
-            <div className="mt-5 grid gap-3">
-              {guidePreview.guides.map((guide) => (
-                <div key={guide.href} className="rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Related Step</p>
-                  <p className="mt-1 font-medium text-white">{guidePreview.stepName}</p>
-                  <h4 className="mt-4 text-lg font-semibold text-white">{guide.title}</h4>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">{guide.description}</p>
-                  <div className="mt-4 rounded-[1rem] border border-white/10 bg-[#08111f] p-3.5">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What This Guide Helps You Do</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-300">{guide.helpsWith}</p>
-                  </div>
-                  <div className="mt-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Preview Highlights</p>
-                    <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-300">
-                      {guide.bullets.map((bullet) => (
-                        <li key={bullet} className="rounded-[0.95rem] border border-white/10 bg-[#08111f] px-3 py-2">
-                          {bullet}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  {guide.effort ? (
-                    <p className="mt-4 text-sm text-slate-400">Estimated effort: {guide.effort}</p>
-                  ) : null}
-                  <a
-                    className={`${buttonVariants({ variant: "secondary" })} mt-4 inline-flex`}
-                    href={guide.href}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Open Full Guide
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </a>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <GuidePreviewModal guidePreview={guidePreview} onClose={() => setGuidePreview(null)} />
     </div>
   );
 }
