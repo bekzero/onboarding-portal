@@ -659,18 +659,20 @@ export function PlanView({
                                   {(() => {
                                     const guides = getTaskGuides(task.title);
                                     const isCurrentTask = !isPlanComplete && task.id === nextTask.id;
+                                    const taskStatusLabel =
+                                      task.waitingOn === "kzero" && task.status !== "complete"
+                                        ? "Blocked"
+                                        : formatTaskStatusLabel(task.status);
 
                                     return (
                                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                     <div className="min-w-0">
                                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                                        <span>{formatTaskStatusLabel(task.status)}</span>
-                                        <span className="text-slate-600">/</span>
-                                        <span>{formatTaskOwnerLabel(task.owner)}</span>
-                                        {task.waitingOn ? (
+                                        <span>Owner: {formatTaskOwnerLabel(task.owner)}</span>
+                                        {task.dueLabel ? (
                                           <>
                                             <span className="text-slate-600">/</span>
-                                            <span>{formatWaitingLabel(task.waitingOn)}</span>
+                                            <span>Due: {task.dueLabel}</span>
                                           </>
                                         ) : null}
                                       </div>
@@ -690,18 +692,9 @@ export function PlanView({
                                     </div>
 
                                     <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">
-                                      {task.dueLabel ? (
-                                        <div className="flex items-center gap-2 text-sm text-slate-300">
-                                          <CalendarDays className="h-4 w-4 text-blue-200" />
-                                          <span>{task.dueLabel}</span>
-                                        </div>
-                                      ) : null}
-                                      {task.waitingOn ? (
-                                        <div className="flex items-center gap-2 text-sm text-amber-100/85">
-                                          <CircleAlert className="h-4 w-4 text-amber-200" />
-                                          <span>{formatWaitingLabel(task.waitingOn)}</span>
-                                        </div>
-                                      ) : null}
+                                      <Badge status={task.waitingOn === "kzero" && task.status !== "complete" ? "waiting_on_kzero" : task.status}>
+                                        {taskStatusLabel}
+                                      </Badge>
                                       {guides.length > 0 ? (
                                         <Button
                                           className="h-10 px-4"
