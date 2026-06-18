@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,7 +10,6 @@ import { Card } from "@/components/ui/card";
 const TENANT_STORAGE_KEY = "kzero-demo-tenant";
 
 export default function StartPage() {
-  const router = useRouter();
   const [tenantName, setTenantName] = useState("");
   const [error, setError] = useState("");
 
@@ -75,9 +73,12 @@ export default function StartPage() {
         return;
       }
 
-      router.push(
-        payload.msp.destination === "demo" ? `/demo/${payload.msp.planId}` : `/portal/${payload.msp.planId}`
-      );
+      if (payload.msp.destination === "demo") {
+        window.location.assign(`/demo/${payload.msp.planId}`);
+        return;
+      }
+
+      window.location.assign(`/api/portal/temporary-start?lookup=${encodeURIComponent(lookupValue)}`);
     } catch {
       setError(
         "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer."

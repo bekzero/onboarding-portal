@@ -117,9 +117,8 @@ export async function findServerTenantOidcConfigByInput(input?: string | null) {
     return null;
   }
 
-  const databaseConfig = await getDatabaseTenantOidcConfigByLookup(input);
-  if (databaseConfig) {
-    return databaseConfig;
+  if (isDatabasePersistenceConfigured()) {
+    return getDatabaseTenantOidcConfigByLookup(input);
   }
 
   return buildServerOidcRegistry().find((config) => matchesLookup(config, input)) ?? null;
@@ -130,9 +129,8 @@ export async function findServerTenantOidcConfigByPlanId(planId?: string | null)
     return null;
   }
 
-  const databaseConfig = await getDatabaseTenantOidcConfigByPlanId(planId);
-  if (databaseConfig) {
-    return databaseConfig;
+  if (isDatabasePersistenceConfigured()) {
+    return getDatabaseTenantOidcConfigByPlanId(planId);
   }
 
   return buildServerOidcRegistry().find((config) => config.planId === planId) ?? null;

@@ -99,7 +99,7 @@ async function getSessionUser(kind: "portal" | "internal"): Promise<SessionUser 
 export async function requirePortalUser() {
   const sessionUser = await getSessionUser("portal");
   if (!sessionUser) {
-    redirect("/");
+    redirect("/start?error=session_required");
   }
 
   return sessionUser;

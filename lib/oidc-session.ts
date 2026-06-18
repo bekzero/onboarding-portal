@@ -144,7 +144,7 @@ export async function clearOidcStateSession() {
   });
 }
 
-export async function writePortalOidcSession(session: Omit<PortalOidcSession, "authenticated" | "expiresAt">) {
+export async function writePortalSession(session: Omit<PortalOidcSession, "authenticated" | "expiresAt">) {
   const sealed = sealPayload({
     authenticated: true,
     ...session,
@@ -163,6 +163,10 @@ export async function writePortalOidcSession(session: Omit<PortalOidcSession, "a
   });
 
   return true;
+}
+
+export async function writePortalOidcSession(session: Omit<PortalOidcSession, "authenticated" | "expiresAt">) {
+  return writePortalSession(session);
 }
 
 export async function readPortalOidcSession() {

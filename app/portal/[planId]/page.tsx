@@ -12,11 +12,9 @@ export default async function PortalPlanPage({
   await requirePortalUser();
 
   const { planId } = await params;
-  const fallbackBundle = getPlanBundle(planId);
-  const persistedBundle = isDatabasePersistenceConfigured()
+  const bundle = isDatabasePersistenceConfigured()
     ? await getPortalPlanBundle(planId).catch(() => null)
-    : null;
-  const bundle = persistedBundle ?? fallbackBundle;
+    : getPlanBundle(planId);
 
   if (!bundle) {
     notFound();
