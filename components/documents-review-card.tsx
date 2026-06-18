@@ -89,6 +89,10 @@ function getStatusTone(status: ReviewStatus) {
   return "waiting_on_msp" as const;
 }
 
+function isPlaceholderAttachment(attachment: Attachment) {
+  return attachment.name.toLowerCase().includes("placeholder");
+}
+
 export function DocumentsReviewCard({
   attachments,
   planId
@@ -122,16 +126,6 @@ export function DocumentsReviewCard({
   }, [planId, storedDocuments]);
 
   const documents = useMemo(() => {
-    const planned = attachments.map((attachment) => ({
-      id: attachment.id,
-      isStored: false,
-      name: attachment.name,
-      sizeLabel: "Planned",
-      status: "Approved" as ReviewStatus,
-      typeLabel: formatTypeLabel("", attachment.name),
-      uploadedBy: "KZero"
-    }));
-
     const uploaded = storedDocuments.map((item) => ({
       id: item.id,
       isStored: true,
@@ -141,6 +135,18 @@ export function DocumentsReviewCard({
       typeLabel: formatTypeLabel(item.type, item.name),
       uploadedBy: item.uploadedBy
     }));
+
+    const planned = attachments
+      .filter((attachment) => !isPlaceholderAttachment(attachment))
+      .map((attachment) => ({
+        id: attachment.id,
+        isStored: false,
+        name: attachment.name,
+        sizeLabel: "Planned",
+        status: "Approved" as ReviewStatus,
+        typeLabel: formatTypeLabel("", attachment.name),
+        uploadedBy: "KZero"
+      }));
 
     return [...uploaded, ...planned] satisfies DocumentItem[];
   }, [attachments, storedDocuments]);
@@ -187,9 +193,7 @@ export function DocumentsReviewCard({
         </div>
         <div>
           <h3 className="text-lg font-semibold text-white">Documents for Review</h3>
-          <p className="text-sm text-slate-300">
-            Share supporting files for rollout review. File metadata stays in this browser for now.
-          </p>
+          <p className="text-sm text-slate-300">Share supporting files for rollout review.</p>
         </div>
       </div>
 
@@ -214,7 +218,8 @@ export function DocumentsReviewCard({
       <div className="mt-4 grid gap-3">
         {documents.length === 0 ? (
           <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-3.5 py-4 text-sm text-slate-400">
-            No review documents added yet.
+            <p>No documents have been added yet.</p>
+            <p className="mt-1">Documents shared by your team or KZero will appear here.</p>
           </div>
         ) : null}
 

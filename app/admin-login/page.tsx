@@ -27,7 +27,13 @@ export default async function AdminLoginPage({
           <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
             <div className="space-y-5">
               <div className="flex justify-start lg:justify-center">
-                <KzeroLogo className="w-fit" imageClassName="h-auto w-[148px]" priority surface="dark" variant="stacked" />
+                <KzeroLogo
+                  className="w-fit"
+                  imageClassName="h-auto w-[160px] sm:w-[190px] lg:w-[220px]"
+                  priority
+                  surface="dark"
+                  variant="horizontal"
+                />
               </div>
               <div className="space-y-3">
                 <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-5xl">

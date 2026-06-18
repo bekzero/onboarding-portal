@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DocumentsReviewCard } from "@/components/documents-review-card";
 import type { PlanBundle } from "@/lib/mock-data";
@@ -20,6 +20,17 @@ import { users } from "@/lib/mock-data";
 
 const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
+
+type TaskGuide = {
+  description: string;
+  href: string;
+  title: string;
+};
+
+type GuidePreviewState = {
+  guides: TaskGuide[];
+  stepName: string;
+} | null;
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
@@ -89,6 +100,63 @@ function taskTone(status: string) {
   return "border-white/10 bg-[#0a1424]";
 }
 
+function isBookingTask(title: string) {
+  const normalizedTitle = title.toLowerCase();
+  return normalizedTitle.includes("book") && normalizedTitle.includes("meeting");
+}
+
+function getMeetingButtonLabel(title: string) {
+  return title.toLowerCase().includes("implementation") ? "Book Implementation Session" : "Book Meeting";
+}
+
+function isMeaningfulComment(body: string) {
+  const normalizedBody = body.toLowerCase();
+  return !normalizedBody.includes("placeholder") &&
+    !normalizedBody.includes("kickoff booking link is ready when abcmsp is ready to schedule") &&
+    !normalizedBody.includes("demo-generated onboarding case");
+}
+
+function getTaskGuides(title: string): TaskGuide[] {
+  const normalizedTitle = title.toLowerCase();
+
+  if (normalizedTitle.includes("add backup admins")) {
+    return [
+      {
+        title: "Create a New Dashboard Administrator",
+        description: "Review the admin dashboard steps for adding backup administrators and break-glass coverage.",
+        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-creating-a-new-administrator-in-the-dashboard"
+      }
+    ];
+  }
+
+  if (normalizedTitle.includes("add employees and contractors")) {
+    return [
+      {
+        title: "Add Users to a Tenant",
+        description: "Use this guide to add employees and contractors to the tenant with their company email addresses.",
+        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-individually-adding-users-to-a-tenant"
+      }
+    ];
+  }
+
+  if (normalizedTitle.includes("distribute vault") || normalizedTitle.includes("extension guidance")) {
+    return [
+      {
+        title: "Import Passwords",
+        description: "Share the password import guide with end users before rollout begins.",
+        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords"
+      },
+      {
+        title: "End-User Guides",
+        description: "Point users to the KZero Vault and browser extension guidance for adoption and day-one setup.",
+        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/end-user-guides"
+      }
+    ];
+  }
+
+  return [];
+}
+
 type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
 
 export function PlanView({
@@ -97,6 +165,7 @@ export function PlanView({
   bundle: PlanBundle;
 }) {
   const [activeTab, setActiveTab] = useState<PlanTab>("overview");
+  const [guidePreview, setGuidePreview] = useState<GuidePreviewState>(null);
   const orderedTasks = bundle.plan.taskIds
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
@@ -113,6 +182,9 @@ export function PlanView({
   }));
   const kzeroContact = users.find((user) => user.role === "sales_engineer");
   const isKZeroOwnedCurrentTask = nextTask.owner === "kzero_se";
+  const isKickoffBookingTask = isBookingTask(nextTask.title);
+  const isBlocked = nextTask.waitingOn === "kzero" && !isKZeroOwnedCurrentTask;
+  const meaningfulComments = bundle.comments.filter((comment) => isMeaningfulComment(comment.body));
   const yourNextAction = isKZeroOwnedCurrentTask ? "No action needed from you right now." : nextTask.title;
   const yourNextActionDetail = isKZeroOwnedCurrentTask
     ? "KZero is currently moving this step forward. We will let you know when your team needs to step back in."
@@ -127,20 +199,46 @@ export function PlanView({
     : followingTask?.owner === "kzero_se"
       ? "This is the next KZero-owned step after you complete the current action."
       : "Your KZero Sales Engineer will continue with implementation support once your current action is complete.";
-  const blockerStatus = isKZeroOwnedCurrentTask
-    ? "No blocker for your team. KZero is actively working this step."
-    : nextTask.waitingOn === "kzero"
-      ? "KZero action in progress."
-      : "This plan is waiting on your team to complete the current action.";
+  const actionStatusHeading = isBlocked
+    ? "Blocked"
+    : isKZeroOwnedCurrentTask
+      ? "KZero Is Working On This"
+      : "Action Needed From You";
+  const actionStatusMessage = isKZeroOwnedCurrentTask
+    ? "No action needed from you right now."
+    : isKickoffBookingTask
+      ? "Book your kickoff call with your KZero Sales Engineer to begin NFR tenant setup."
+      : nextTask.description;
+  const actionStatusReason = isBlocked
+    ? "This step depends on KZero completing work before your team can move to the next milestone."
+    : isKZeroOwnedCurrentTask
+    ? "KZero is currently handling the work required to keep your onboarding plan moving."
+    : isKickoffBookingTask
+      ? "This meeting starts the NFR deployment and confirms the initial tenant configuration."
+      : `Completing this step keeps ${safeNextStepPhase?.title ?? "your onboarding"} on track and unlocks the next milestone.`;
   const whatHappensNext = followingTask
-    ? `${followingTask.title} (${formatTaskOwnerLabelShort(followingTask.owner)})`
+    ? isKickoffBookingTask
+      ? "After kickoff, you'll add backup admins and invite your MSP users."
+      : `${followingTask.title} (${formatTaskOwnerLabelShort(followingTask.owner)})`
     : "This completes the current onboarding milestone.";
+  const currentStepLabel = isKickoffBookingTask ? "Book kickoff call" : nextTask.title;
+  const currentOwnerLabel = nextTask.owner === "kzero_se"
+    ? "KZero"
+    : nextTask.owner === "shared"
+      ? "Your team and KZero"
+      : "Your team";
+  const currentStatusLabel = isBlocked ? "Blocked" : formatTaskStatusLabel(nextTask.status);
+  const afterThisLabel = followingTask
+    ? isKickoffBookingTask
+      ? "Add backup admins"
+      : followingTask.title
+    : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "tasks", label: "Tasks" },
     { id: "apps", label: "Apps" },
     { id: "documents", label: "Documents" },
-    { id: "activity", label: "Activity" }
+    ...(meaningfulComments.length > 0 ? [{ id: "activity" as const, label: "Activity" }] : [])
   ];
 
   return (
@@ -231,29 +329,45 @@ export function PlanView({
                       {nextTask.dueLabel ? <span>Due: {nextTask.dueLabel}</span> : null}
                     </div>
                   </div>
-                  <div className="grid gap-3 rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4 text-sm">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">KZero Current Action</p>
-                      <p className="mt-2 font-medium text-white">{kzeroCurrentAction}</p>
-                      <p className="mt-1 text-slate-300">{kzeroCurrentActionDetail}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Blocker Status</p>
-                      <p className="mt-2 font-medium text-white">{blockerStatus}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">What Happens Next</p>
-                      <p className="mt-2 font-medium text-white">{whatHappensNext}</p>
+                  <div className="rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4 text-sm">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">At a Glance</p>
+                    <div className="mt-4 grid gap-3">
+                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
+                        <p className="text-slate-400">Current Step</p>
+                        <p className="text-right font-medium text-white">{currentStepLabel}</p>
+                      </div>
+                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
+                        <p className="text-slate-400">Owner</p>
+                        <p className="text-right font-medium text-white">{currentOwnerLabel}</p>
+                      </div>
+                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
+                        <p className="text-slate-400">Status</p>
+                        <p className="text-right font-medium text-white">{currentStatusLabel}</p>
+                      </div>
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-slate-400">After This</p>
+                        <p className="text-right font-medium text-white">{afterThisLabel}</p>
+                      </div>
+                      {isBlocked ? (
+                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-slate-200">
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-amber-200">Blocked</p>
+                          <p className="mt-2">{actionStatusReason}</p>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3">
                   {!isKZeroOwnedCurrentTask && nextTask.meetingCta ? (
-                    <Button className="h-11 px-5">{nextTask.meetingCta}</Button>
+                    <a
+                      className={buttonVariants({ variant: "default", className: "h-11 px-5" })}
+                      href={BOOKING_URL}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {getMeetingButtonLabel(nextTask.title)}
+                    </a>
                   ) : null}
-                  <Button variant="outline" className="h-11 px-5" onClick={() => setActiveTab("tasks")}>
-                    View Full Checklist
-                  </Button>
                 </div>
               </div>
             </Card>
@@ -334,18 +448,59 @@ export function PlanView({
                 </Card>
 
                 <Card className="border-white/10 bg-[#101a2d] p-4 lg:col-span-2">
-                  <h3 className="text-lg font-semibold text-white">Blockers and Notes</h3>
-                  <div className="mt-3 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4 text-sm text-slate-300">
-                    <p className="font-medium text-white">{blockerStatus}</p>
-                    <p className="mt-2 leading-6">Latest notes and updates are collected below so your team can quickly scan open items.</p>
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">{actionStatusHeading}</h3>
+                      <p className="mt-1 text-sm text-slate-300">
+                        {isKZeroOwnedCurrentTask
+                          ? "KZero is moving the current step forward."
+                          : "Here is the clearest view of what needs attention right now."}
+                      </p>
+                    </div>
+                    {!isKZeroOwnedCurrentTask && nextTask.meetingCta ? (
+                      <a
+                        className={buttonVariants({ variant: "secondary", className: "h-10 px-4" })}
+                        href={BOOKING_URL}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Book Meeting
+                      </a>
+                    ) : null}
                   </div>
-                  <div className="mt-4 grid gap-3">
-                    {bundle.comments.slice(0, 2).map((comment) => (
-                      <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
-                        <p className="font-medium text-white">{comment.author}</p>
-                        <p className="mt-2 leading-6">{comment.body}</p>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What to Do</p>
+                      <p className="mt-2 text-sm leading-6 text-white">{actionStatusMessage}</p>
+                    </div>
+                    <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Why It Matters</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{actionStatusReason}</p>
+                    </div>
+                    <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What Happens Next</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{whatHappensNext}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Latest Updates</p>
+                    {meaningfulComments.length > 0 ? (
+                      <div className="mt-3 grid gap-3">
+                        {meaningfulComments.slice(0, 2).map((comment) => (
+                          <div key={comment.id} className="rounded-[1rem] border border-white/10 bg-[#08111f] p-3.5 text-sm text-slate-300">
+                            <p className="font-medium text-white">{comment.author}</p>
+                            <p className="mt-2 leading-6">{comment.body}</p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    ) : (
+                      <div className="mt-3 rounded-[1rem] border border-dashed border-white/10 bg-[#08111f] p-3.5 text-sm text-slate-400">
+                        <p>No updates yet.</p>
+                        <p className="mt-1">Updates from your team or KZero will appear here.</p>
+                      </div>
+                    )}
                   </div>
                 </Card>
               </div>
@@ -403,6 +558,10 @@ export function PlanView({
                             <div className="grid gap-3">
                               {tasks.map((task) => (
                                 <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskTone(task.status)}`}>
+                                  {(() => {
+                                    const guides = getTaskGuides(task.title);
+
+                                    return (
                                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                     <div className="min-w-0">
                                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
@@ -416,7 +575,18 @@ export function PlanView({
                                           </>
                                         ) : null}
                                       </div>
-                                      <h5 className="mt-2 text-base font-semibold text-white">{task.title}</h5>
+                                      <div className="mt-2 flex flex-wrap items-center gap-3">
+                                        <h5 className="text-base font-semibold text-white">{task.title}</h5>
+                                        {guides.length > 0 ? (
+                                          <button
+                                            className="text-sm font-medium text-blue-200 transition hover:text-blue-100"
+                                            onClick={() => setGuidePreview({ guides, stepName: task.title })}
+                                            type="button"
+                                          >
+                                            Preview Guide
+                                          </button>
+                                        ) : null}
+                                      </div>
                                       <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
                                     </div>
 
@@ -433,14 +603,30 @@ export function PlanView({
                                           <span>{formatWaitingLabel(task.waitingOn)}</span>
                                         </div>
                                       ) : null}
-                                      {task.meetingCta ? (
-                                        <Button variant="secondary" className="h-10 px-4">
-                                          {task.meetingCta}
-                                          <ArrowRight className="ml-2 h-4 w-4" />
+                                      {guides.length > 0 ? (
+                                        <Button
+                                          className="h-10 px-4"
+                                          onClick={() => setGuidePreview({ guides, stepName: task.title })}
+                                          variant="outline"
+                                        >
+                                          View Guide Preview
                                         </Button>
+                                      ) : null}
+                                      {task.meetingCta ? (
+                                        <a
+                                          className={buttonVariants({ variant: "secondary", className: "h-10 px-4" })}
+                                          href={BOOKING_URL}
+                                          rel="noreferrer"
+                                          target="_blank"
+                                        >
+                                          {getMeetingButtonLabel(task.title)}
+                                          <ArrowRight className="ml-2 h-4 w-4" />
+                                        </a>
                                       ) : null}
                                     </div>
                                   </div>
+                                    );
+                                  })()}
                                 </div>
                               ))}
                             </div>
@@ -474,12 +660,11 @@ export function PlanView({
 
             {activeTab === "documents" ? <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} /> : null}
 
-            {activeTab === "activity" ? (
+            {activeTab === "activity" && meaningfulComments.length > 0 ? (
               <Card className="border-white/10 bg-[#101a2d] p-4">
                 <h3 className="text-lg font-semibold text-white">Activity</h3>
-                <p className="mt-1 text-sm text-slate-300">Recent onboarding notes, blockers, and handoff updates.</p>
                 <div className="mt-4 grid gap-3">
-                  {bundle.comments.map((comment) => (
+                  {meaningfulComments.map((comment) => (
                     <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
                       <p className="font-medium text-white">{comment.author}</p>
                       <p className="mt-2 leading-6">{comment.body}</p>
@@ -492,6 +677,43 @@ export function PlanView({
 
         </div>
       </main>
+
+      {guidePreview ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#020611]/75 p-4 md:items-center">
+          <div className="w-full max-w-2xl rounded-[1.6rem] border border-white/10 bg-[#0d1627] p-5 shadow-panel">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Guide Preview</p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">{guidePreview.stepName}</h3>
+                <p className="mt-1 text-sm text-slate-300">Open the full partner guide in a new tab when you are ready.</p>
+              </div>
+              <Button onClick={() => setGuidePreview(null)} variant="outline">
+                Close
+              </Button>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {guidePreview.guides.map((guide) => (
+                <div key={guide.href} className="rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Related Step</p>
+                  <p className="mt-1 font-medium text-white">{guidePreview.stepName}</p>
+                  <h4 className="mt-4 text-lg font-semibold text-white">{guide.title}</h4>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">{guide.description}</p>
+                  <a
+                    className={`${buttonVariants({ variant: "secondary" })} mt-4 inline-flex`}
+                    href={guide.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    Open Full Guide
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
