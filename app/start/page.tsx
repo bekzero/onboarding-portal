@@ -7,8 +7,6 @@ import { useRouter } from "next/navigation";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { readAdminCaseOverridesFromStorage } from "@/lib/admin-case-storage";
-import { buildTenantRegistry, readDemoEnrollmentsFromStorage, tenantRegistry, type TenantRegistryEntry } from "@/lib/tenant-routing";
 
 const TENANT_STORAGE_KEY = "kzero-demo-tenant";
 
@@ -16,18 +14,13 @@ export default function StartPage() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState("");
   const [error, setError] = useState("");
-  const [registry, setRegistry] = useState<TenantRegistryEntry[]>(tenantRegistry);
 
   useEffect(() => {
     const storedTenant = window.localStorage.getItem(TENANT_STORAGE_KEY);
-    const enrollments = readDemoEnrollmentsFromStorage();
-    const overrides = readAdminCaseOverridesFromStorage();
 
     if (storedTenant) {
       setTenantName(storedTenant);
     }
-
-    setRegistry(buildTenantRegistry(enrollments, overrides));
   }, []);
 
   useEffect(() => {
@@ -66,6 +59,7 @@ export default function StartPage() {
         found: boolean;
         msp?: {
           accessMode: "temporary" | "oidc";
+          destination?: "demo" | "portal";
           planId: string;
         };
       };
@@ -81,7 +75,9 @@ export default function StartPage() {
         return;
       }
 
-      router.push(`/demo/${payload.msp.planId}`);
+      router.push(
+        payload.msp.destination === "demo" ? `/demo/${payload.msp.planId}` : `/portal/${payload.msp.planId}`
+      );
     } catch {
       setError(
         "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer."

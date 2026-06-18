@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
-import { updateMsp } from "@/lib/msp-persistence";
+import { deleteMsp, updateMsp } from "@/lib/msp-persistence";
 
 export async function PATCH(
   request: NextRequest,
@@ -27,6 +27,22 @@ export async function PATCH(
     return NextResponse.json({ msp: adminCase });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not update MSP.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ mspId: string }> }
+) {
+  await requireAdminSession();
+
+  try {
+    const { mspId } = await params;
+    await deleteMsp(mspId);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not delete MSP.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

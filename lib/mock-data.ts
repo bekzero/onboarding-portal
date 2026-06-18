@@ -540,7 +540,7 @@ export const taskSubmissions: TaskSubmission[] = [
 
 export const onboardingCases: OnboardingCase[] = demoCaseConfigs.map((config) => ({
   accessMode: config.accessMode,
-  actionHref: `/demo/${config.planId}`,
+  actionHref: `/portal/${config.planId}`,
   assignedSalesEngineer:
     users.find((user) => user.id === config.salesEngineerId)?.name ?? "Unassigned",
   currentStage: config.currentStage,

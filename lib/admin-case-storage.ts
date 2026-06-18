@@ -19,7 +19,9 @@ export type AdminCaseOverride = Partial<
     | "submittedSaasAppCount"
     | "tenantName"
   >
->;
+> & {
+  deleted?: boolean;
+};
 
 export function readAdminCaseOverridesFromStorage() {
   if (typeof window === "undefined") {

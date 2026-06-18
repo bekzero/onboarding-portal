@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
         found: true,
         msp: {
           accessMode: msp.accessMode,
+          destination: "portal",
           name: msp.name,
           planId: `${msp.slug}-nfr`,
           slug: msp.slug,
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
         }
       });
     }
+
+    return NextResponse.json({ found: false }, { status: 404 });
   }
 
   const fallbackTenant = findTenantByInput(lookup);
@@ -36,6 +39,7 @@ export async function GET(request: NextRequest) {
     found: true,
     msp: {
       accessMode: fallbackTenant.accessMode,
+      destination: "demo",
       name: fallbackTenant.displayName,
       planId: fallbackTenant.planId,
       slug: fallbackTenant.mspSlug,

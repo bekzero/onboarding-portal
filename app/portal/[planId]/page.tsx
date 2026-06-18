@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { PlanView } from "@/components/plan-view";
 import { requirePortalUser } from "@/lib/auth";
 import { getPlanBundle } from "@/lib/mock-data";
+import { getPortalPlanBundle, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
 export default async function PortalPlanPage({
   params
@@ -11,7 +12,11 @@ export default async function PortalPlanPage({
   await requirePortalUser();
 
   const { planId } = await params;
-  const bundle = getPlanBundle(planId);
+  const fallbackBundle = getPlanBundle(planId);
+  const persistedBundle = isDatabasePersistenceConfigured()
+    ? await getPortalPlanBundle(planId).catch(() => null)
+    : null;
+  const bundle = persistedBundle ?? fallbackBundle;
 
   if (!bundle) {
     notFound();

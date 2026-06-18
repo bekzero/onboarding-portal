@@ -1,6 +1,7 @@
 import "server-only";
 import type { AccessMode, OidcConfig, Prisma } from "@prisma/client";
 import { decryptStoredOidcClientSecret, encryptOidcClientSecret } from "@/lib/oidc-secret-crypto";
+import { getPlanBundle, type PlanBundle, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-routing";
 
@@ -71,6 +72,137 @@ function parseLastActivityInput(value?: string) {
   return parsedValue;
 }
 
+function getTemplateBundle(planId: string) {
+  return getPlanBundle(planId);
+}
+
+function getOrderedTemplateTasks(bundle: PlanBundle) {
+  return bundle.plan.taskIds
+    .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
+    .filter((task): task is MockTask => Boolean(task));
+}
+
+function getTaskStatusForOwner(owner: string): TaskStatus {
+  return owner === "kzero_se" ? "waiting_on_kzero" : "waiting_on_msp";
+}
+
+function mapPersistedTaskStatus(status?: string): TaskStatus {
+  if (status === "complete" || status === "in_progress" || status === "waiting_on_kzero" || status === "waiting_on_msp") {
+    return status;
+  }
+
+  return "not_started";
+}
+
+function buildPortalTaskRecords(
+  bundle: PlanBundle,
+  persistedTasks: Array<{
+    description: string | null;
+    dueLabel: string | null;
+    order: number;
+    owner: string | null;
+    status: string;
+    title: string;
+  }>
+) {
+  const orderedTemplateTasks = getOrderedTemplateTasks(bundle);
+
+  return orderedTemplateTasks.map((task, index) => {
+    const persistedTask = persistedTasks.find((item) => item.order === index) ??
+      persistedTasks.find((item) => item.title === task.title);
+
+    return {
+      description: persistedTask?.description ?? task.description,
+      dueLabel: persistedTask?.dueLabel ?? task.dueLabel,
+      order: index,
+      owner: persistedTask?.owner ?? task.owner,
+      status: mapPersistedTaskStatus(persistedTask?.status ?? task.status),
+      title: persistedTask?.title ?? task.title
+    } satisfies PortalTaskRecord;
+  });
+}
+
+function getPhaseTitleForTask(bundle: PlanBundle, task: MockTask | undefined) {
+  if (!task) {
+    return bundle.phases[bundle.phases.length - 1]?.title ?? "Completed";
+  }
+
+  return bundle.phases.find((phase) => phase.id === task.phaseId)?.title ?? "Kickoff";
+}
+
+function getPlanMetrics(bundle: PlanBundle, persistedTasks: PortalTaskRecord[]) {
+  const orderedTemplateTasks = getOrderedTemplateTasks(bundle);
+  const completedCount = persistedTasks.filter((task) => task.status === "complete").length;
+  const nextTaskIndex = persistedTasks.findIndex((task) => task.status !== "complete");
+  const progress = orderedTemplateTasks.length === 0 ? 0 : Math.round((completedCount / orderedTemplateTasks.length) * 100);
+  const nextTemplateTask = nextTaskIndex === -1 ? orderedTemplateTasks[orderedTemplateTasks.length - 1] : orderedTemplateTasks[nextTaskIndex];
+  const currentStage = nextTaskIndex === -1
+    ? bundle.phases[bundle.phases.length - 1]?.title ?? "Completed"
+    : getPhaseTitleForTask(bundle, nextTemplateTask);
+  const status = progress >= 100
+    ? "complete"
+    : nextTemplateTask?.owner === "kzero_se"
+      ? "waiting_on_kzero"
+      : "waiting_on_msp";
+
+  return {
+    completedCount,
+    currentStage,
+    nextTaskIndex,
+    progress,
+    status
+  };
+}
+
+function buildBundleFromPersistedState(
+  bundle: PlanBundle,
+  persistedTasks: PortalTaskRecord[],
+  persistedPlan?: {
+    currentStage: string | null;
+    progress: number;
+  }
+) {
+  const orderedTemplateTasks = getOrderedTemplateTasks(bundle);
+  const metrics = getPlanMetrics(bundle, persistedTasks);
+
+  const tasks = orderedTemplateTasks.map((task, index) => {
+    const persistedTask = persistedTasks[index];
+    const status = persistedTask?.status ?? task.status;
+    const waitingOn =
+      status === "waiting_on_kzero"
+        ? ("kzero" as const)
+        : status === "waiting_on_msp"
+          ? ("msp" as const)
+          : undefined;
+
+    return {
+      ...task,
+      description: persistedTask?.description ?? task.description,
+      dueLabel: persistedTask?.dueLabel ?? task.dueLabel,
+      owner: (persistedTask?.owner as MockTask["owner"] | undefined) ?? task.owner,
+      status,
+      waitingOn
+    };
+  });
+
+  const nextTask = tasks.find((task) => task.status !== "complete") ?? tasks[tasks.length - 1];
+
+  if (!nextTask) {
+    return null;
+  }
+
+  return {
+    ...bundle,
+    nextTask,
+    plan: {
+      ...bundle.plan,
+      nextTaskId: nextTask.id,
+      progress: persistedPlan?.progress ?? metrics.progress
+    },
+    tasks
+  } satisfies PlanBundle;
+}
+
 export type PublicMspRecord = {
   accessMode: AccessMode;
   assignedSalesEngineer: string;
@@ -109,6 +241,15 @@ export type AdminDashboardCase = {
   status: string;
   submittedSaasAppCount: number;
   tenantRealm?: string;
+};
+
+type PortalTaskRecord = {
+  description: string;
+  dueLabel?: string;
+  order: number;
+  owner: string;
+  status: TaskStatus;
+  title: string;
 };
 
 type CreateMspInput = {
@@ -221,6 +362,49 @@ function toAdminDashboardCase(
   };
 }
 
+async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string) {
+  const existingTasks = await prisma.onboardingTask.findMany({
+    where: { onboardingPlanId },
+    orderBy: {
+      order: "asc"
+    }
+  });
+
+  if (existingTasks.length > 0) {
+    return existingTasks;
+  }
+
+  const templateBundle = getTemplateBundle(planId);
+  if (!templateBundle) {
+    return [];
+  }
+
+  const orderedTemplateTasks = getOrderedTemplateTasks(templateBundle);
+
+  if (orderedTemplateTasks.length === 0) {
+    return [];
+  }
+
+  await prisma.onboardingTask.createMany({
+    data: orderedTemplateTasks.map((task, index) => ({
+      description: task.description,
+      dueLabel: task.dueLabel,
+      onboardingPlanId,
+      order: index,
+      owner: task.owner,
+      status: task.status,
+      title: task.title
+    }))
+  });
+
+  return prisma.onboardingTask.findMany({
+    where: { onboardingPlanId },
+    orderBy: {
+      order: "asc"
+    }
+  });
+}
+
 export async function createMsp(input: CreateMspInput) {
   ensureDatabaseConfigured();
 
@@ -228,6 +412,10 @@ export async function createMsp(input: CreateMspInput) {
   if (!slug) {
     throw new Error("MSP slug is required.");
   }
+
+  const planId = `${slug}-nfr`;
+  const templateBundle = getTemplateBundle(planId);
+  const templateTasks = templateBundle ? getOrderedTemplateTasks(templateBundle) : [];
 
   const msp = await prisma.msp.create({
     data: {
@@ -238,7 +426,19 @@ export async function createMsp(input: CreateMspInput) {
         create: {
           currentStage: "Kickoff",
           lastActivityAt: new Date(),
-          planId: `${slug}-nfr`,
+          onboardingTasks: templateTasks.length > 0
+            ? {
+                create: templateTasks.map((task, index) => ({
+                  description: task.description,
+                  dueLabel: task.dueLabel,
+                  order: index,
+                  owner: task.owner,
+                  status: task.status,
+                  title: task.title
+                }))
+              }
+            : undefined,
+          planId,
           progress: 0,
           status: "waiting_on_msp",
           submittedAppCount: 0,
@@ -310,6 +510,131 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
   });
 
   return toAdminDashboardCase(msp);
+}
+
+export async function deleteMsp(mspId: string) {
+  ensureDatabaseConfigured();
+
+  await prisma.msp.delete({
+    where: { id: mspId }
+  });
+}
+
+export async function getPortalPlanBundle(planId: string) {
+  ensureDatabaseConfigured();
+
+  const templateBundle = getTemplateBundle(planId);
+  if (!templateBundle) {
+    return null;
+  }
+
+  const onboardingPlan = await prisma.onboardingPlan.findUnique({
+    where: { planId },
+    include: {
+      onboardingTasks: {
+        orderBy: {
+          order: "asc"
+        }
+      }
+    }
+  });
+
+  if (!onboardingPlan) {
+    return null;
+  }
+
+  const persistedTasks = await ensurePortalTasksSeeded(onboardingPlan.id, planId);
+  return buildBundleFromPersistedState(
+    templateBundle,
+    buildPortalTaskRecords(templateBundle, persistedTasks),
+    {
+      currentStage: onboardingPlan.currentStage,
+      progress: onboardingPlan.progress
+    }
+  );
+}
+
+export async function completePortalTask(planId: string, templateTaskId: string) {
+  ensureDatabaseConfigured();
+
+  const templateBundle = getTemplateBundle(planId);
+  if (!templateBundle) {
+    return null;
+  }
+
+  const onboardingPlan = await prisma.onboardingPlan.findUnique({
+    where: { planId },
+    include: {
+      onboardingTasks: {
+        orderBy: {
+          order: "asc"
+        }
+      }
+    }
+  });
+
+  if (!onboardingPlan) {
+    return null;
+  }
+
+  const orderedTemplateTasks = getOrderedTemplateTasks(templateBundle);
+  const persistedTasks = await ensurePortalTasksSeeded(onboardingPlan.id, planId);
+  const portalTasks = buildPortalTaskRecords(templateBundle, persistedTasks);
+  const activeTaskIndex = portalTasks.findIndex((task) => task.status !== "complete");
+  const requestedTaskIndex = orderedTemplateTasks.findIndex((task) => task.id === templateTaskId);
+
+  if (requestedTaskIndex === -1 || requestedTaskIndex !== activeTaskIndex) {
+    return buildBundleFromPersistedState(templateBundle, portalTasks, {
+      currentStage: onboardingPlan.currentStage,
+      progress: onboardingPlan.progress
+    });
+  }
+
+  const nextPortalTasks = portalTasks.map((task, index) => {
+    if (index < requestedTaskIndex + 1) {
+      return { ...task, status: "complete" as const };
+    }
+
+    if (index === requestedTaskIndex + 1) {
+      return {
+        ...task,
+        status: getTaskStatusForOwner(task.owner)
+      };
+    }
+
+    return {
+      ...task,
+      status: "not_started" as const
+    };
+  });
+
+  const metrics = getPlanMetrics(templateBundle, nextPortalTasks);
+  const lastActivityAt = new Date();
+
+  await prisma.$transaction([
+    ...persistedTasks.map((task, index) =>
+      prisma.onboardingTask.update({
+        where: { id: task.id },
+        data: {
+          status: nextPortalTasks[index]?.status ?? task.status
+        }
+      })
+    ),
+    prisma.onboardingPlan.update({
+      where: { id: onboardingPlan.id },
+      data: {
+        currentStage: metrics.currentStage,
+        lastActivityAt,
+        progress: metrics.progress,
+        status: metrics.status
+      }
+    })
+  ]);
+
+  return buildBundleFromPersistedState(templateBundle, nextPortalTasks, {
+    currentStage: metrics.currentStage,
+    progress: metrics.progress
+  });
 }
 
 export async function configureOidcForMsp(mspId: string, input: ConfigureOidcInput) {

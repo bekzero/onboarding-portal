@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   Building2,
   Clock3,
   Eye,
@@ -11,6 +12,7 @@ import {
   Pencil,
   PlusCircle,
   TimerReset,
+  Trash2,
   X
 } from "lucide-react";
 import { KzeroLogo } from "@/components/kzero-logo";
@@ -25,17 +27,14 @@ import {
 } from "@/lib/admin-case-storage";
 import {
   buildKzeroIssuerForTenant,
-  DemoEnrollment,
   normalizeTenantName,
-  readDemoEnrollmentsFromStorage,
-  saveDemoEnrollmentsToStorage
 } from "@/lib/tenant-routing";
 
 const SALES_ENGINEER_NAME = "Ben Eakin";
 const PRODUCTION_REDIRECT_URI = "https://onboarding-portal20.vercel.app/api/oidc/callback";
 const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
 
-type PanelMode = "preview" | "edit" | "oidc" | "enroll";
+type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete";
 type DashboardCase = OnboardingCase & { mspId?: string };
 type AdminApiCase = {
   accessMode: OnboardingCase["accessMode"];
@@ -94,28 +93,6 @@ function formatDateLabel() {
     month: "long",
     year: "numeric"
   }).format(new Date());
-}
-
-function enrollmentToCase(enrollment: DemoEnrollment): OnboardingCase {
-  return {
-    accessMode: enrollment.accessMode,
-    actionHref: `/demo/${enrollment.planId}`,
-    assignedSalesEngineer: SALES_ENGINEER_NAME,
-    currentStage: "Kickoff",
-    lastActivity: enrollment.enrolledAt,
-    mspName: enrollment.mspName,
-    mspSlug: enrollment.mspSlug,
-    oidcClientId: enrollment.oidcClientId,
-    oidcClientSecretConfigured: enrollment.oidcClientSecretConfigured,
-    oidcStatus: enrollment.oidcStatus,
-    onboardingPlanId: enrollment.planId,
-    primaryContactEmail: enrollment.primaryContactEmail,
-    progress: 0,
-    status: "waiting_on_msp",
-    startingPlanType: enrollment.startingPlanType,
-    submittedSaasAppCount: 0,
-    tenantName: enrollment.tenantName
-  };
 }
 
 function getAccessLabel(item: OnboardingCase) {
@@ -196,7 +173,7 @@ function createOidcState(item: OnboardingCase): OidcFormState {
 function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
   return {
     accessMode: item.accessMode,
-    actionHref: `/demo/${item.planId}`,
+    actionHref: `/portal/${item.planId}`,
     assignedSalesEngineer: SALES_ENGINEER_NAME,
     currentStage: item.currentStage,
     lastActivity: item.lastActivity,
@@ -220,6 +197,7 @@ function DashboardTable({
   emptyLabel,
   items,
   onConfigureOidc,
+  onDelete,
   onEdit,
   onView,
   title
@@ -227,6 +205,7 @@ function DashboardTable({
   emptyLabel: string;
   items: DashboardCase[];
   onConfigureOidc: (item: DashboardCase) => void;
+  onDelete: (item: DashboardCase) => void;
   onEdit: (item: DashboardCase) => void;
   onView: (item: DashboardCase) => void;
   title: string;
@@ -331,6 +310,15 @@ function DashboardTable({
                         >
                           <KeyRound className="h-3.5 w-3.5" />
                         </Button>
+                        <Button
+                          aria-label={`Delete ${item.mspName}`}
+                          className="h-8 px-2.5"
+                          onClick={() => onDelete(item)}
+                          title="Delete MSP"
+                          variant="outline"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -350,7 +338,6 @@ export function InternalDashboard({
   baseCases: OnboardingCase[];
   salesEngineers: User[];
 }) {
-  const [demoEnrollments, setDemoEnrollments] = useState<DemoEnrollment[]>([]);
   const [caseOverrides, setCaseOverrides] = useState<Record<string, AdminCaseOverride>>({});
   const [apiCases, setApiCases] = useState<DashboardCase[]>([]);
   const [useServerData, setUseServerData] = useState(false);
@@ -361,6 +348,7 @@ export function InternalDashboard({
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   async function loadDashboardCases() {
     try {
@@ -387,19 +375,20 @@ export function InternalDashboard({
   }
 
   useEffect(() => {
-    setDemoEnrollments(readDemoEnrollmentsFromStorage());
     setCaseOverrides(readAdminCaseOverridesFromStorage());
     void loadDashboardCases();
   }, []);
 
   const fallbackCases = useMemo<DashboardCase[]>(() => {
-    const enrolledCases = demoEnrollments.map(enrollmentToCase);
-    return [...enrolledCases, ...baseCases].map((item) => ({
+    return baseCases
+      .filter((item) => !caseOverrides[item.onboardingPlanId]?.deleted)
+      .map((item) => ({
       ...item,
       ...caseOverrides[item.onboardingPlanId],
+      actionHref: `/portal/${item.onboardingPlanId}`,
       assignedSalesEngineer: SALES_ENGINEER_NAME
     }));
-  }, [baseCases, caseOverrides, demoEnrollments]);
+  }, [baseCases, caseOverrides]);
 
   const isLoading = serverLoadState === "loading";
   const isUsingFallback = serverLoadState === "fallback";
@@ -449,6 +438,11 @@ export function InternalDashboard({
     setSelectedCaseId(item.onboardingPlanId);
     setOidcState(createOidcState(item));
     setPanelMode("oidc");
+  }
+
+  function openDelete(item: DashboardCase) {
+    setSelectedCaseId(item.onboardingPlanId);
+    setPanelMode("delete");
   }
 
   function openEnroll() {
@@ -553,44 +547,29 @@ export function InternalDashboard({
       }
     }
 
-    const nextEnrollment: DemoEnrollment = {
-      accessMode,
-      assignedSalesEngineer: SALES_ENGINEER_NAME,
-      enrolledAt: formatDateLabel(),
-      mspName: trimmedMspName,
-      mspSlug: normalizedMspSlug,
-      oidcClientId: trimmedClientId || undefined,
-      oidcClientSecretConfigured: Boolean(enrollmentState.clientSecret.trim()),
-      oidcStatus: nextOidcStatus,
-      planId: `${normalizedMspSlug}-nfr`,
-      primaryContactEmail: trimmedPrimaryContactEmail,
-      startingPlanType: enrollmentState.startingPlanType,
-      tenantName: exactTenantName || undefined
-    };
-
-    const nextEnrollments = [
-      nextEnrollment,
-      ...demoEnrollments.filter((item) => item.planId !== nextEnrollment.planId)
-    ];
-
-    saveDemoEnrollmentsToStorage(nextEnrollments);
-    setDemoEnrollments(nextEnrollments);
+    const nextPlanId = `${normalizedMspSlug}-nfr`;
 
     const nextStatus: OnboardingCase["status"] = progress >= 100 ? "complete" : enrollmentState.status;
 
     persistOverrides({
       ...caseOverrides,
-      [nextEnrollment.planId]: {
+      [nextPlanId]: {
+        accessMode,
         currentStage: enrollmentState.currentStage,
         lastActivity: enrollmentState.lastActivity,
+        mspName: trimmedMspName,
+        oidcClientId: trimmedClientId || undefined,
+        oidcClientSecretConfigured: Boolean(enrollmentState.clientSecret.trim()),
+        oidcStatus: nextOidcStatus,
+        primaryContactEmail: trimmedPrimaryContactEmail,
         progress,
-        accessMode,
         status: nextStatus,
-        submittedSaasAppCount: enrollmentState.submittedSaasAppCount
+        submittedSaasAppCount: enrollmentState.submittedSaasAppCount,
+        tenantName: exactTenantName || undefined
       }
     });
 
-    setSelectedCaseId(nextEnrollment.planId);
+    setSelectedCaseId(nextPlanId);
     setPanelMode("preview");
   }
 
@@ -752,26 +731,67 @@ export function InternalDashboard({
 
     persistOverrides(nextOverrides);
 
-    const enrollmentIndex = demoEnrollments.findIndex((item) => item.planId === selectedCase.onboardingPlanId);
-    if (enrollmentIndex >= 0) {
-      const nextEnrollments = [...demoEnrollments];
-      nextEnrollments[enrollmentIndex] = {
-        ...nextEnrollments[enrollmentIndex],
-        accessMode,
-        oidcClientId: trimmedClientId || undefined,
-        oidcClientSecretConfigured: hasFullOidcConfig || nextEnrollments[enrollmentIndex].oidcClientSecretConfigured,
-        oidcStatus: nextOidcStatus,
-        tenantName: exactTenantName || undefined
-      };
-      saveDemoEnrollmentsToStorage(nextEnrollments);
-      setDemoEnrollments(nextEnrollments);
-    }
-
     setPanelMode("preview");
   }
 
+  async function handleDeleteMsp() {
+    if (!selectedCase) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    try {
+      if (useServerData && selectedCase.mspId) {
+        const response = await fetch(`/api/admin/msps/${selectedCase.mspId}`, {
+          method: "DELETE"
+        });
+
+        if (!response.ok) {
+          throw new Error("delete_failed");
+        }
+
+        await loadDashboardCases();
+        closePanel();
+        return;
+      }
+
+      setUseServerData(false);
+      setServerLoadState("fallback");
+      setServerErrorMessage("Showing local fallback data because the server API is unavailable.");
+
+      const nextOverrides = {
+        ...caseOverrides,
+        [selectedCase.onboardingPlanId]: {
+          ...caseOverrides[selectedCase.onboardingPlanId],
+          deleted: true
+        }
+      };
+
+      persistOverrides(nextOverrides);
+      closePanel();
+    } catch {
+      setUseServerData(false);
+      setServerLoadState("fallback");
+      setServerErrorMessage("Showing local fallback data because the server API is unavailable.");
+
+      const nextOverrides = {
+        ...caseOverrides,
+        [selectedCase.onboardingPlanId]: {
+          ...caseOverrides[selectedCase.onboardingPlanId],
+          deleted: true
+        }
+      };
+
+      persistOverrides(nextOverrides);
+      closePanel();
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   const isModalOpen =
-    panelMode === "enroll" || ((panelMode === "preview" || panelMode === "edit" || panelMode === "oidc") && !!selectedCase);
+    panelMode === "enroll" || ((panelMode === "preview" || panelMode === "edit" || panelMode === "oidc" || panelMode === "delete") && !!selectedCase);
 
   return (
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
@@ -889,6 +909,7 @@ export function InternalDashboard({
                   emptyLabel="No in-progress MSPs right now."
                   items={inProgressCases}
                   onConfigureOidc={openOidc}
+                  onDelete={openDelete}
                   onEdit={openEdit}
                   onView={openPreview}
                   title="In Progress MSPs"
@@ -898,6 +919,7 @@ export function InternalDashboard({
                   emptyLabel="No completed MSPs yet."
                   items={completedCases}
                   onConfigureOidc={openOidc}
+                  onDelete={openDelete}
                   onEdit={openEdit}
                   onView={openPreview}
                   title="Completed MSPs"
@@ -918,6 +940,8 @@ export function InternalDashboard({
                     ? "Case preview"
                     : panelMode === "edit"
                       ? "Edit MSP"
+                      : panelMode === "delete"
+                        ? "Delete MSP"
                       : panelMode === "oidc"
                         ? "Configure OIDC"
                         : "Enroll MSP"}
@@ -930,6 +954,8 @@ export function InternalDashboard({
                     ? `Sales Engineer: ${SALES_ENGINEER_NAME}`
                     : panelMode === "preview"
                       ? selectedCase?.primaryContactEmail
+                      : panelMode === "delete"
+                        ? "This action permanently removes the MSP and related onboarding records."
                       : panelMode === "edit"
                         ? "Update account details and case status."
                         : getAccessLabel(selectedCase!)}
@@ -993,9 +1019,44 @@ export function InternalDashboard({
                     <KeyRound className="mr-2 h-4 w-4" />
                     Configure OIDC
                   </Button>
+                  <Button className="justify-start" onClick={() => openDelete(selectedCase)} variant="outline">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete MSP
+                  </Button>
                   <Link href={selectedCase.actionHref}>
                     <Button className="w-full">Open full onboarding plan</Button>
                   </Link>
+                </div>
+              </div>
+            ) : null}
+
+            {panelMode === "delete" && selectedCase ? (
+              <div className="grid gap-4">
+                <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/12 text-amber-200">
+                      <AlertTriangle className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-semibold text-white">Delete this MSP?</h4>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        This removes the MSP record, onboarding plan, progress, and OIDC config.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP</p>
+                  <p className="mt-2 text-white">{selectedCase.mspName}</p>
+                  <p className="mt-1 text-sm text-slate-300">{selectedCase.primaryContactEmail}</p>
+                </div>
+                <div className="flex gap-3">
+                  <Button className="flex-1" disabled={isDeleting} onClick={handleDeleteMsp}>
+                    {isDeleting ? "Deleting..." : "Delete MSP"}
+                  </Button>
+                  <Button disabled={isDeleting} onClick={closePanel} variant="outline">
+                    Cancel
+                  </Button>
                 </div>
               </div>
             ) : null}

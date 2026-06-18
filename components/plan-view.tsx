@@ -22,8 +22,11 @@ const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
 
 type TaskGuide = {
+  bullets: string[];
   description: string;
+  effort?: string;
   href: string;
+  helpsWith: string;
   title: string;
 };
 
@@ -102,7 +105,8 @@ function taskTone(status: string) {
 
 function isBookingTask(title: string) {
   const normalizedTitle = title.toLowerCase();
-  return normalizedTitle.includes("book") && normalizedTitle.includes("meeting");
+  return normalizedTitle.includes("book") &&
+    (normalizedTitle.includes("meeting") || normalizedTitle.includes("call") || normalizedTitle.includes("session"));
 }
 
 function getMeetingButtonLabel(title: string) {
@@ -122,9 +126,17 @@ function getTaskGuides(title: string): TaskGuide[] {
   if (normalizedTitle.includes("add backup admins")) {
     return [
       {
+        bullets: [
+          "Add backup administrators so the tenant never depends on a single person.",
+          "Set up break-glass coverage for emergency access.",
+          "Confirm each admin has the right dashboard access before rollout starts.",
+          "Verify the backup admins are available for the onboarding timeline."
+        ],
         title: "Create a New Dashboard Administrator",
         description: "Review the admin dashboard steps for adding backup administrators and break-glass coverage.",
-        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-creating-a-new-administrator-in-the-dashboard"
+        effort: "10-15 minutes",
+        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-creating-a-new-administrator-in-the-dashboard",
+        helpsWith: "Adding backup administrators, protecting break-glass access, and confirming dashboard coverage."
       }
     ];
   }
@@ -132,9 +144,17 @@ function getTaskGuides(title: string): TaskGuide[] {
   if (normalizedTitle.includes("add employees and contractors")) {
     return [
       {
+        bullets: [
+          "Add individual employees and contractors to the tenant.",
+          "Verify each user's details before sending access.",
+          "Assign the right tenant access for onboarding and rollout work.",
+          "Prepare the MSP team so they are ready for the first deployment steps."
+        ],
         title: "Add Users to a Tenant",
         description: "Use this guide to add employees and contractors to the tenant with their company email addresses.",
-        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-individually-adding-users-to-a-tenant"
+        effort: "10-20 minutes",
+        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-individually-adding-users-to-a-tenant",
+        helpsWith: "Adding users cleanly, confirming access details, and preparing your team for rollout."
       }
     ];
   }
@@ -142,14 +162,29 @@ function getTaskGuides(title: string): TaskGuide[] {
   if (normalizedTitle.includes("distribute vault") || normalizedTitle.includes("extension guidance")) {
     return [
       {
+        bullets: [
+          "Guide users through importing saved passwords into Vault.",
+          "Help the team prepare for a smoother first sign-in experience.",
+          "Reduce friction before browser extension rollout begins."
+        ],
         title: "Import Passwords",
         description: "Share the password import guide with end users before rollout begins.",
-        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords"
+        effort: "5-10 minutes per user",
+        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords",
+        helpsWith: "Preparing users to bring existing passwords into Vault before go-live."
       },
       {
+        bullets: [
+          "Share end-user instructions for the KZero Vault experience.",
+          "Help users install the supported browser extension.",
+          "Set expectations for first-time Vault adoption and sign-in.",
+          "Prepare users with clear next steps before rollout begins."
+        ],
         title: "End-User Guides",
         description: "Point users to the KZero Vault and browser extension guidance for adoption and day-one setup.",
-        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/end-user-guides"
+        effort: "10-15 minutes",
+        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/end-user-guides",
+        helpsWith: "Sharing rollout instructions, extension setup, and user readiness for Vault adoption."
       }
     ];
   }
@@ -160,18 +195,21 @@ function getTaskGuides(title: string): TaskGuide[] {
 type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
 
 export function PlanView({
-  bundle
+  bundle: initialBundle
 }: {
   bundle: PlanBundle;
 }) {
   const [activeTab, setActiveTab] = useState<PlanTab>("overview");
+  const [bundle, setBundle] = useState<PlanBundle>(initialBundle);
   const [guidePreview, setGuidePreview] = useState<GuidePreviewState>(null);
+  const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
   const orderedTasks = bundle.plan.taskIds
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
   const nextTask = bundle.nextTask;
   const nextTaskIndex = orderedTasks.findIndex((task) => task.id === nextTask.id);
   const followingTask = nextTaskIndex >= 0 ? orderedTasks[nextTaskIndex + 1] ?? null : null;
+  const isPlanComplete = bundle.plan.progress >= 100 || orderedTasks.every((task) => task.status === "complete");
   const completedTasks = bundle.tasks.filter((task) => task.status === "complete").length;
   const waitingOnKZeroTasks = bundle.tasks.filter((task) => task.status === "waiting_on_kzero").length;
   const activeTasks = bundle.tasks.filter((task) => ["in_progress", "waiting_on_msp"].includes(task.status)).length;
@@ -181,54 +219,76 @@ export function PlanView({
     tasks: bundle.tasks.filter((task) => task.phaseId === phase.id)
   }));
   const kzeroContact = users.find((user) => user.role === "sales_engineer");
-  const isKZeroOwnedCurrentTask = nextTask.owner === "kzero_se";
+  const isKZeroOwnedCurrentTask = !isPlanComplete && nextTask.owner === "kzero_se";
   const isKickoffBookingTask = isBookingTask(nextTask.title);
   const isBlocked = nextTask.waitingOn === "kzero" && !isKZeroOwnedCurrentTask;
   const meaningfulComments = bundle.comments.filter((comment) => isMeaningfulComment(comment.body));
-  const yourNextAction = isKZeroOwnedCurrentTask ? "No action needed from you right now." : nextTask.title;
-  const yourNextActionDetail = isKZeroOwnedCurrentTask
+  const yourNextAction = isPlanComplete
+    ? "Onboarding complete"
+    : isKZeroOwnedCurrentTask
+      ? "No action needed from you right now."
+      : nextTask.title;
+  const yourNextActionDetail = isPlanComplete
+    ? "Your team has completed the current onboarding plan."
+    : isKZeroOwnedCurrentTask
     ? "KZero is currently moving this step forward. We will let you know when your team needs to step back in."
     : nextTask.description;
-  const kzeroCurrentAction = isKZeroOwnedCurrentTask
+  const kzeroCurrentAction = isPlanComplete
+    ? "Implementation complete"
+    : isKZeroOwnedCurrentTask
     ? nextTask.title
     : followingTask?.owner === "kzero_se"
       ? followingTask.title
       : "KZero Sales Engineer is standing by for your current step.";
-  const kzeroCurrentActionDetail = isKZeroOwnedCurrentTask
+  const kzeroCurrentActionDetail = isPlanComplete
+    ? "No active KZero work remains in this onboarding plan."
+    : isKZeroOwnedCurrentTask
     ? nextTask.description
     : followingTask?.owner === "kzero_se"
       ? "This is the next KZero-owned step after you complete the current action."
       : "Your KZero Sales Engineer will continue with implementation support once your current action is complete.";
-  const actionStatusHeading = isBlocked
+  const actionStatusHeading = isPlanComplete
+    ? "No Blockers Right Now"
+    : isBlocked
     ? "Blocked"
     : isKZeroOwnedCurrentTask
       ? "KZero Is Working On This"
       : "Action Needed From You";
-  const actionStatusMessage = isKZeroOwnedCurrentTask
+  const actionStatusMessage = isPlanComplete
+    ? "All onboarding steps are complete."
+    : isKZeroOwnedCurrentTask
     ? "No action needed from you right now."
     : isKickoffBookingTask
       ? "Book your kickoff call with your KZero Sales Engineer to begin NFR tenant setup."
       : nextTask.description;
-  const actionStatusReason = isBlocked
+  const actionStatusReason = isPlanComplete
+    ? "Your progress is saved and the onboarding plan is complete."
+    : isBlocked
     ? "This step depends on KZero completing work before your team can move to the next milestone."
     : isKZeroOwnedCurrentTask
     ? "KZero is currently handling the work required to keep your onboarding plan moving."
     : isKickoffBookingTask
       ? "This meeting starts the NFR deployment and confirms the initial tenant configuration."
       : `Completing this step keeps ${safeNextStepPhase?.title ?? "your onboarding"} on track and unlocks the next milestone.`;
-  const whatHappensNext = followingTask
+  const whatHappensNext = isPlanComplete
+    ? "You can return to this workspace at any time to review completed onboarding milestones."
+    : followingTask
     ? isKickoffBookingTask
       ? "After kickoff, you'll add backup admins and invite your MSP users."
       : `${followingTask.title} (${formatTaskOwnerLabelShort(followingTask.owner)})`
     : "This completes the current onboarding milestone.";
-  const currentStepLabel = isKickoffBookingTask ? "Book kickoff call" : nextTask.title;
-  const currentOwnerLabel = nextTask.owner === "kzero_se"
+  const currentStepLabel = isPlanComplete ? "Completed onboarding plan" : isKickoffBookingTask ? "Book kickoff call" : nextTask.title;
+  const currentOwnerLabel = isPlanComplete
+    ? "Complete"
+    : nextTask.owner === "kzero_se"
     ? "KZero"
     : nextTask.owner === "shared"
       ? "Your team and KZero"
       : "Your team";
-  const currentStatusLabel = isBlocked ? "Blocked" : formatTaskStatusLabel(nextTask.status);
-  const afterThisLabel = followingTask
+  const currentStatusLabel = isPlanComplete ? "Complete" : isBlocked ? "Blocked" : formatTaskStatusLabel(nextTask.status);
+  const afterThisLabel = isPlanComplete
+    ? "No further action required"
+    : followingTask
     ? isKickoffBookingTask
       ? "Add backup admins"
       : followingTask.title
@@ -240,6 +300,27 @@ export function PlanView({
     { id: "documents", label: "Documents" },
     ...(meaningfulComments.length > 0 ? [{ id: "activity" as const, label: "Activity" }] : [])
   ];
+
+  async function markTaskComplete(taskId: string) {
+    setSavingTaskId(taskId);
+
+    try {
+      const response = await fetch(`/api/portal/plans/${bundle.plan.id}/tasks/${taskId}/complete`, {
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error("complete_failed");
+      }
+
+      const payload = (await response.json()) as { bundle: PlanBundle };
+      if (payload.bundle) {
+        setBundle(payload.bundle);
+      }
+    } finally {
+      setSavingTaskId(null);
+    }
+  }
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 md:px-6 md:py-6">
@@ -358,15 +439,35 @@ export function PlanView({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {!isKZeroOwnedCurrentTask && nextTask.meetingCta ? (
-                    <a
-                      className={buttonVariants({ variant: "default", className: "h-11 px-5" })}
-                      href={BOOKING_URL}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {getMeetingButtonLabel(nextTask.title)}
-                    </a>
+                  {!isPlanComplete && !isKZeroOwnedCurrentTask ? (
+                    isBookingTask(nextTask.title) || nextTask.meetingCta ? (
+                      <>
+                        <a
+                          className={buttonVariants({ variant: "default", className: "h-11 px-5" })}
+                          href={BOOKING_URL}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {getMeetingButtonLabel(nextTask.title)}
+                        </a>
+                        <Button
+                          className="h-11 px-5"
+                          disabled={savingTaskId === nextTask.id}
+                          onClick={() => markTaskComplete(nextTask.id)}
+                          variant="outline"
+                        >
+                          {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        className="h-11 px-5"
+                        disabled={savingTaskId === nextTask.id}
+                        onClick={() => markTaskComplete(nextTask.id)}
+                      >
+                        {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
+                      </Button>
+                    )
                   ) : null}
                 </div>
               </div>
@@ -560,6 +661,7 @@ export function PlanView({
                                 <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskTone(task.status)}`}>
                                   {(() => {
                                     const guides = getTaskGuides(task.title);
+                                    const isCurrentTask = !isPlanComplete && task.id === nextTask.id;
 
                                     return (
                                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -583,7 +685,7 @@ export function PlanView({
                                             onClick={() => setGuidePreview({ guides, stepName: task.title })}
                                             type="button"
                                           >
-                                            Preview Guide
+                                            {guides.length > 1 ? "View Guides" : "View Guide"}
                                           </button>
                                         ) : null}
                                       </div>
@@ -609,19 +711,38 @@ export function PlanView({
                                           onClick={() => setGuidePreview({ guides, stepName: task.title })}
                                           variant="outline"
                                         >
-                                          View Guide Preview
+                                          {guides.length > 1 ? "View Guides" : "View Guide"}
                                         </Button>
                                       ) : null}
-                                      {task.meetingCta ? (
-                                        <a
-                                          className={buttonVariants({ variant: "secondary", className: "h-10 px-4" })}
-                                          href={BOOKING_URL}
-                                          rel="noreferrer"
-                                          target="_blank"
+                                      {isCurrentTask && (task.meetingCta || isBookingTask(task.title)) ? (
+                                        <>
+                                          <a
+                                            className={buttonVariants({ variant: "default", className: "h-10 px-4" })}
+                                            href={BOOKING_URL}
+                                            rel="noreferrer"
+                                            target="_blank"
+                                          >
+                                            {getMeetingButtonLabel(task.title)}
+                                            <ArrowRight className="ml-2 h-4 w-4" />
+                                          </a>
+                                          <Button
+                                            className="h-10 px-4"
+                                            disabled={savingTaskId === task.id}
+                                            onClick={() => markTaskComplete(task.id)}
+                                            variant="outline"
+                                          >
+                                            {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
+                                          </Button>
+                                        </>
+                                      ) : null}
+                                      {isCurrentTask && !isKZeroOwnedCurrentTask && !task.meetingCta && !isBookingTask(task.title) ? (
+                                        <Button
+                                          className="h-10 px-4"
+                                          disabled={savingTaskId === task.id}
+                                          onClick={() => markTaskComplete(task.id)}
                                         >
-                                          {getMeetingButtonLabel(task.title)}
-                                          <ArrowRight className="ml-2 h-4 w-4" />
-                                        </a>
+                                          {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
+                                        </Button>
                                       ) : null}
                                     </div>
                                   </div>
@@ -685,7 +806,7 @@ export function PlanView({
               <div>
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Guide Preview</p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">{guidePreview.stepName}</h3>
-                <p className="mt-1 text-sm text-slate-300">Open the full partner guide in a new tab when you are ready.</p>
+                <p className="mt-1 text-sm text-slate-300">Review the key steps here, then open the full partner guide in a new tab when you are ready.</p>
               </div>
               <Button onClick={() => setGuidePreview(null)} variant="outline">
                 Close
@@ -699,6 +820,23 @@ export function PlanView({
                   <p className="mt-1 font-medium text-white">{guidePreview.stepName}</p>
                   <h4 className="mt-4 text-lg font-semibold text-white">{guide.title}</h4>
                   <p className="mt-2 text-sm leading-6 text-slate-300">{guide.description}</p>
+                  <div className="mt-4 rounded-[1rem] border border-white/10 bg-[#08111f] p-3.5">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What This Guide Helps You Do</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{guide.helpsWith}</p>
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Preview Highlights</p>
+                    <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-300">
+                      {guide.bullets.map((bullet) => (
+                        <li key={bullet} className="rounded-[0.95rem] border border-white/10 bg-[#08111f] px-3 py-2">
+                          {bullet}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {guide.effort ? (
+                    <p className="mt-4 text-sm text-slate-400">Estimated effort: {guide.effort}</p>
+                  ) : null}
                   <a
                     className={`${buttonVariants({ variant: "secondary" })} mt-4 inline-flex`}
                     href={guide.href}

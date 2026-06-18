@@ -22,8 +22,11 @@ const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
 
 type TaskGuide = {
+  bullets: string[];
   description: string;
+  effort?: string;
   href: string;
+  helpsWith: string;
   title: string;
 };
 
@@ -101,7 +104,9 @@ function formatTaskOwnerLabelShort(owner: Task["owner"]) {
 }
 
 function isBookingTask(task: Task) {
-  return task.title.toLowerCase().includes("book") && task.title.toLowerCase().includes("meeting");
+  const normalizedTitle = task.title.toLowerCase();
+  return normalizedTitle.includes("book") &&
+    (normalizedTitle.includes("meeting") || normalizedTitle.includes("call") || normalizedTitle.includes("session"));
 }
 
 function getMeetingButtonLabel(task: Task) {
@@ -153,9 +158,17 @@ function getTaskGuides(title: string): TaskGuide[] {
   if (normalizedTitle.includes("add backup admins")) {
     return [
       {
+        bullets: [
+          "Add backup administrators so the tenant never depends on a single person.",
+          "Set up break-glass coverage for emergency access.",
+          "Confirm each admin has the right dashboard access before rollout starts.",
+          "Verify the backup admins are available for the onboarding timeline."
+        ],
         title: "Create a New Dashboard Administrator",
         description: "Review the admin dashboard steps for adding backup administrators and break-glass coverage.",
-        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-creating-a-new-administrator-in-the-dashboard"
+        effort: "10-15 minutes",
+        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-creating-a-new-administrator-in-the-dashboard",
+        helpsWith: "Adding backup administrators, protecting break-glass access, and confirming dashboard coverage."
       }
     ];
   }
@@ -163,9 +176,17 @@ function getTaskGuides(title: string): TaskGuide[] {
   if (normalizedTitle.includes("add employees and contractors")) {
     return [
       {
+        bullets: [
+          "Add individual employees and contractors to the tenant.",
+          "Verify each user's details before sending access.",
+          "Assign the right tenant access for onboarding and rollout work.",
+          "Prepare the MSP team so they are ready for the first deployment steps."
+        ],
         title: "Add Users to a Tenant",
         description: "Use this guide to add employees and contractors to the tenant with their company email addresses.",
-        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-individually-adding-users-to-a-tenant"
+        effort: "10-20 minutes",
+        href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-individually-adding-users-to-a-tenant",
+        helpsWith: "Adding users cleanly, confirming access details, and preparing your team for rollout."
       }
     ];
   }
@@ -173,14 +194,29 @@ function getTaskGuides(title: string): TaskGuide[] {
   if (normalizedTitle.includes("distribute vault") || normalizedTitle.includes("extension guidance")) {
     return [
       {
+        bullets: [
+          "Guide users through importing saved passwords into Vault.",
+          "Help the team prepare for a smoother first sign-in experience.",
+          "Reduce friction before browser extension rollout begins."
+        ],
         title: "Import Passwords",
         description: "Share the password import guide with end users before rollout begins.",
-        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords"
+        effort: "5-10 minutes per user",
+        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords",
+        helpsWith: "Preparing users to bring existing passwords into Vault before go-live."
       },
       {
+        bullets: [
+          "Share end-user instructions for the KZero Vault experience.",
+          "Help users install the supported browser extension.",
+          "Set expectations for first-time Vault adoption and sign-in.",
+          "Prepare users with clear next steps before rollout begins."
+        ],
         title: "End-User Guides",
         description: "Point users to the KZero Vault and browser extension guidance for adoption and day-one setup.",
-        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/end-user-guides"
+        effort: "10-15 minutes",
+        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/end-user-guides",
+        helpsWith: "Sharing rollout instructions, extension setup, and user readiness for Vault adoption."
       }
     ];
   }
@@ -747,7 +783,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                             onClick={() => setGuidePreview({ guides, stepName: task.title })}
                                             type="button"
                                           >
-                                            Preview Guide
+                                            {guides.length > 1 ? "View Guides" : "View Guide"}
                                           </button>
                                         ) : null}
                                       </div>
@@ -876,7 +912,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
 
                                     {guides.length > 0 ? (
                                       <Button onClick={() => setGuidePreview({ guides, stepName: task.title })} variant="outline">
-                                        View Guide Preview
+                                        {guides.length > 1 ? "View Guides" : "View Guide"}
                                       </Button>
                                     ) : null}
 
@@ -976,7 +1012,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
               <div>
                 <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Guide Preview</p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">{guidePreview.stepName}</h3>
-                <p className="mt-1 text-sm text-slate-300">Open the full partner guide in a new tab when you are ready.</p>
+                <p className="mt-1 text-sm text-slate-300">Review the key steps here, then open the full partner guide in a new tab when you are ready.</p>
               </div>
               <Button onClick={() => setGuidePreview(null)} variant="outline">
                 Close
@@ -990,6 +1026,23 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                   <p className="mt-1 font-medium text-white">{guidePreview.stepName}</p>
                   <h4 className="mt-4 text-lg font-semibold text-white">{guide.title}</h4>
                   <p className="mt-2 text-sm leading-6 text-slate-300">{guide.description}</p>
+                  <div className="mt-4 rounded-[1rem] border border-white/10 bg-[#08111f] p-3.5">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What This Guide Helps You Do</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{guide.helpsWith}</p>
+                  </div>
+                  <div className="mt-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Preview Highlights</p>
+                    <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-300">
+                      {guide.bullets.map((bullet) => (
+                        <li key={bullet} className="rounded-[0.95rem] border border-white/10 bg-[#08111f] px-3 py-2">
+                          {bullet}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  {guide.effort ? (
+                    <p className="mt-4 text-sm text-slate-400">Estimated effort: {guide.effort}</p>
+                  ) : null}
                   <a
                     className={`${buttonVariants({ variant: "secondary" })} mt-4 inline-flex`}
                     href={guide.href}
