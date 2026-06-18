@@ -124,10 +124,30 @@ function buildPortalTaskRecords(
 
 function getPhaseTitleForTask(bundle: PlanBundle, task: MockTask | undefined) {
   if (!task) {
-    return bundle.phases[bundle.phases.length - 1]?.title ?? "Completed";
+    return "Completed";
   }
 
   return bundle.phases.find((phase) => phase.id === task.phaseId)?.title ?? "Kickoff";
+}
+
+function getPlanStatusForTask(task: PortalTaskRecord | undefined) {
+  if (!task) {
+    return "complete";
+  }
+
+  if (task.status === "waiting_on_kzero") {
+    return "waiting_on_kzero";
+  }
+
+  if (task.status === "waiting_on_msp" || task.status === "in_progress" || task.status === "not_started") {
+    if (task.owner === "kzero_se") {
+      return "waiting_on_kzero";
+    }
+
+    return "waiting_on_msp";
+  }
+
+  return "waiting_on_msp";
 }
 
 function getPlanMetrics(bundle: PlanBundle, persistedTasks: PortalTaskRecord[]) {
@@ -135,15 +155,10 @@ function getPlanMetrics(bundle: PlanBundle, persistedTasks: PortalTaskRecord[]) 
   const completedCount = persistedTasks.filter((task) => task.status === "complete").length;
   const nextTaskIndex = persistedTasks.findIndex((task) => task.status !== "complete");
   const progress = orderedTemplateTasks.length === 0 ? 0 : Math.round((completedCount / orderedTemplateTasks.length) * 100);
-  const nextTemplateTask = nextTaskIndex === -1 ? orderedTemplateTasks[orderedTemplateTasks.length - 1] : orderedTemplateTasks[nextTaskIndex];
-  const currentStage = nextTaskIndex === -1
-    ? bundle.phases[bundle.phases.length - 1]?.title ?? "Completed"
-    : getPhaseTitleForTask(bundle, nextTemplateTask);
-  const status = progress >= 100
-    ? "complete"
-    : nextTemplateTask?.owner === "kzero_se"
-      ? "waiting_on_kzero"
-      : "waiting_on_msp";
+  const nextPersistedTask = nextTaskIndex === -1 ? undefined : persistedTasks[nextTaskIndex];
+  const nextTemplateTask = nextTaskIndex === -1 ? undefined : orderedTemplateTasks[nextTaskIndex];
+  const currentStage = progress >= 100 ? "Completed" : getPhaseTitleForTask(bundle, nextTemplateTask);
+  const status = progress >= 100 ? "complete" : getPlanStatusForTask(nextPersistedTask);
 
   return {
     completedCount,
