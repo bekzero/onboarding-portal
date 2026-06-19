@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { GuidePreviewResult, TaskGuide } from "@/lib/guide-previews";
@@ -12,6 +12,10 @@ type GuidePreviewState = {
 
 type GuidePreviewMap = Record<string, GuidePreviewResult | null>;
 
+function hasLimitedPreviewContent(preview: GuidePreviewResult) {
+  return preview.kind === "article" && preview.steps.length < 3 && preview.headings.length < 2;
+}
+
 export function GuidePreviewModal({
   guidePreview,
   onClose
@@ -21,17 +25,20 @@ export function GuidePreviewModal({
 }) {
   const [previews, setPreviews] = useState<GuidePreviewMap>({});
   const [loadingUrls, setLoadingUrls] = useState<string[]>([]);
+  const [selectedGuideHref, setSelectedGuideHref] = useState<string | null>(null);
 
   useEffect(() => {
     if (!guidePreview) {
       setPreviews({});
       setLoadingUrls([]);
+      setSelectedGuideHref(null);
       return;
     }
 
     const urls = guidePreview.guides.map((guide) => guide.href);
     setLoadingUrls(urls);
     setPreviews({});
+    setSelectedGuideHref(urls[0] ?? null);
 
     let isCancelled = false;
 
@@ -82,114 +89,177 @@ export function GuidePreviewModal({
     return null;
   }
 
+  const selectedGuide = guidePreview.guides.find((guide) => guide.href === selectedGuideHref) ?? guidePreview.guides[0] ?? null;
+  const selectedPreview = selectedGuide ? previews[selectedGuide.href] : null;
+  const modalTitle = selectedPreview?.title ?? selectedGuide?.title ?? "Guide Preview";
+  const selectedGuideIsLoading = selectedGuide ? loadingUrls.includes(selectedGuide.href) : false;
+  const hasMultipleGuides = guidePreview.guides.length > 1;
+  const selectedGuideCard = useMemo(() => {
+    if (!selectedGuide) {
+      return null;
+    }
+
+    return (
+      <div key={selectedGuide.href} className="rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-5">
+        {selectedGuideIsLoading ? (
+          <div className="rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
+            <p className="text-lg font-semibold text-white">{selectedGuide.title}</p>
+            <p className="mt-2 text-sm text-slate-300">Loading preview...</p>
+          </div>
+        ) : null}
+
+        {!selectedGuideIsLoading && selectedPreview ? (
+          <>
+            <h4 className="text-2xl font-semibold text-white">{selectedPreview.title}</h4>
+
+            {selectedPreview.intro ? (
+              <section className="mt-5 rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What You'll Do</p>
+                <p className="mt-3 text-sm leading-7 text-slate-200">{selectedPreview.intro}</p>
+              </section>
+            ) : null}
+
+            {selectedPreview.kind === "collection" ? (
+              <div className="mt-5 rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
+                <p className="text-sm text-slate-300">{selectedPreview.message}</p>
+              </div>
+            ) : null}
+
+            {selectedPreview.kind === "unavailable" ? (
+              <div className="mt-5 rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
+                <p className="text-sm font-medium text-white">Preview unavailable</p>
+                <p className="mt-2 text-sm text-slate-300">{selectedPreview.message ?? "Open the full guide to view the article."}</p>
+              </div>
+            ) : null}
+
+            {selectedPreview.kind === "article" && selectedPreview.headings.length > 0 ? (
+              <section className="mt-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">In This Guide</p>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {selectedPreview.headings.map((heading) => (
+                    <div key={heading} className="rounded-[0.95rem] border border-white/10 bg-[#08111f] px-4 py-3">
+                      <p className="font-medium text-white">{heading}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {selectedPreview.kind === "article" && selectedPreview.steps.length > 0 ? (
+              <section className="mt-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Key Steps</p>
+                <ol className="mt-3 grid gap-3">
+                  {selectedPreview.steps.map((step, index) => (
+                    <li key={step} className="rounded-[1rem] border border-white/10 bg-[#08111f] px-4 py-4">
+                      <div className="flex gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
+                          {index + 1}
+                        </div>
+                        <p className="pt-1 text-sm leading-7 text-slate-200">{step}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
+
+            {selectedPreview.images.length > 0 ? (
+              <section className="mt-5">
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Reference Images</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {selectedPreview.images.map((imageUrl, index) => (
+                    <a
+                      key={imageUrl}
+                      className="group overflow-hidden rounded-[1rem] border border-white/10 bg-[#08111f] transition hover:border-white/20"
+                      href={imageUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <img alt="" className="h-36 w-full object-cover" src={imageUrl} />
+                      <div className="px-4 py-3 text-sm text-blue-200 group-hover:text-blue-100">
+                        Open Image {index + 1}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            {hasLimitedPreviewContent(selectedPreview) ? (
+              <p className="mt-5 text-sm text-slate-400">
+                Preview may be abbreviated. Open the full guide for the complete article.
+              </p>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    );
+  }, [selectedGuide, selectedGuideIsLoading, selectedPreview]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#020611]/75 p-4 md:items-center">
-      <div className="w-full max-w-3xl rounded-[1.6rem] border border-white/10 bg-[#0d1627] p-5 shadow-panel">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Guide Preview</p>
-            <h3 className="mt-2 text-2xl font-semibold text-white">{guidePreview.stepName}</h3>
-            <p className="mt-1 text-sm text-slate-300">Review the Partner Portal article preview here, then open the full guide in a new tab when you are ready.</p>
+      <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#0d1627] shadow-panel">
+        <div className="border-b border-white/10 px-5 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Guide Preview</p>
+              <h3 className="mt-2 text-2xl font-semibold text-white md:text-3xl">{modalTitle}</h3>
+              <p className="mt-2 text-sm text-slate-300">Related Step: {guidePreview.stepName}</p>
+            </div>
+            <Button onClick={onClose} variant="outline">
+              Close
+            </Button>
           </div>
-          <Button onClick={onClose} variant="outline">
-            Close
-          </Button>
         </div>
 
-        <div className="mt-5 grid gap-3">
-          {guidePreview.guides.map((guide) => {
-            const preview = previews[guide.href];
-            const isLoading = loadingUrls.includes(guide.href);
+        <div className="overflow-y-auto px-5 py-5">
+          {hasMultipleGuides ? (
+            <div className="mb-4 flex flex-wrap gap-2">
+              {guidePreview.guides.map((guide) => {
+                const isSelected = guide.href === selectedGuide?.href;
+                const previewTitle = previews[guide.href]?.title ?? guide.title;
 
-            return (
-              <div key={guide.href} className="rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Related Step</p>
-                <p className="mt-1 font-medium text-white">{guidePreview.stepName}</p>
+                return (
+                  <button
+                    key={guide.href}
+                    className={`rounded-full border px-3 py-2 text-sm transition ${
+                      isSelected
+                        ? "border-primary/40 bg-primary/15 text-white"
+                        : "border-white/10 bg-[#0a1424] text-slate-300 hover:border-white/20 hover:text-white"
+                    }`}
+                    onClick={() => setSelectedGuideHref(guide.href)}
+                    type="button"
+                  >
+                    {previewTitle}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
-                {isLoading ? (
-                  <div className="mt-4 rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
-                    <p className="text-sm font-medium text-white">{guide.title}</p>
-                    <p className="mt-2 text-sm text-slate-300">Loading preview...</p>
-                  </div>
-                ) : null}
+          {selectedGuideCard}
+        </div>
 
-                {!isLoading && preview ? (
-                  <>
-                    <h4 className="mt-4 text-lg font-semibold text-white">{preview.title}</h4>
-                    {preview.intro ? <p className="mt-2 text-sm leading-6 text-slate-300">{preview.intro}</p> : null}
-
-                    {preview.kind === "collection" ? (
-                      <div className="mt-4 rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
-                        <p className="text-sm text-slate-300">{preview.message}</p>
-                      </div>
-                    ) : null}
-
-                    {preview.kind === "unavailable" ? (
-                      <div className="mt-4 rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
-                        <p className="text-sm font-medium text-white">Preview unavailable</p>
-                        <p className="mt-2 text-sm text-slate-300">{preview.message ?? "Open the full guide to view the article."}</p>
-                      </div>
-                    ) : null}
-
-                    {preview.headings.length > 0 ? (
-                      <div className="mt-4">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Headings</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {preview.headings.map((heading) => (
-                            <span key={heading} className="rounded-full border border-white/10 bg-[#08111f] px-3 py-1 text-sm text-slate-200">
-                              {heading}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {preview.steps.length > 0 ? (
-                      <div className="mt-4">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Article Steps</p>
-                        <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-300">
-                          {preview.steps.map((step) => (
-                            <li key={step} className="rounded-[0.95rem] border border-white/10 bg-[#08111f] px-3 py-2">
-                              {step}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    {preview.images.length > 0 ? (
-                      <div className="mt-4">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Images</p>
-                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                          {preview.images.map((imageUrl) => (
-                            <a
-                              key={imageUrl}
-                              className="rounded-[0.95rem] border border-white/10 bg-[#08111f] px-3 py-2 text-sm text-blue-200 hover:text-blue-100"
-                              href={imageUrl}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Open image
-                            </a>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-
-                <a
-                  className={`${buttonVariants({ variant: "secondary" })} mt-4 inline-flex`}
-                  href={guide.href}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open Full Guide
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </a>
-              </div>
-            );
-          })}
+        <div className="flex items-center justify-between gap-3 border-t border-white/10 bg-[#0b1424] px-5 py-4">
+          <div>
+            <p className="text-sm text-slate-300">Open the full article in a new tab when you need the complete guide.</p>
+          </div>
+          <div className="flex gap-3">
+            {selectedGuide ? (
+              <a
+                className={buttonVariants({ variant: "secondary" })}
+                href={selectedGuide.href}
+                rel="noreferrer"
+                target="_blank"
+              >
+                Open Full Guide
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </a>
+            ) : null}
+            <Button onClick={onClose} variant="outline">
+              Close
+            </Button>
+          </div>
         </div>
       </div>
     </div>
