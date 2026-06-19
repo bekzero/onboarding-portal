@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -25,6 +25,15 @@ type GuidePreviewState = {
   guides: TaskGuide[];
   stepName: string;
 } | null;
+
+type FirstCustomerPilotFormState = {
+  adminContactEmail: string;
+  adminContactName: string;
+  customerAlias: string;
+  estimatedUserCount: string;
+  notes: string;
+  targetRolloutTiming: string;
+};
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
@@ -129,6 +138,21 @@ function isMeaningfulComment(body: string) {
     !normalizedBody.includes("demo-generated onboarding case");
 }
 
+function isFirstCustomerPilotTask(title: string) {
+  return title.toLowerCase() === "select first customer pilot";
+}
+
+function createFirstCustomerPilotFormState(bundle: PlanBundle): FirstCustomerPilotFormState {
+  return {
+    adminContactEmail: bundle.firstCustomerPilot?.adminContactEmail ?? "",
+    adminContactName: bundle.firstCustomerPilot?.adminContactName ?? "",
+    customerAlias: bundle.firstCustomerPilot?.customerAlias ?? "",
+    estimatedUserCount: bundle.firstCustomerPilot?.estimatedUserCount?.toString() ?? "",
+    notes: bundle.firstCustomerPilot?.notes ?? "",
+    targetRolloutTiming: bundle.firstCustomerPilot?.targetRolloutTiming ?? ""
+  };
+}
+
 type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
 
 export function PlanView({
@@ -140,6 +164,9 @@ export function PlanView({
   const [bundle, setBundle] = useState<PlanBundle>(initialBundle);
   const [guidePreview, setGuidePreview] = useState<GuidePreviewState>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const [pilotForm, setPilotForm] = useState<FirstCustomerPilotFormState>(() => createFirstCustomerPilotFormState(initialBundle));
+  const [savingPilotDetails, setSavingPilotDetails] = useState(false);
+  const [pilotError, setPilotError] = useState<string | null>(null);
   const orderedTasks = bundle.plan.taskIds
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
@@ -161,6 +188,9 @@ export function PlanView({
   const kzeroContact = users.find((user) => user.role === "sales_engineer");
   const isKZeroOwnedCurrentTask = !isPlanComplete && nextTask.owner === "kzero_se";
   const isKickoffBookingTask = isBookingTask(nextTask.title);
+  const isSelectingFirstCustomerPilot = isFirstCustomerPilotTask(nextTask.title);
+  const hasSavedFirstCustomerPilot =
+    Boolean(bundle.firstCustomerPilot?.customerAlias?.trim() && bundle.firstCustomerPilot?.targetRolloutTiming?.trim());
   const isBlocked = nextTask.waitingOn === "kzero" && !isKZeroOwnedCurrentTask;
   const showCurrentKzeroBanner =
     activeTab === "tasks" &&
@@ -245,8 +275,18 @@ export function PlanView({
     ...(meaningfulComments.length > 0 ? [{ id: "activity" as const, label: "Activity" }] : [])
   ];
 
+  useEffect(() => {
+    setPilotForm(createFirstCustomerPilotFormState(bundle));
+  }, [bundle]);
+
   async function markTaskComplete(taskId: string) {
+    if (taskId === nextTask.id && isSelectingFirstCustomerPilot && !hasSavedFirstCustomerPilot) {
+      setPilotError("Save the first customer pilot details before marking this step complete.");
+      return;
+    }
+
     setSavingTaskId(taskId);
+    setPilotError(null);
 
     try {
       const response = await fetch(`/api/portal/plans/${bundle.plan.id}/tasks/${taskId}/complete`, {
@@ -263,6 +303,40 @@ export function PlanView({
       }
     } finally {
       setSavingTaskId(null);
+    }
+  }
+
+  async function saveFirstCustomerPilot() {
+    setSavingPilotDetails(true);
+    setPilotError(null);
+
+    try {
+      const response = await fetch(`/api/portal/plans/${bundle.plan.id}/first-customer-pilot`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          adminContactEmail: pilotForm.adminContactEmail,
+          adminContactName: pilotForm.adminContactName,
+          customerAlias: pilotForm.customerAlias,
+          estimatedUserCount: pilotForm.estimatedUserCount ? Number(pilotForm.estimatedUserCount) : undefined,
+          notes: pilotForm.notes,
+          targetRolloutTiming: pilotForm.targetRolloutTiming
+        })
+      });
+
+      const payload = (await response.json()) as { bundle?: PlanBundle; error?: string };
+
+      if (!response.ok || !payload.bundle) {
+        throw new Error(payload.error ?? "save_failed");
+      }
+
+      setBundle(payload.bundle);
+    } catch (error) {
+      setPilotError(error instanceof Error ? error.message : "Could not save the first customer pilot details.");
+    } finally {
+      setSavingPilotDetails(false);
     }
   }
 
@@ -401,14 +475,113 @@ export function PlanView({
                     ) : (
                       <Button
                         className="h-11 px-5"
-                        disabled={savingTaskId === nextTask.id}
+                        disabled={savingTaskId === nextTask.id || (isSelectingFirstCustomerPilot && !hasSavedFirstCustomerPilot)}
                         onClick={() => markTaskComplete(nextTask.id)}
                       >
-                        {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
+                        {isSelectingFirstCustomerPilot && !hasSavedFirstCustomerPilot
+                          ? "Save Pilot Details First"
+                          : savingTaskId === nextTask.id
+                            ? "Saving..."
+                            : "Mark Complete"}
                       </Button>
                     )
                   ) : null}
                 </div>
+                {isSelectingFirstCustomerPilot ? (
+                  <div className="rounded-[1.2rem] border border-white/10 bg-[#0a1424]/85 p-4">
+                    <div className="flex flex-col gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">First Customer Pilot</p>
+                        <h3 className="mt-2 text-lg font-semibold text-white">Capture the first customer rollout target</h3>
+                        <p className="mt-1 text-sm text-slate-300">
+                          Use an alias if needed. KZero needs enough detail to confirm the pilot plan and prepare the customer tenant.
+                        </p>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <label className="grid gap-2 text-sm text-slate-300">
+                          <span>Customer name or alias</span>
+                          <input
+                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                            onChange={(event) => setPilotForm((current) => ({ ...current, customerAlias: event.target.value }))}
+                            value={pilotForm.customerAlias}
+                          />
+                        </label>
+                        <label className="grid gap-2 text-sm text-slate-300">
+                          <span>Estimated user count</span>
+                          <input
+                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                            min={1}
+                            onChange={(event) => setPilotForm((current) => ({ ...current, estimatedUserCount: event.target.value }))}
+                            type="number"
+                            value={pilotForm.estimatedUserCount}
+                          />
+                        </label>
+                        <label className="grid gap-2 text-sm text-slate-300">
+                          <span>Target rollout date or timing</span>
+                          <input
+                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                            onChange={(event) => setPilotForm((current) => ({ ...current, targetRolloutTiming: event.target.value }))}
+                            placeholder="e.g. July 2026 or Week of July 15"
+                            value={pilotForm.targetRolloutTiming}
+                          />
+                        </label>
+                        <label className="grid gap-2 text-sm text-slate-300">
+                          <span>Customer admin contact name</span>
+                          <input
+                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                            onChange={(event) => setPilotForm((current) => ({ ...current, adminContactName: event.target.value }))}
+                            value={pilotForm.adminContactName}
+                          />
+                        </label>
+                        <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                          <span>Customer admin contact email</span>
+                          <input
+                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                            onChange={(event) => setPilotForm((current) => ({ ...current, adminContactEmail: event.target.value }))}
+                            type="email"
+                            value={pilotForm.adminContactEmail}
+                          />
+                        </label>
+                        <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                          <span>Notes</span>
+                          <textarea
+                            className="min-h-[110px] rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                            onChange={(event) => setPilotForm((current) => ({ ...current, notes: event.target.value }))}
+                            value={pilotForm.notes}
+                          />
+                        </label>
+                      </div>
+                      {hasSavedFirstCustomerPilot && bundle.firstCustomerPilot ? (
+                        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.05] px-4 py-3 text-sm text-slate-200">
+                          <p className="font-medium text-white">Pilot details saved</p>
+                          <p className="mt-1">
+                            {bundle.firstCustomerPilot.customerAlias} · {bundle.firstCustomerPilot.targetRolloutTiming}
+                          </p>
+                        </div>
+                      ) : null}
+                      {pilotError ? (
+                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-sm text-amber-100">
+                          {pilotError}
+                        </div>
+                      ) : null}
+                      <div className="flex flex-wrap gap-3">
+                        <Button className="h-11 px-5" disabled={savingPilotDetails} onClick={saveFirstCustomerPilot}>
+                          {savingPilotDetails ? "Saving..." : "Save Pilot Details"}
+                        </Button>
+                        {hasSavedFirstCustomerPilot ? (
+                          <Button
+                            className="h-11 px-5"
+                            disabled={savingTaskId === nextTask.id}
+                            onClick={() => markTaskComplete(nextTask.id)}
+                            variant="outline"
+                          >
+                            {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </Card>
 
@@ -693,10 +866,14 @@ export function PlanView({
                                           {isCurrentTask && !isKZeroOwnedCurrentTask && !task.meetingCta && !isBookingTask(task.title) ? (
                                             <Button
                                               className="h-10 px-4"
-                                              disabled={savingTaskId === task.id}
+                                              disabled={savingTaskId === task.id || (isFirstCustomerPilotTask(task.title) && !hasSavedFirstCustomerPilot)}
                                               onClick={() => markTaskComplete(task.id)}
                                             >
-                                              {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
+                                              {isFirstCustomerPilotTask(task.title) && !hasSavedFirstCustomerPilot
+                                                ? "Save Pilot Details First"
+                                                : savingTaskId === task.id
+                                                  ? "Saving..."
+                                                  : "Mark Complete"}
                                             </Button>
                                           ) : null}
                                         </div>

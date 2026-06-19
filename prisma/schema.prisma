@@ -49,6 +49,12 @@ model OnboardingPlan {
   planId               String               @unique
   title                String?
   tenantType           String?
+  firstCustomerAdminContactEmail String?
+  firstCustomerAdminContactName  String?
+  firstCustomerAlias             String?
+  firstCustomerEstimatedUserCount Int?
+  firstCustomerNotes             String?
+  firstCustomerTargetRolloutTiming String?
   progress             Int                  @default(0)
   currentStage         String?
   status               String               @default("in_progress")

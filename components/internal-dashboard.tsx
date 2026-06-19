@@ -19,7 +19,7 @@ import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { OnboardingCase, TenantType, User } from "@/lib/mock-data";
+import type { FirstCustomerPilot, OnboardingCase, TenantType, User } from "@/lib/mock-data";
 import {
   readAdminCaseOverridesFromStorage,
   saveAdminCaseOverridesToStorage,
@@ -39,6 +39,7 @@ type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
   activeTaskStatus?: string;
   activeTaskTitle?: string;
+  firstCustomerPilot?: FirstCustomerPilot | null;
   mspId?: string;
 };
 type AdminApiCase = {
@@ -60,6 +61,7 @@ type AdminApiCase = {
   status: OnboardingCase["status"];
   submittedSaasAppCount: number;
   tenantRealm?: string;
+  firstCustomerPilot?: FirstCustomerPilot | null;
 };
 
 type EnrollmentFormState = {
@@ -238,6 +240,7 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     activeTaskStatus: item.activeTaskStatus,
     activeTaskTitle: item.activeTaskTitle,
     assignedSalesEngineer: SALES_ENGINEER_NAME,
+    firstCustomerPilot: item.firstCustomerPilot ?? null,
     currentStage: item.currentStage,
     lastActivity: item.lastActivity,
     mspId: item.id,
@@ -879,14 +882,11 @@ export function InternalDashboard({
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
       <section className="min-w-0 grid gap-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-3">
-            <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" surface="dark" />
-            <div>
-              <h2 className="text-2xl font-semibold text-white">MSP onboarding reporting</h2>
-              <p className="mt-1 text-sm text-slate-300">
-                Track live onboarding status, ownership, and OIDC readiness across MSP accounts.
-              </p>
-            </div>
+          <div>
+            <h2 className="text-2xl font-semibold text-white">MSP Onboarding Reporting</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              Track live onboarding status, ownership, and OIDC readiness across MSP accounts.
+            </p>
           </div>
           <div className="flex flex-wrap gap-3">
             <Link href="/">
@@ -1104,6 +1104,32 @@ export function InternalDashboard({
                       </div>
                     </div>
                   </div>
+                  {selectedCase.firstCustomerPilot ? (
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">First Customer Pilot</p>
+                      <p className="mt-2 text-white">{selectedCase.firstCustomerPilot.customerAlias}</p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Target timing</p>
+                          <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.targetRolloutTiming}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Estimated users</p>
+                          <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.estimatedUserCount ?? "Not provided"}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer admin</p>
+                          <p className="mt-1 text-sm text-slate-200">
+                            {selectedCase.firstCustomerPilot.adminContactName ?? selectedCase.firstCustomerPilot.adminContactEmail ?? "Not provided"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Notes</p>
+                          <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.notes ?? "No notes yet"}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3">

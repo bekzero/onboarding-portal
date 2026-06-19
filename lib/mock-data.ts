@@ -75,6 +75,15 @@ export type TaskSubmission = {
   note: string;
 };
 
+export type FirstCustomerPilot = {
+  adminContactEmail?: string;
+  adminContactName?: string;
+  customerAlias: string;
+  estimatedUserCount?: number;
+  notes?: string;
+  targetRolloutTiming: string;
+};
+
 export type Plan = {
   id: string;
   organizationId: string;
@@ -95,6 +104,7 @@ export type PlanBundle = {
   apps: SaaSApp[];
   attachments: Attachment[];
   comments: Comment[];
+  firstCustomerPilot: FirstCustomerPilot | null;
 };
 
 export type OnboardingCase = {
@@ -160,8 +170,8 @@ export const phases: Phase[] = [
   },
   {
     id: "phase-customer-rollout",
-    title: "Customer Rollout",
-    description: "Repeat the motion for the first customer tenant.",
+    title: "First Customer Pilot",
+    description: "Confirm the first customer rollout target and prepare the customer tenant.",
     order: 5
   }
 ];
@@ -214,7 +224,7 @@ const demoCaseConfigs: DemoCaseConfig[] = [
   },
   {
     accessMode: "temporary",
-    currentStage: "Customer Rollout",
+    currentStage: "Repeatable Rollout Ready",
     lastActivity: "June 13, 2026",
     name: "Skyline MSP",
     planId: "skyline-nfr",
@@ -353,15 +363,37 @@ const baseTasks: Omit<Task, "id">[] = [
   },
   {
     phaseId: "phase-customer-rollout",
-    title: "Roll out KZero to the first customer",
-    description: "Identify the first customer and confirm rollout readiness.",
-    owner: "shared",
+    title: "Select first customer pilot",
+    description: "Provide the customer name or alias, estimated user count, target rollout timing, and any rollout notes.",
+    owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-customer-rollout",
-    title: "Repeat tenant setup for the customer tenant",
-    description: "Reuse this onboarding motion for the customer environment once the MSP NFR is validated.",
+    title: "Confirm customer readiness",
+    description: "Confirm the customer has agreed to participate, customer admins are identified, and rollout timing is acceptable.",
+    owner: "msp",
+    status: "not_started"
+  },
+  {
+    phaseId: "phase-customer-rollout",
+    title: "KZero reviews pilot plan",
+    description: "KZero reviews the first customer details and confirms the rollout approach.",
+    owner: "kzero_se",
+    status: "not_started"
+  },
+  {
+    phaseId: "phase-customer-rollout",
+    title: "Book customer rollout session",
+    description: "Schedule a working session to prepare the first customer tenant.",
+    owner: "shared",
+    status: "not_started",
+    meetingCta: "Book customer rollout session"
+  },
+  {
+    phaseId: "phase-customer-rollout",
+    title: "Complete first customer rollout",
+    description: "Confirm tenant setup, user onboarding, app rollout, and lessons learned.",
     owner: "shared",
     status: "not_started"
   }
@@ -624,7 +656,8 @@ function createGeneratedPlanBundle(planId: string) {
         author: "Ben Eakin",
         body: "Demo-generated onboarding case. Production data will come from enrolled MSP records."
       }
-    ]
+    ],
+    firstCustomerPilot: null
   } satisfies PlanBundle;
 }
 
@@ -659,6 +692,7 @@ export function getPlanBundle(planId: string) {
     nextTask,
     apps,
     attachments: planAttachments,
-    comments: planComments
+    comments: planComments,
+    firstCustomerPilot: null
   } satisfies PlanBundle;
 }

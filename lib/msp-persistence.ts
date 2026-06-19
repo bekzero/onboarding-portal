@@ -1,12 +1,18 @@
 import "server-only";
 import type { AccessMode, OidcConfig, Prisma } from "@prisma/client";
 import { decryptStoredOidcClientSecret, encryptOidcClientSecret } from "@/lib/oidc-secret-crypto";
-import { getPlanBundle, type PlanBundle, type SaaSApp as MockSaaSApp, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
+import { getPlanBundle, type FirstCustomerPilot, type PlanBundle, type SaaSApp as MockSaaSApp, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-routing";
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 const onboardingPlanSelection = {
+  firstCustomerAdminContactEmail: true,
+  firstCustomerAdminContactName: true,
+  firstCustomerAlias: true,
+  firstCustomerEstimatedUserCount: true,
+  firstCustomerNotes: true,
+  firstCustomerTargetRolloutTiming: true,
   currentStage: true,
   lastActivityAt: true,
   onboardingTasks: {
@@ -188,6 +194,7 @@ function buildBundleFromPersistedState(
   persistedApps: MockSaaSApp[],
   persistedPlan?: {
     currentStage: string | null;
+    firstCustomerPilot?: FirstCustomerPilot | null;
     progress: number;
   }
 ) {
@@ -223,6 +230,7 @@ function buildBundleFromPersistedState(
   return {
     ...bundle,
     apps: persistedApps,
+    firstCustomerPilot: persistedPlan?.firstCustomerPilot ?? bundle.firstCustomerPilot ?? null,
     nextTask,
     plan: {
       ...bundle.plan,
@@ -247,6 +255,32 @@ function mapPersistedAppsToBundleApps(planBundle: PlanBundle, statuses: Array<{
         ? submission.status
         : "submitted"
   })) satisfies MockSaaSApp[];
+}
+
+function mapFirstCustomerPilotFromPlan(plan: {
+  firstCustomerAdminContactEmail: string | null;
+  firstCustomerAdminContactName: string | null;
+  firstCustomerAlias: string | null;
+  firstCustomerEstimatedUserCount: number | null;
+  firstCustomerNotes: string | null;
+  firstCustomerTargetRolloutTiming: string | null;
+}): FirstCustomerPilot | null {
+  if (!plan.firstCustomerAlias || !plan.firstCustomerTargetRolloutTiming) {
+    return null;
+  }
+
+  return {
+    adminContactEmail: plan.firstCustomerAdminContactEmail ?? undefined,
+    adminContactName: plan.firstCustomerAdminContactName ?? undefined,
+    customerAlias: plan.firstCustomerAlias,
+    estimatedUserCount: plan.firstCustomerEstimatedUserCount ?? undefined,
+    notes: plan.firstCustomerNotes ?? undefined,
+    targetRolloutTiming: plan.firstCustomerTargetRolloutTiming
+  };
+}
+
+function hasSavedFirstCustomerPilotDetails(pilot: FirstCustomerPilot | null | undefined) {
+  return Boolean(pilot?.customerAlias?.trim() && pilot?.targetRolloutTiming?.trim());
 }
 
 export type PublicMspRecord = {
@@ -290,6 +324,7 @@ export type AdminDashboardCase = {
   status: string;
   submittedSaasAppCount: number;
   tenantRealm?: string;
+  firstCustomerPilot?: FirstCustomerPilot | null;
 };
 
 type PortalTaskRecord = {
@@ -328,6 +363,15 @@ type ConfigureOidcInput = {
   clientSecret: string;
   redirectUri: string;
   tenantRealm: string;
+};
+
+type SubmitFirstCustomerPilotInput = {
+  adminContactEmail?: string;
+  adminContactName?: string;
+  customerAlias: string;
+  estimatedUserCount?: number;
+  notes?: string;
+  targetRolloutTiming: string;
 };
 
 function hasDatabaseUrl() {
@@ -402,8 +446,10 @@ function toAdminDashboardCase(
     derivedMetrics && derivedMetrics.nextTaskIndex >= 0
       ? portalTasks[derivedMetrics.nextTaskIndex]
       : null;
+  const firstCustomerPilot = plan ? mapFirstCustomerPilotFromPlan(plan) : null;
 
   return {
+    firstCustomerPilot,
     accessMode: msp.accessMode,
     activeTaskOwner: activeTask?.owner,
     activeTaskStatus: activeTask?.status,
@@ -613,6 +659,7 @@ export async function getPortalPlanBundle(planId: string) {
 
   const persistedTasks = await ensurePortalTasksSeeded(onboardingPlan.id, planId);
   const persistedApps = mapPersistedAppsToBundleApps(templateBundle, onboardingPlan.saasAppSubmissions);
+  const firstCustomerPilot = mapFirstCustomerPilotFromPlan(onboardingPlan);
 
   return buildBundleFromPersistedState(
     templateBundle,
@@ -620,6 +667,7 @@ export async function getPortalPlanBundle(planId: string) {
     persistedApps,
     {
       currentStage: onboardingPlan.currentStage,
+      firstCustomerPilot,
       progress: onboardingPlan.progress
     }
   );
@@ -666,10 +714,12 @@ async function advanceOnboardingPlanTask({
   const portalTasks = buildPortalTaskRecords(templateBundle, persistedTasks);
   const activeTaskIndex = portalTasks.findIndex((task) => task.status !== "complete");
   const persistedApps = mapPersistedAppsToBundleApps(templateBundle, onboardingPlan.saasAppSubmissions);
+  const firstCustomerPilot = mapFirstCustomerPilotFromPlan(onboardingPlan);
 
   if (activeTaskIndex === -1) {
     return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
+      firstCustomerPilot,
       progress: onboardingPlan.progress
     });
   }
@@ -680,6 +730,7 @@ async function advanceOnboardingPlanTask({
   if (!activeTask || !activeTemplateTask) {
     return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
+      firstCustomerPilot,
       progress: onboardingPlan.progress
     });
   }
@@ -687,12 +738,17 @@ async function advanceOnboardingPlanTask({
   if (requestedTaskId && activeTemplateTask.id !== requestedTaskId) {
     return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
+      firstCustomerPilot,
       progress: onboardingPlan.progress
     });
   }
 
   if (requireOwner && activeTask.owner !== requireOwner) {
     throw new Error("The current active onboarding step is not owned by KZero.");
+  }
+
+  if (activeTask.title === "Select first customer pilot" && !hasSavedFirstCustomerPilotDetails(firstCustomerPilot)) {
+    throw new Error("Save the first customer pilot details before completing this step.");
   }
 
   const nextPortalTasks = portalTasks.map((task, index) => {
@@ -738,6 +794,7 @@ async function advanceOnboardingPlanTask({
 
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
     currentStage: metrics.currentStage,
+    firstCustomerPilot,
     progress: metrics.progress
   });
 }
@@ -770,6 +827,79 @@ export async function completeCurrentKzeroTaskForMsp(mspId: string) {
     planId: onboardingPlan.planId,
     requireOwner: "kzero_se"
   });
+}
+
+export async function submitFirstCustomerPilot(planId: string, input: SubmitFirstCustomerPilotInput) {
+  ensureDatabaseConfigured();
+
+  const customerAlias = input.customerAlias.trim();
+  const targetRolloutTiming = input.targetRolloutTiming.trim();
+
+  if (!customerAlias || !targetRolloutTiming) {
+    throw new Error("Customer alias and target rollout timing are required.");
+  }
+
+  const onboardingPlan = await prisma.onboardingPlan.findUnique({
+    where: { planId },
+    include: {
+      saasAppSubmissions: {
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
+      onboardingTasks: {
+        orderBy: {
+          order: "asc"
+        }
+      }
+    }
+  });
+
+  if (!onboardingPlan) {
+    return null;
+  }
+
+  const templateBundle = getTemplateBundle(planId);
+  if (!templateBundle) {
+    return null;
+  }
+
+  const updatedPlan = await prisma.onboardingPlan.update({
+    where: { id: onboardingPlan.id },
+    data: {
+      firstCustomerAdminContactEmail: input.adminContactEmail?.trim() || null,
+      firstCustomerAdminContactName: input.adminContactName?.trim() || null,
+      firstCustomerAlias: customerAlias,
+      firstCustomerEstimatedUserCount:
+        input.estimatedUserCount && input.estimatedUserCount > 0 ? input.estimatedUserCount : null,
+      firstCustomerNotes: input.notes?.trim() || null,
+      firstCustomerTargetRolloutTiming: targetRolloutTiming,
+      lastActivityAt: new Date()
+    },
+    include: {
+      saasAppSubmissions: {
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
+      onboardingTasks: {
+        orderBy: {
+          order: "asc"
+        }
+      }
+    }
+  });
+
+  return buildBundleFromPersistedState(
+    templateBundle,
+    buildPortalTaskRecords(templateBundle, updatedPlan.onboardingTasks),
+    mapPersistedAppsToBundleApps(templateBundle, updatedPlan.saasAppSubmissions),
+    {
+      currentStage: updatedPlan.currentStage,
+      firstCustomerPilot: mapFirstCustomerPilotFromPlan(updatedPlan),
+      progress: updatedPlan.progress
+    }
+  );
 }
 
 export async function configureOidcForMsp(mspId: string, input: ConfigureOidcInput) {
