@@ -142,6 +142,18 @@ function isFirstCustomerPilotTask(title: string) {
   return title.toLowerCase() === "select first customer pilot";
 }
 
+function getTaskDisplayDescription(task: Pick<PlanBundle["tasks"][number], "title" | "description">) {
+  if (task.title === "Distribute Vault and extension guidance") {
+    return "Share the Vault and browser extension guides with the MSP users you added in the previous step. Confirm those users can import passwords and install the extension in Edge, Chrome, or Brave.";
+  }
+
+  if (task.title === "Submit SaaS apps for compatibility review") {
+    return "Submit the SaaS applications you want KZero to review for SSO readiness.";
+  }
+
+  return task.description;
+}
+
 function createFirstCustomerPilotFormState(bundle: PlanBundle): FirstCustomerPilotFormState {
   return {
     adminContactEmail: bundle.firstCustomerPilot?.adminContactEmail ?? "",
@@ -164,7 +176,9 @@ export function PlanView({
 }: {
   bundle: PlanBundle;
 }) {
-  const [activeTab, setActiveTab] = useState<PlanTab>("overview");
+  const [activeTab, setActiveTab] = useState<PlanTab>(() =>
+    initialBundle.plan.progress >= 100 ? "overview" : "tasks"
+  );
   const [bundle, setBundle] = useState<PlanBundle>(initialBundle);
   const [guidePreview, setGuidePreview] = useState<GuidePreviewState>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
@@ -182,7 +196,6 @@ export function PlanView({
   const nextTaskIndex = orderedTasks.findIndex((task) => task.id === nextTask.id);
   const followingTask = nextTaskIndex >= 0 ? orderedTasks[nextTaskIndex + 1] ?? null : null;
   const completedTasks = bundle.tasks.filter((task) => task.status === "complete").length;
-  const waitingOnKZeroTasks = bundle.tasks.filter((task) => task.status === "waiting_on_kzero").length;
   const activeTasks = bundle.tasks.filter((task) => ["in_progress", "waiting_on_msp"].includes(task.status)).length;
   const safeNextStepPhase = bundle.phases.find((phase) => phase.id === nextTask.phaseId);
   const phaseTasks = bundle.phases.map((phase) => ({
@@ -202,44 +215,24 @@ export function PlanView({
     !isPlanComplete &&
     (isKZeroOwnedCurrentTask || nextTask.status === "waiting_on_kzero" || nextTask.waitingOn === "kzero");
   const meaningfulComments = bundle.comments.filter((comment) => isMeaningfulComment(comment.body));
+  const nextTaskDescription = getTaskDisplayDescription(nextTask);
   const yourNextAction = isPlanComplete
     ? "Onboarding complete"
     : isKZeroOwnedCurrentTask
-      ? "No action needed from you right now."
+      ? "KZero is reviewing this."
       : nextTask.title;
   const yourNextActionDetail = isPlanComplete
     ? "Your team has completed the current onboarding plan."
     : isKZeroOwnedCurrentTask
-    ? "KZero is currently moving this step forward. We will let you know when your team needs to step back in."
-    : nextTask.description;
-  const kzeroCurrentAction = isPlanComplete
-    ? "Implementation complete"
-    : isKZeroOwnedCurrentTask
-    ? nextTask.title
-    : followingTask?.owner === "kzero_se"
-      ? followingTask.title
-      : "KZero Sales Engineer is standing by for your current step.";
-  const kzeroCurrentActionDetail = isPlanComplete
-    ? "No active KZero work remains in this onboarding plan."
-    : isKZeroOwnedCurrentTask
-    ? nextTask.description
-    : followingTask?.owner === "kzero_se"
-      ? "This is the next KZero-owned step after you complete the current action."
-      : "Your KZero Sales Engineer will continue with implementation support once your current action is complete.";
-  const actionStatusHeading = isPlanComplete
-    ? "No Blockers Right Now"
-    : isBlocked
-    ? "Blocked"
-    : isKZeroOwnedCurrentTask
-      ? "KZero Is Working On This"
-      : "Action Needed From You";
+    ? "No action needed from you right now. We'll update this plan when the next step is ready."
+    : nextTaskDescription;
   const actionStatusMessage = isPlanComplete
     ? "All onboarding steps are complete."
     : isKZeroOwnedCurrentTask
     ? "No action needed from you right now."
     : isKickoffBookingTask
       ? "Book your kickoff call with your KZero Sales Engineer to begin NFR tenant setup."
-      : nextTask.description;
+      : nextTaskDescription;
   const actionStatusReason = isPlanComplete
     ? "Your progress is saved and the onboarding plan is complete."
     : isBlocked
@@ -251,6 +244,8 @@ export function PlanView({
       : `Completing this step keeps ${safeNextStepPhase?.title ?? "your onboarding"} on track and unlocks the next milestone.`;
   const whatHappensNext = isPlanComplete
     ? "You can return to this workspace at any time to review completed onboarding milestones."
+    : isKZeroOwnedCurrentTask
+    ? "We'll update this plan when the next step is ready."
     : followingTask
     ? isKickoffBookingTask
       ? "After kickoff, you'll add backup admins and invite your MSP users."
@@ -273,7 +268,7 @@ export function PlanView({
       : followingTask.title
     : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [
-    { id: "overview", label: "Overview" },
+    { id: "overview", label: "Status" },
     { id: "tasks", label: "Tasks" },
     { id: "apps", label: "Apps" },
     { id: "documents", label: "Documents" },
@@ -283,6 +278,59 @@ export function PlanView({
   useEffect(() => {
     setPilotForm(createFirstCustomerPilotFormState(bundle));
   }, [bundle]);
+
+  function goToTab(targetTab: PlanTab) {
+    setActiveTab(targetTab);
+  }
+
+  function goToCurrentTask() {
+    setActiveTab("tasks");
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document.getElementById("current-task-card")?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+    });
+  }
+
+  function getCurrentActionTargetTab() {
+    const normalizedTitle = nextTask.title.toLowerCase();
+
+    if (normalizedTitle.includes("submit saas apps")) {
+      return "apps" as const;
+    }
+
+    if (normalizedTitle.includes("upload onboarding plan") || normalizedTitle.includes("document")) {
+      return "documents" as const;
+    }
+
+    return "tasks" as const;
+  }
+
+  const currentActionTargetTab = getCurrentActionTargetTab();
+  const currentActionCtaLabel =
+    currentActionTargetTab === "apps"
+      ? "Go to Apps"
+      : currentActionTargetTab === "documents"
+        ? "Go to Documents"
+        : "Go to Current Task";
+
+  function handleCurrentActionCta() {
+    if (currentActionTargetTab === "apps") {
+      goToTab("apps");
+      return;
+    }
+
+    if (currentActionTargetTab === "documents") {
+      goToTab("documents");
+      return;
+    }
+
+    goToCurrentTask();
+  }
 
   async function markTaskComplete(taskId: string) {
     if (taskId === nextTask.id && isSelectingFirstCustomerPilot && !hasSavedFirstCustomerPilot) {
@@ -673,33 +721,28 @@ export function PlanView({
                 <Card className="border-white/10 bg-[#101a2d] p-4 lg:col-span-2">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold text-white">{actionStatusHeading}</h3>
+                      <h3 className="text-lg font-semibold text-white">Current Status</h3>
                       <p className="mt-1 text-sm text-slate-300">
                         {isKZeroOwnedCurrentTask
-                          ? "KZero is moving the current step forward."
-                          : "Here is the clearest view of what needs attention right now."}
+                          ? "KZero is reviewing this. No action needed from you right now."
+                          : "Use the action button to jump to the place where this step is completed."}
                       </p>
                     </div>
-                    {!isKZeroOwnedCurrentTask && nextTask.meetingCta ? (
-                      <a
-                        className={buttonVariants({ variant: "secondary", className: "h-10 px-4" })}
-                        href={BOOKING_URL}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        Book Meeting
-                      </a>
+                    {!isPlanComplete ? (
+                      <Button className="h-10 px-4" onClick={handleCurrentActionCta} variant="secondary">
+                        {currentActionCtaLabel}
+                      </Button>
                     ) : null}
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-3">
                     <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What to Do</p>
-                      <p className="mt-2 text-sm leading-6 text-white">{actionStatusMessage}</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Current Step</p>
+                      <p className="mt-2 text-sm leading-6 text-white">{yourNextAction}</p>
                     </div>
                     <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Why It Matters</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">{actionStatusReason}</p>
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{actionStatusMessage}</p>
                     </div>
                     <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What Happens Next</p>
@@ -707,9 +750,9 @@ export function PlanView({
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Latest Updates</p>
-                    {meaningfulComments.length > 0 ? (
+                  {meaningfulComments.length > 0 ? (
+                    <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Latest Updates</p>
                       <div className="mt-3 grid gap-3">
                         {meaningfulComments.slice(0, 2).map((comment) => (
                           <div key={comment.id} className="rounded-[1rem] border border-white/10 bg-[#08111f] p-3.5 text-sm text-slate-300">
@@ -718,13 +761,8 @@ export function PlanView({
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div className="mt-3 rounded-[1rem] border border-dashed border-white/10 bg-[#08111f] p-3.5 text-sm text-slate-400">
-                        <p>No updates yet.</p>
-                        <p className="mt-1">Updates from your team or KZero will appear here.</p>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
                 </Card>
               </div>
             ) : null}
@@ -739,7 +777,7 @@ export function PlanView({
                     <div>
                       <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
                       <p className="mt-1 text-lg font-semibold text-white">{nextTask.title}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-300">{nextTask.description}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-300">{nextTaskDescription}</p>
                     </div>
                   </div>
                   <div className="text-sm text-amber-100/85">{formatTaskStatusLabel(nextTask.status)}</div>
@@ -808,7 +846,11 @@ export function PlanView({
                                   const taskToneClass = isLocked ? "border-white/8 bg-[#0b1423]/70" : taskTone(task.status);
 
                                   return (
-                                    <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskToneClass}`}>
+                                    <div
+                                      id={isCurrentTask ? "current-task-card" : undefined}
+                                      key={task.id}
+                                      className={`rounded-[1.2rem] border p-4 ${taskToneClass}`}
+                                    >
                                       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div className="min-w-0">
                                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
@@ -835,7 +877,7 @@ export function PlanView({
                                             ) : null}
                                           </div>
                                           <p className="mt-1 text-sm leading-6 text-slate-300">
-                                            {isLocked ? "Complete previous steps to unlock." : task.description}
+                                            {isLocked ? "Complete previous steps to unlock." : getTaskDisplayDescription(task)}
                                           </p>
                                         </div>
 

@@ -327,14 +327,14 @@ const baseTasks: Omit<Task, "id">[] = [
   {
     phaseId: "phase-tenant-setup",
     title: "Distribute Vault and extension guidance",
-    description: "Share partners.kzero.com Vault docs and confirm Edge, Chrome, or Brave extension rollout.",
+    description: "Share the Vault and browser extension guides with the MSP users you added in the previous step. Confirm those users can import passwords and install the extension in Edge, Chrome, or Brave.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-app-review",
     title: "Submit SaaS apps for compatibility review",
-    description: "Provide the SaaS app list you want KZero to evaluate for SSO readiness.",
+    description: "Submit the SaaS applications you want KZero to review for SSO readiness.",
     owner: "msp",
     status: "waiting_on_msp"
   },
