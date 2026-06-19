@@ -33,6 +33,7 @@ import {
 const SALES_ENGINEER_NAME = "Ben Eakin";
 const PRODUCTION_REDIRECT_URI = "https://onboarding-portal20.vercel.app/api/oidc/callback";
 const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
+const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database migration and environment variables.";
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete";
 type DashboardCase = OnboardingCase & {
@@ -62,6 +63,11 @@ type AdminApiCase = {
   submittedSaasAppCount: number;
   tenantRealm?: string;
   firstCustomerPilot?: FirstCustomerPilot | null;
+};
+
+type AdminApiResponse = {
+  error?: string;
+  msps?: AdminApiCase[];
 };
 
 type EnrollmentFormState = {
@@ -404,10 +410,11 @@ export function InternalDashboard({
   baseCases: OnboardingCase[];
   salesEngineers: User[];
 }) {
+  const allowLocalFallback = process.env.NODE_ENV !== "production";
   const [caseOverrides, setCaseOverrides] = useState<Record<string, AdminCaseOverride>>({});
   const [apiCases, setApiCases] = useState<DashboardCase[]>([]);
   const [useServerData, setUseServerData] = useState(false);
-  const [serverLoadState, setServerLoadState] = useState<"loading" | "server" | "fallback">("loading");
+  const [serverLoadState, setServerLoadState] = useState<"loading" | "server" | "fallback" | "error">("loading");
   const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>("preview");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
@@ -417,26 +424,56 @@ export function InternalDashboard({
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompletingKzeroStep, setIsCompletingKzeroStep] = useState(false);
 
+  function getSafeApiErrorMessage(error: unknown) {
+    if (error instanceof Error && error.message.trim()) {
+      return error.message;
+    }
+
+    return undefined;
+  }
+
+  function setServerUnavailableState(errorMessage?: string, options?: { preserveServerData?: boolean }) {
+    const safeErrorMessage = errorMessage?.trim() || null;
+
+    if (allowLocalFallback && !options?.preserveServerData) {
+      setUseServerData(false);
+      setApiCases([]);
+      setServerLoadState("fallback");
+      setServerErrorMessage(
+        safeErrorMessage
+          ? `Showing local fallback data because the server API is unavailable. ${safeErrorMessage}`
+          : "Showing local fallback data because the server API is unavailable."
+      );
+      return;
+    }
+
+    if (!options?.preserveServerData) {
+      setUseServerData(false);
+      setApiCases([]);
+    }
+
+    setServerLoadState("error");
+    setServerErrorMessage(safeErrorMessage);
+  }
+
   async function loadDashboardCases() {
     try {
       setServerLoadState("loading");
       setServerErrorMessage(null);
       const response = await fetch("/api/admin/msps", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as AdminApiResponse | null;
 
       if (!response.ok) {
-        throw new Error("api_unavailable");
+        throw new Error(payload?.error ?? `Request failed with status ${response.status}.`);
       }
 
-      const payload = (await response.json()) as { msps: AdminApiCase[] };
-      setApiCases(payload.msps.map(adminApiCaseToDashboardCase));
+      setApiCases((payload?.msps ?? []).map(adminApiCaseToDashboardCase));
       setUseServerData(true);
       setServerLoadState("server");
       return true;
     } catch (error) {
-      console.error("Failed to load /api/admin/msps. Falling back to local data.", error);
-      setUseServerData(false);
-      setServerLoadState("fallback");
-      setServerErrorMessage("Showing local fallback data because the server API is unavailable.");
+      console.error("Failed to load /api/admin/msps.", error);
+      setServerUnavailableState(getSafeApiErrorMessage(error));
       return false;
     }
   }
@@ -459,7 +496,9 @@ export function InternalDashboard({
 
   const isLoading = serverLoadState === "loading";
   const isUsingFallback = serverLoadState === "fallback";
-  const onboardingCases: DashboardCase[] = isLoading ? [] : useServerData ? apiCases : fallbackCases;
+  const hasServerError = serverLoadState === "error";
+  const showBlockingServerError = hasServerError && !useServerData;
+  const onboardingCases: DashboardCase[] = isLoading ? [] : isUsingFallback ? fallbackCases : useServerData ? apiCases : [];
 
   const selectedCase = selectedCaseId
     ? onboardingCases.find((item) => item.onboardingPlanId === selectedCaseId) ?? null
@@ -610,7 +649,10 @@ export function InternalDashboard({
         setPanelMode("preview");
         return;
       } catch {
-        setUseServerData(false);
+        setServerUnavailableState("Could not save the new MSP to the server.", {
+          preserveServerData: useServerData
+        });
+        return;
       }
     }
 
@@ -686,7 +728,10 @@ export function InternalDashboard({
         setPanelMode("preview");
         return;
       } catch {
-        setUseServerData(false);
+        setServerUnavailableState("Could not save MSP changes to the server.", {
+          preserveServerData: useServerData
+        });
+        return;
       }
     }
 
@@ -773,7 +818,10 @@ export function InternalDashboard({
         setPanelMode("preview");
         return;
       } catch {
-        setUseServerData(false);
+        setServerUnavailableState("Could not save OIDC configuration to the server.", {
+          preserveServerData: useServerData
+        });
+        return;
       }
     }
 
@@ -818,6 +866,11 @@ export function InternalDashboard({
         return;
       }
 
+      if (!allowLocalFallback) {
+        setServerUnavailableState("Could not delete the MSP because the server API is unavailable.");
+        return;
+      }
+
       setUseServerData(false);
       setServerLoadState("fallback");
       setServerErrorMessage("Showing local fallback data because the server API is unavailable.");
@@ -833,6 +886,13 @@ export function InternalDashboard({
       persistOverrides(nextOverrides);
       closePanel();
     } catch {
+      if (!allowLocalFallback || useServerData) {
+        setServerUnavailableState("Could not delete the MSP from the server.", {
+          preserveServerData: useServerData
+        });
+        return;
+      }
+
       setUseServerData(false);
       setServerLoadState("fallback");
       setServerErrorMessage("Showing local fallback data because the server API is unavailable.");
@@ -908,13 +968,33 @@ export function InternalDashboard({
           </Card>
         ) : (
           <>
+            {showBlockingServerError ? (
+              <Card className="border-red-400/20 bg-red-400/[0.06] px-5 py-6">
+                <p className="text-base font-medium text-white">{SERVER_API_UNAVAILABLE_MESSAGE}</p>
+                {serverErrorMessage ? (
+                  <p className="mt-2 text-sm text-red-100/90">Error: {serverErrorMessage}</p>
+                ) : null}
+              </Card>
+            ) : null}
+
             {isUsingFallback && serverErrorMessage ? (
               <Card className="border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
                 <p className="text-sm text-amber-100">{serverErrorMessage}</p>
               </Card>
             ) : null}
 
-            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            {hasServerError && useServerData ? (
+              <Card className="border-red-400/20 bg-red-400/[0.06] px-4 py-3">
+                <p className="text-sm text-red-100">{SERVER_API_UNAVAILABLE_MESSAGE}</p>
+                {serverErrorMessage ? (
+                  <p className="mt-1 text-xs text-red-100/80">Error: {serverErrorMessage}</p>
+                ) : null}
+              </Card>
+            ) : null}
+
+            {!showBlockingServerError ? (
+              <>
+                <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
@@ -970,9 +1050,9 @@ export function InternalDashboard({
                   </div>
                 </div>
               </Card>
-            </section>
+                </section>
 
-            {onboardingCases.length === 0 ? (
+                {onboardingCases.length === 0 ? (
               <Card className="border-white/10 bg-[#101a2d] px-5 py-8">
                 <h3 className="text-lg font-semibold text-white">No MSPs enrolled yet.</h3>
                 <p className="mt-2 text-sm text-slate-300">
@@ -1007,7 +1087,9 @@ export function InternalDashboard({
                   title="Completed MSPs"
                 />
               </>
-            )}
+                )}
+              </>
+            ) : null}
           </>
         )}
       </section>

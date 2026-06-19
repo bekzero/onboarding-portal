@@ -32,6 +32,8 @@ export default function StartPage() {
     const messages: Record<string, string> = {
       not_found: "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer.",
       oidc_not_configured: "KZero sign-in is not fully configured for this onboarding portal yet. Contact your KZero Sales Engineer for help.",
+      plan_not_found: "We could not open that onboarding portal. Confirm the plan is enrolled and try again.",
+      portal_unavailable: "The onboarding portal is temporarily unavailable. Check database migration and environment variables, then try again.",
       session_required: "Your sign-in session expired or could not be verified. Please start again from your onboarding portal lookup.",
       signin_failed: "We could not complete KZero sign-in. Please try again or contact your KZero Sales Engineer."
     };

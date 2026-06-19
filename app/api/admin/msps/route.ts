@@ -9,9 +9,14 @@ export async function GET() {
     return NextResponse.json({ error: "DATABASE_URL is not configured." }, { status: 503 });
   }
 
-  return NextResponse.json({
-    msps: await getAdminDashboardCases()
-  });
+  try {
+    return NextResponse.json({
+      msps: await getAdminDashboardCases()
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not load MSP records.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {

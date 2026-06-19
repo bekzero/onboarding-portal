@@ -1,7 +1,6 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { PlanView } from "@/components/plan-view";
 import { requirePortalUser } from "@/lib/auth";
-import { getPlanBundle } from "@/lib/mock-data";
 import { getPortalPlanBundle, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
 export default async function PortalPlanPage({
@@ -12,12 +11,15 @@ export default async function PortalPlanPage({
   await requirePortalUser();
 
   const { planId } = await params;
-  const bundle = isDatabasePersistenceConfigured()
-    ? await getPortalPlanBundle(planId).catch(() => null)
-    : getPlanBundle(planId);
+
+  if (!isDatabasePersistenceConfigured()) {
+    redirect("/start?error=portal_unavailable");
+  }
+
+  const bundle = await getPortalPlanBundle(planId).catch(() => null);
 
   if (!bundle) {
-    notFound();
+    redirect("/start?error=plan_not_found");
   }
 
   return <PlanView bundle={bundle} />;
