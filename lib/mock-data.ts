@@ -147,31 +147,31 @@ export const phases: Phase[] = [
   {
     id: "phase-kickoff",
     title: "Kickoff",
-    description: "Launch the onboarding engagement and prepare the tenant.",
+    description: "Start onboarding and confirm the initial NFR tenant setup.",
     order: 1
   },
   {
     id: "phase-tenant-setup",
     title: "Tenant Setup",
-    description: "Prepare admins and users for passwordless rollout.",
+    description: "Prepare your team for the NFR rollout.",
     order: 2
   },
   {
     id: "phase-app-review",
     title: "App Review",
-    description: "Submit SaaS apps and wait for KZero compatibility planning.",
+    description: "Submit your SaaS applications so KZero can review them for SSO readiness.",
     order: 3
   },
   {
     id: "phase-sso-rollout",
     title: "SSO Rollout",
-    description: "Review the plan and implement the first app set together.",
+    description: "Review the onboarding plan and implement your first set of applications.",
     order: 4
   },
   {
     id: "phase-customer-rollout",
     title: "First Customer Pilot",
-    description: "Confirm the first customer rollout target and prepare the customer tenant.",
+    description: "Confirm your first customer pilot and prepare the customer tenant.",
     order: 5
   }
 ];
@@ -304,7 +304,7 @@ const baseTasks: Omit<Task, "id">[] = [
   {
     phaseId: "phase-kickoff",
     title: "Book setup call with KZero Sales Engineer",
-    description: "Schedule the kickoff with your KZero Sales Engineer to deploy and configure the NFR tenant.",
+    description: "Schedule the kickoff meeting with your KZero Sales Engineer to deploy and configure the NFR tenant.",
     owner: "msp",
     status: "waiting_on_msp",
     dueLabel: "This week",
@@ -313,21 +313,21 @@ const baseTasks: Omit<Task, "id">[] = [
   {
     phaseId: "phase-tenant-setup",
     title: "Add backup admins",
-    description: "Add techs and a break-glass account to the MSP Dashboard.",
+    description: "Add backup administrators, including a break-glass account, to the MSP Dashboard.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-tenant-setup",
     title: "Add employees and contractors",
-    description: "Provision the NFR tenant with company-email users who will pilot KZero.",
+    description: "Add the members of your team who will participate in the NFR rollout using their company email addresses.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-tenant-setup",
     title: "Distribute Vault and extension guidance",
-    description: "Share the Vault and browser extension guides with the MSP users you added in the previous step. Confirm those users can import passwords and install the extension in Edge, Chrome, or Brave.",
+    description: "Share the Vault and browser extension guides with the members of your team you added in the previous step. Confirm they can import passwords and install the extension in Edge, Chrome, or Brave.",
     owner: "msp",
     status: "not_started"
   },
@@ -340,16 +340,16 @@ const baseTasks: Omit<Task, "id">[] = [
   },
   {
     phaseId: "phase-app-review",
-    title: "Investigate app compatibility and draft plan",
-    description: "KZero Sales Engineer reviews the submitted apps and creates the onboarding implementation plan.",
+    title: "Review app compatibility and prepare the onboarding plan",
+    description: "KZero reviews the applications your team submitted and prepares the onboarding plan.",
     owner: "kzero_se",
     status: "waiting_on_kzero",
     waitingOn: "kzero"
   },
   {
     phaseId: "phase-sso-rollout",
-    title: "Upload onboarding plan for review",
-    description: "Plan placeholder for implementation guidance and sequencing.",
+    title: "Review the onboarding plan",
+    description: "KZero will upload the onboarding plan with recommended app sequencing and implementation guidance.",
     owner: "kzero_se",
     status: "not_started"
   },
@@ -393,7 +393,7 @@ const baseTasks: Omit<Task, "id">[] = [
   {
     phaseId: "phase-customer-rollout",
     title: "Complete first customer rollout",
-    description: "Confirm tenant setup, user onboarding, app rollout, and lessons learned.",
+    description: "Apply the validated rollout process to the first customer pilot.",
     owner: "shared",
     status: "not_started"
   }

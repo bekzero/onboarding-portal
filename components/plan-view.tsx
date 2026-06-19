@@ -142,13 +142,41 @@ function isFirstCustomerPilotTask(title: string) {
   return title.toLowerCase() === "select first customer pilot";
 }
 
+function getTaskDisplayTitle(task: Pick<PlanBundle["tasks"][number], "title">) {
+  if (task.title === "Investigate app compatibility and draft plan") {
+    return "Review app compatibility and prepare the onboarding plan";
+  }
+
+  if (task.title === "Upload onboarding plan for review") {
+    return "Review the onboarding plan";
+  }
+
+  return task.title;
+}
+
 function getTaskDisplayDescription(task: Pick<PlanBundle["tasks"][number], "title" | "description">) {
+  if (task.title === "Add employees and contractors") {
+    return "Add the members of your team who will participate in the NFR rollout using their company email addresses.";
+  }
+
   if (task.title === "Distribute Vault and extension guidance") {
-    return "Share the Vault and browser extension guides with the MSP users you added in the previous step. Confirm those users can import passwords and install the extension in Edge, Chrome, or Brave.";
+    return "Share the Vault and browser extension guides with the members of your team you added in the previous step. Confirm they can import passwords and install the extension in Edge, Chrome, or Brave.";
   }
 
   if (task.title === "Submit SaaS apps for compatibility review") {
     return "Submit the SaaS applications you want KZero to review for SSO readiness.";
+  }
+
+  if (task.title === "Investigate app compatibility and draft plan") {
+    return "KZero reviews the applications your team submitted and prepares the onboarding plan.";
+  }
+
+  if (task.title === "Upload onboarding plan for review") {
+    return "KZero uploads the onboarding plan with recommended app sequencing and implementation guidance.";
+  }
+
+  if (task.title === "Complete first customer rollout") {
+    return "Apply the validated rollout process to the first customer pilot.";
   }
 
   return task.description;
@@ -216,11 +244,12 @@ export function PlanView({
     (isKZeroOwnedCurrentTask || nextTask.status === "waiting_on_kzero" || nextTask.waitingOn === "kzero");
   const meaningfulComments = bundle.comments.filter((comment) => isMeaningfulComment(comment.body));
   const nextTaskDescription = getTaskDisplayDescription(nextTask);
+  const nextTaskTitle = getTaskDisplayTitle(nextTask);
   const yourNextAction = isPlanComplete
     ? "Onboarding complete"
     : isKZeroOwnedCurrentTask
       ? "KZero is reviewing this."
-      : nextTask.title;
+      : nextTaskTitle;
   const yourNextActionDetail = isPlanComplete
     ? "Your team has completed the current onboarding plan."
     : isKZeroOwnedCurrentTask
@@ -249,9 +278,9 @@ export function PlanView({
     : followingTask
     ? isKickoffBookingTask
       ? "After kickoff, you'll add backup admins and invite your MSP users."
-      : `${followingTask.title} (${formatTaskOwnerLabelShort(followingTask.owner)})`
+      : `${getTaskDisplayTitle(followingTask)} (${formatTaskOwnerLabelShort(followingTask.owner)})`
     : "This completes the current onboarding milestone.";
-  const currentStepLabel = isPlanComplete ? "Completed onboarding plan" : isKickoffBookingTask ? "Book kickoff call" : nextTask.title;
+  const currentStepLabel = isPlanComplete ? "Completed onboarding plan" : isKickoffBookingTask ? "Book kickoff call" : nextTaskTitle;
   const currentOwnerLabel = isPlanComplete
     ? "Complete"
     : nextTask.owner === "kzero_se"
@@ -265,7 +294,7 @@ export function PlanView({
     : followingTask
     ? isKickoffBookingTask
       ? "Add backup admins"
-      : followingTask.title
+      : getTaskDisplayTitle(followingTask)
     : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [
     { id: "overview", label: "Status" },
@@ -406,7 +435,7 @@ export function PlanView({
                 </p>
               </div>
               <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{bundle.plan.title}</h1>
-              <p className="mt-1 text-sm text-slate-300">{bundle.organization.name} - KZero Passwordless onboarding workspace</p>
+              <p className="mt-1 text-sm text-slate-300">{bundle.organization.name} - KZero Passwordless onboarding plan</p>
             </div>
           </div>
 
@@ -462,7 +491,7 @@ export function PlanView({
                 <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.26em] text-blue-100/80">
                   <span>{safeNextStepPhase?.title ?? "Kickoff"}</span>
                   <span className="text-slate-500">/</span>
-                  <span>Current Action</span>
+                  <span>Current Step</span>
                 </div>
                 <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-start">
                   <div className="space-y-3">
@@ -472,7 +501,7 @@ export function PlanView({
                     <p className="max-w-2xl text-sm leading-7 text-blue-100/78">{yourNextActionDetail}</p>
                     <div className="flex flex-wrap items-center gap-3 text-sm text-blue-100/78">
                       <span className="rounded-full bg-white/10 px-3 py-1">{formatTaskStatusLabel(nextTask.status)}</span>
-                      <span>Current Milestone: {safeNextStepPhase?.title ?? "Kickoff"}</span>
+                      <span>Current milestone: {safeNextStepPhase?.title ?? "Kickoff"}</span>
                       {nextTask.dueLabel ? <span>Due: {nextTask.dueLabel}</span> : null}
                     </div>
                   </div>
@@ -545,7 +574,7 @@ export function PlanView({
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">First Customer Pilot</p>
                         <h3 className="mt-2 text-lg font-semibold text-white">Capture the first customer rollout target</h3>
                         <p className="mt-1 text-sm text-slate-300">
-                          Use an alias if needed. KZero needs enough detail to confirm the pilot plan and prepare the customer tenant.
+                          You can use a customer alias if preferred. Add enough detail for KZero to review the pilot plan and prepare the tenant.
                         </p>
                       </div>
                       <p className="text-sm text-slate-300">Save the pilot details before marking this step complete.</p>
@@ -775,8 +804,8 @@ export function PlanView({
                       <Clock3 className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
-                      <p className="mt-1 text-lg font-semibold text-white">{nextTask.title}</p>
+                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is reviewing this</p>
+                      <p className="mt-1 text-lg font-semibold text-white">{nextTaskTitle}</p>
                       <p className="mt-1 text-sm leading-6 text-slate-300">{nextTaskDescription}</p>
                     </div>
                   </div>
@@ -793,7 +822,7 @@ export function PlanView({
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold text-white">Phase Checklist</h3>
-                    <p className="text-sm text-slate-300">A tighter view of what happens next, who owns it, and where meetings are needed.</p>
+                    <p className="text-sm text-slate-300">Track each step, who owns it, and when a meeting is needed.</p>
                   </div>
                 </div>
 
@@ -863,7 +892,7 @@ export function PlanView({
                                             ) : null}
                                           </div>
                                           <div className="mt-2 flex flex-wrap items-center gap-3">
-                                            <h5 className="text-base font-semibold text-white">{task.title}</h5>
+                                            <h5 className="text-base font-semibold text-white">{getTaskDisplayTitle(task)}</h5>
                                             {guides.length > 0 ? (
                                               <button
                                                 className={`text-sm font-medium transition ${
