@@ -195,7 +195,9 @@ function buildBundleFromPersistedState(
   persistedPlan?: {
     currentStage: string | null;
     firstCustomerPilot?: FirstCustomerPilot | null;
+    organizationName?: string | null;
     progress: number;
+    title?: string | null;
   }
 ) {
   const orderedTemplateTasks = getOrderedTemplateTasks(bundle);
@@ -231,14 +233,29 @@ function buildBundleFromPersistedState(
     ...bundle,
     apps: persistedApps,
     firstCustomerPilot: persistedPlan?.firstCustomerPilot ?? bundle.firstCustomerPilot ?? null,
+    organization: {
+      ...bundle.organization,
+      name: persistedPlan?.organizationName?.trim() || bundle.organization.name
+    },
     nextTask,
     plan: {
       ...bundle.plan,
       nextTaskId: nextTask.id,
-      progress: persistedPlan?.progress ?? metrics.progress
+      progress: persistedPlan?.progress ?? metrics.progress,
+      title: persistedPlan?.title?.trim() || bundle.plan.title
     },
     tasks
   } satisfies PlanBundle;
+}
+
+function getPortalPlanDisplayTitle(mspName: string, tenantType: PlanBundle["plan"]["tenantType"]) {
+  const trimmedName = mspName.trim();
+
+  if (!trimmedName) {
+    return tenantType === "nfr" ? "NFR Tenant Onboarding" : "Customer Rollout";
+  }
+
+  return tenantType === "nfr" ? `${trimmedName} NFR Tenant Onboarding` : `${trimmedName} Customer Rollout`;
 }
 
 function mapPersistedAppsToBundleApps(planBundle: PlanBundle, statuses: Array<{
@@ -552,7 +569,7 @@ export async function createMsp(input: CreateMspInput) {
           status: "waiting_on_msp",
           submittedAppCount: 0,
           tenantType: "nfr",
-          title: `${input.name.trim()} onboarding`
+          title: getPortalPlanDisplayTitle(input.name, "nfr")
         }
       },
       primaryContactEmail: input.primaryContactEmail.trim(),
@@ -576,12 +593,14 @@ export async function createMsp(input: CreateMspInput) {
 export async function updateMsp(mspId: string, input: UpdateMspInput) {
   ensureDatabaseConfigured();
 
+  const trimmedName = input.name?.trim();
+
   const msp = await prisma.msp.update({
     where: { id: mspId },
     data: {
       accessMode: input.accessMode,
       assignedSalesEngineer: input.assignedSalesEngineer?.trim(),
-      name: input.name?.trim(),
+      name: trimmedName,
       oidcConfig:
         input.tenantRealm !== undefined
           ? {
@@ -599,7 +618,8 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
             lastActivityAt: parseLastActivityInput(input.lastActivity),
             progress: input.progress,
             status: input.status?.trim(),
-            submittedAppCount: input.submittedSaasAppCount
+            submittedAppCount: input.submittedSaasAppCount,
+            title: trimmedName ? getPortalPlanDisplayTitle(trimmedName, "nfr") : undefined
           }
         }
       },
@@ -640,6 +660,11 @@ export async function getPortalPlanBundle(planId: string) {
   const onboardingPlan = await prisma.onboardingPlan.findUnique({
     where: { planId },
     include: {
+      msp: {
+        select: {
+          name: true
+        }
+      },
       saasAppSubmissions: {
         orderBy: {
           createdAt: "asc"
@@ -668,7 +693,9 @@ export async function getPortalPlanBundle(planId: string) {
     {
       currentStage: onboardingPlan.currentStage,
       firstCustomerPilot,
-      progress: onboardingPlan.progress
+      organizationName: onboardingPlan.msp?.name,
+      progress: onboardingPlan.progress,
+      title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
     }
   );
 }
@@ -692,6 +719,11 @@ async function advanceOnboardingPlanTask({
   const onboardingPlan = await prisma.onboardingPlan.findUnique({
     where: { planId },
     include: {
+      msp: {
+        select: {
+          name: true
+        }
+      },
       saasAppSubmissions: {
         orderBy: {
           createdAt: "asc"
@@ -720,7 +752,9 @@ async function advanceOnboardingPlanTask({
     return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
       firstCustomerPilot,
-      progress: onboardingPlan.progress
+      organizationName: onboardingPlan.msp?.name,
+      progress: onboardingPlan.progress,
+      title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
     });
   }
 
@@ -731,7 +765,9 @@ async function advanceOnboardingPlanTask({
     return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
       firstCustomerPilot,
-      progress: onboardingPlan.progress
+      organizationName: onboardingPlan.msp?.name,
+      progress: onboardingPlan.progress,
+      title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
     });
   }
 
@@ -739,7 +775,9 @@ async function advanceOnboardingPlanTask({
     return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
       firstCustomerPilot,
-      progress: onboardingPlan.progress
+      organizationName: onboardingPlan.msp?.name,
+      progress: onboardingPlan.progress,
+      title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
     });
   }
 
@@ -795,7 +833,9 @@ async function advanceOnboardingPlanTask({
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
     currentStage: metrics.currentStage,
     firstCustomerPilot,
-    progress: metrics.progress
+    organizationName: onboardingPlan.msp?.name,
+    progress: metrics.progress,
+    title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
   });
 }
 
@@ -842,6 +882,11 @@ export async function submitFirstCustomerPilot(planId: string, input: SubmitFirs
   const onboardingPlan = await prisma.onboardingPlan.findUnique({
     where: { planId },
     include: {
+      msp: {
+        select: {
+          name: true
+        }
+      },
       saasAppSubmissions: {
         orderBy: {
           createdAt: "asc"
@@ -877,6 +922,11 @@ export async function submitFirstCustomerPilot(planId: string, input: SubmitFirs
       lastActivityAt: new Date()
     },
     include: {
+      msp: {
+        select: {
+          name: true
+        }
+      },
       saasAppSubmissions: {
         orderBy: {
           createdAt: "asc"
@@ -897,7 +947,9 @@ export async function submitFirstCustomerPilot(planId: string, input: SubmitFirs
     {
       currentStage: updatedPlan.currentStage,
       firstCustomerPilot: mapFirstCustomerPilotFromPlan(updatedPlan),
-      progress: updatedPlan.progress
+      organizationName: updatedPlan.msp?.name,
+      progress: updatedPlan.progress,
+      title: getPortalPlanDisplayTitle(updatedPlan.msp?.name ?? updatedPlan.title, updatedPlan.tenantType as PlanBundle["plan"]["tenantType"])
     }
   );
 }
