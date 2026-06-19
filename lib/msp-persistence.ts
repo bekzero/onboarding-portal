@@ -273,6 +273,9 @@ export type PublicOidcConfig = {
 
 export type AdminDashboardCase = {
   accessMode: AccessMode;
+  activeTaskOwner?: string;
+  activeTaskStatus?: string;
+  activeTaskTitle?: string;
   assignedSalesEngineer: string;
   currentStage: string;
   id: string;
@@ -389,13 +392,22 @@ function toAdminDashboardCase(
   const plan = msp.onboardingPlans[0];
   const planId = plan?.planId ?? `${msp.slug}-nfr`;
   const templateBundle = plan ? getTemplateBundle(planId) : null;
+  const portalTasks =
+    plan && templateBundle ? buildPortalTaskRecords(templateBundle, plan.onboardingTasks) : [];
   const derivedMetrics =
     plan && templateBundle
-      ? getPlanMetrics(templateBundle, buildPortalTaskRecords(templateBundle, plan.onboardingTasks))
+      ? getPlanMetrics(templateBundle, portalTasks)
+      : null;
+  const activeTask =
+    derivedMetrics && derivedMetrics.nextTaskIndex >= 0
+      ? portalTasks[derivedMetrics.nextTaskIndex]
       : null;
 
   return {
     accessMode: msp.accessMode,
+    activeTaskOwner: activeTask?.owner,
+    activeTaskStatus: activeTask?.status,
+    activeTaskTitle: activeTask?.title,
     assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
     currentStage: derivedMetrics?.currentStage ?? plan?.currentStage ?? "Kickoff",
     id: msp.id,
@@ -613,7 +625,15 @@ export async function getPortalPlanBundle(planId: string) {
   );
 }
 
-export async function completePortalTask(planId: string, templateTaskId: string) {
+async function advanceOnboardingPlanTask({
+  planId,
+  requestedTaskId,
+  requireOwner
+}: {
+  planId: string;
+  requestedTaskId?: string;
+  requireOwner?: "kzero_se";
+}) {
   ensureDatabaseConfigured();
 
   const templateBundle = getTemplateBundle(planId);
@@ -645,22 +665,42 @@ export async function completePortalTask(planId: string, templateTaskId: string)
   const persistedTasks = await ensurePortalTasksSeeded(onboardingPlan.id, planId);
   const portalTasks = buildPortalTaskRecords(templateBundle, persistedTasks);
   const activeTaskIndex = portalTasks.findIndex((task) => task.status !== "complete");
-  const requestedTaskIndex = orderedTemplateTasks.findIndex((task) => task.id === templateTaskId);
   const persistedApps = mapPersistedAppsToBundleApps(templateBundle, onboardingPlan.saasAppSubmissions);
 
-  if (requestedTaskIndex === -1 || requestedTaskIndex !== activeTaskIndex) {
+  if (activeTaskIndex === -1) {
     return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
       currentStage: onboardingPlan.currentStage,
       progress: onboardingPlan.progress
     });
   }
 
+  const activeTask = portalTasks[activeTaskIndex];
+  const activeTemplateTask = orderedTemplateTasks[activeTaskIndex];
+
+  if (!activeTask || !activeTemplateTask) {
+    return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
+      currentStage: onboardingPlan.currentStage,
+      progress: onboardingPlan.progress
+    });
+  }
+
+  if (requestedTaskId && activeTemplateTask.id !== requestedTaskId) {
+    return buildBundleFromPersistedState(templateBundle, portalTasks, persistedApps, {
+      currentStage: onboardingPlan.currentStage,
+      progress: onboardingPlan.progress
+    });
+  }
+
+  if (requireOwner && activeTask.owner !== requireOwner) {
+    throw new Error("The current active onboarding step is not owned by KZero.");
+  }
+
   const nextPortalTasks = portalTasks.map((task, index) => {
-    if (index < requestedTaskIndex + 1) {
+    if (index < activeTaskIndex + 1) {
       return { ...task, status: "complete" as const };
     }
 
-    if (index === requestedTaskIndex + 1) {
+    if (index === activeTaskIndex + 1) {
       return {
         ...task,
         status: getTaskStatusForOwner(task.owner)
@@ -697,8 +737,38 @@ export async function completePortalTask(planId: string, templateTaskId: string)
   ]);
 
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
-    currentStage: onboardingPlan.currentStage,
+    currentStage: metrics.currentStage,
     progress: metrics.progress
+  });
+}
+
+export async function completePortalTask(planId: string, templateTaskId: string) {
+  return advanceOnboardingPlanTask({
+    planId,
+    requestedTaskId: templateTaskId
+  });
+}
+
+export async function completeCurrentKzeroTaskForMsp(mspId: string) {
+  ensureDatabaseConfigured();
+
+  const onboardingPlan = await prisma.onboardingPlan.findFirst({
+    where: { mspId },
+    orderBy: {
+      createdAt: "asc"
+    },
+    select: {
+      planId: true
+    }
+  });
+
+  if (!onboardingPlan) {
+    return null;
+  }
+
+  return advanceOnboardingPlanTask({
+    planId: onboardingPlan.planId,
+    requireOwner: "kzero_se"
   });
 }
 

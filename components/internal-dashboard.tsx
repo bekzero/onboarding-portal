@@ -35,9 +35,17 @@ const PRODUCTION_REDIRECT_URI = "https://onboarding-portal20.vercel.app/api/oidc
 const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete";
-type DashboardCase = OnboardingCase & { mspId?: string };
+type DashboardCase = OnboardingCase & {
+  activeTaskOwner?: string;
+  activeTaskStatus?: string;
+  activeTaskTitle?: string;
+  mspId?: string;
+};
 type AdminApiCase = {
   accessMode: OnboardingCase["accessMode"];
+  activeTaskOwner?: string;
+  activeTaskStatus?: string;
+  activeTaskTitle?: string;
   assignedSalesEngineer: string;
   currentStage: string;
   id: string;
@@ -105,7 +113,7 @@ function getWaitingLabel(item: OnboardingCase) {
   }
 
   if (item.status === "waiting_on_kzero") {
-    return "Waiting on KZero";
+    return "KZero Action Required";
   }
 
   if (item.status === "waiting_on_msp") {
@@ -129,6 +137,58 @@ function getStatusTone(item: OnboardingCase) {
   }
 
   return "in_progress" as const;
+}
+
+function getActiveTaskOwnerLabel(item: DashboardCase) {
+  if (item.activeTaskOwner === "kzero_se") {
+    return "KZero Sales Engineer";
+  }
+
+  if (item.activeTaskOwner === "shared") {
+    return "Joint Step";
+  }
+
+  if (item.activeTaskOwner === "msp") {
+    return "MSP";
+  }
+
+  return item.progress >= 100 ? "Complete" : "MSP";
+}
+
+function getActiveTaskStatusLabel(item: DashboardCase) {
+  if (item.progress >= 100 || item.status === "complete") {
+    return "Complete";
+  }
+
+  if (item.activeTaskOwner === "kzero_se") {
+    return item.activeTaskTitle?.toLowerCase().includes("investigate") || item.activeTaskTitle?.toLowerCase().includes("compatibility")
+      ? "KZero Review In Progress"
+      : "KZero Action Required";
+  }
+
+  if (item.status === "waiting_on_msp") {
+    return "Waiting on MSP";
+  }
+
+  if (item.status === "waiting_on_kzero") {
+    return "KZero Action Required";
+  }
+
+  return "In Progress";
+}
+
+function getKzeroActionLabel(item: DashboardCase) {
+  const title = item.activeTaskTitle?.toLowerCase() ?? "";
+
+  if (title.includes("investigate") || title.includes("compatibility")) {
+    return "Complete App Review";
+  }
+
+  if (title.includes("upload onboarding plan")) {
+    return "Mark Plan Uploaded";
+  }
+
+  return "Complete KZero Step";
 }
 
 function createEnrollmentState(): EnrollmentFormState {
@@ -174,6 +234,9 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
   return {
     accessMode: item.accessMode,
     actionHref: `/portal/${item.planId}`,
+    activeTaskOwner: item.activeTaskOwner,
+    activeTaskStatus: item.activeTaskStatus,
+    activeTaskTitle: item.activeTaskTitle,
     assignedSalesEngineer: SALES_ENGINEER_NAME,
     currentStage: item.currentStage,
     lastActivity: item.lastActivity,
@@ -349,6 +412,7 @@ export function InternalDashboard({
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCompletingKzeroStep, setIsCompletingKzeroStep] = useState(false);
 
   async function loadDashboardCases() {
     try {
@@ -654,12 +718,7 @@ export function InternalDashboard({
     const hasFullOidcConfig = Boolean(exactTenantName && trimmedClientId && oidcState.clientSecret.trim());
     const accessMode: OnboardingCase["accessMode"] = hasFullOidcConfig ? "oidc" : "temporary";
     const nextOidcStatus: OnboardingCase["oidcStatus"] = hasFullOidcConfig ? "configured" : "not_configured";
-    const nextStatus: OnboardingCase["status"] =
-      selectedCase.progress >= 100
-        ? "complete"
-        : hasFullOidcConfig
-          ? "waiting_on_kzero"
-          : "waiting_on_msp";
+    const nextStatus: OnboardingCase["status"] = selectedCase.status;
     if (useServerData && selectedCase.mspId) {
       try {
         if (!selectedCase.oidcClientSecretConfigured && !oidcState.clientSecret.trim()) {
@@ -787,6 +846,29 @@ export function InternalDashboard({
       closePanel();
     } finally {
       setIsDeleting(false);
+    }
+  }
+
+  async function handleCompleteKzeroStep() {
+    if (!selectedCase?.mspId) {
+      return;
+    }
+
+    setIsCompletingKzeroStep(true);
+
+    try {
+      const response = await fetch(`/api/admin/msps/${selectedCase.mspId}/complete-kzero-step`, {
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        throw new Error("complete_kzero_failed");
+      }
+
+      await loadDashboardCases();
+      setPanelMode("preview");
+    } finally {
+      setIsCompletingKzeroStep(false);
     }
   }
 
@@ -1008,9 +1090,29 @@ export function InternalDashboard({
                       <p className="mt-2 text-white">{SALES_ENGINEER_NAME}</p>
                     </div>
                   </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current active task</p>
+                    <p className="mt-2 text-white">{selectedCase.activeTaskTitle ?? "No active task"}</p>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Owner</p>
+                        <p className="mt-1 text-sm text-slate-200">{getActiveTaskOwnerLabel(selectedCase)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Status</p>
+                        <p className="mt-1 text-sm text-slate-200">{getActiveTaskStatusLabel(selectedCase)}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid gap-3">
+                  {selectedCase.activeTaskOwner === "kzero_se" ? (
+                    <Button className="justify-start" onClick={handleCompleteKzeroStep}>
+                      <Clock3 className="mr-2 h-4 w-4" />
+                      {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
+                    </Button>
+                  ) : null}
                   <Button className="justify-start" onClick={() => openEdit(selectedCase)} variant="outline">
                     <Pencil className="mr-2 h-4 w-4" />
                     Edit MSP

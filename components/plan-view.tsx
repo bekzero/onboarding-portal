@@ -46,6 +46,24 @@ function formatTaskStatusLabel(status: string) {
   return formatLabel(status);
 }
 
+function getPortalTaskStatusLabel(task: PlanBundle["tasks"][number], isLocked: boolean) {
+  if (isLocked) {
+    return "Locked";
+  }
+
+  if (task.owner === "kzero_se" && task.status === "waiting_on_kzero") {
+    return task.title.toLowerCase().includes("investigate") || task.title.toLowerCase().includes("compatibility")
+      ? "KZero Review In Progress"
+      : "KZero Action Required";
+  }
+
+  if (task.waitingOn === "kzero" && task.status !== "complete") {
+    return "Blocked";
+  }
+
+  return formatTaskStatusLabel(task.status);
+}
+
 function formatTaskOwnerLabel(owner: string) {
   if (owner === "kzero_se") {
     return "KZero Sales Engineer";
@@ -603,11 +621,7 @@ export function PlanView({
                                   const isCurrentTask = !isPlanComplete && task.id === nextTask.id;
                                   const isCompleted = task.status === "complete";
                                   const isLocked = !isCompleted && !isCurrentTask && taskIndex > activeTaskIndex;
-                                  const taskStatusLabel = isLocked
-                                    ? "Locked"
-                                    : task.waitingOn === "kzero" && task.status !== "complete"
-                                      ? "Blocked"
-                                      : formatTaskStatusLabel(task.status);
+                                  const taskStatusLabel = getPortalTaskStatusLabel(task, isLocked);
                                   const taskToneClass = isLocked ? "border-white/8 bg-[#0b1423]/70" : taskTone(task.status);
 
                                   return (
