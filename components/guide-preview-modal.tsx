@@ -11,9 +11,31 @@ type GuidePreviewState = {
 } | null;
 
 type GuidePreviewMap = Record<string, GuidePreviewResult | null>;
+const LOW_VALUE_INTRO_TEXT = [
+  "partner portal for kzero",
+  "kzero partner portal",
+  "home",
+  "knowledge base",
+  "opportunities",
+  "sales enablement",
+  "sign in",
+  "back to folder",
+  "previous",
+  "next"
+];
 
 function hasLimitedPreviewContent(preview: GuidePreviewResult) {
   return preview.kind === "article" && preview.steps.length < 3 && preview.headings.length < 2;
+}
+
+function isUsefulIntroText(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  if (!normalized) {
+    return false;
+  }
+
+  return !LOW_VALUE_INTRO_TEXT.some((label) => normalized === label || normalized.startsWith(`${label} `));
 }
 
 export function GuidePreviewModal({
@@ -98,6 +120,7 @@ export function GuidePreviewModal({
   const previewIntro = selectedPreview?.intro ?? "";
   const previewMessage = selectedPreview?.message ?? "";
   const previewKind = selectedPreview?.kind ?? "unavailable";
+  const showUsefulIntro = isUsefulIntroText(previewIntro);
 
   if (!guidePreview) {
     return null;
@@ -157,7 +180,7 @@ export function GuidePreviewModal({
                 <>
                   <h4 className="text-2xl font-semibold text-white">{selectedPreview.title}</h4>
 
-                  {previewIntro ? (
+                  {showUsefulIntro ? (
                     <section className="mt-5 rounded-[1rem] border border-white/10 bg-[#08111f] p-4">
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What You'll Do</p>
                       <p className="mt-3 text-sm leading-7 text-slate-200">{previewIntro}</p>
