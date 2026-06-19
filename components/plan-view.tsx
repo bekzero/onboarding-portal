@@ -153,6 +153,10 @@ function createFirstCustomerPilotFormState(bundle: PlanBundle): FirstCustomerPil
   };
 }
 
+function hasRequiredFirstCustomerPilotDetails(pilot: Pick<FirstCustomerPilotFormState, "customerAlias" | "targetRolloutTiming">) {
+  return Boolean(pilot.customerAlias.trim() && pilot.targetRolloutTiming.trim());
+}
+
 type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
 
 export function PlanView({
@@ -191,6 +195,7 @@ export function PlanView({
   const isSelectingFirstCustomerPilot = isFirstCustomerPilotTask(nextTask.title);
   const hasSavedFirstCustomerPilot =
     Boolean(bundle.firstCustomerPilot?.customerAlias?.trim() && bundle.firstCustomerPilot?.targetRolloutTiming?.trim());
+  const hasRequiredPilotFormDetails = hasRequiredFirstCustomerPilotDetails(pilotForm);
   const isBlocked = nextTask.waitingOn === "kzero" && !isKZeroOwnedCurrentTask;
   const showCurrentKzeroBanner =
     activeTab === "tasks" &&
@@ -473,17 +478,15 @@ export function PlanView({
                         </Button>
                       </>
                     ) : (
-                      <Button
-                        className="h-11 px-5"
-                        disabled={savingTaskId === nextTask.id || (isSelectingFirstCustomerPilot && !hasSavedFirstCustomerPilot)}
-                        onClick={() => markTaskComplete(nextTask.id)}
-                      >
-                        {isSelectingFirstCustomerPilot && !hasSavedFirstCustomerPilot
-                          ? "Save Pilot Details First"
-                          : savingTaskId === nextTask.id
-                            ? "Saving..."
-                            : "Mark Complete"}
-                      </Button>
+                      !isSelectingFirstCustomerPilot || hasSavedFirstCustomerPilot ? (
+                        <Button
+                          className="h-11 px-5"
+                          disabled={savingTaskId === nextTask.id}
+                          onClick={() => markTaskComplete(nextTask.id)}
+                        >
+                          {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
+                        </Button>
+                      ) : null
                     )
                   ) : null}
                 </div>
@@ -497,7 +500,8 @@ export function PlanView({
                           Use an alias if needed. KZero needs enough detail to confirm the pilot plan and prepare the customer tenant.
                         </p>
                       </div>
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <p className="text-sm text-slate-300">Save the pilot details before marking this step complete.</p>
+                      {!hasSavedFirstCustomerPilot ? <div className="grid gap-4 md:grid-cols-2">
                         <label className="grid gap-2 text-sm text-slate-300">
                           <span>Customer name or alias</span>
                           <input
@@ -550,9 +554,9 @@ export function PlanView({
                             value={pilotForm.notes}
                           />
                         </label>
-                      </div>
+                      </div> : null}
                       {hasSavedFirstCustomerPilot && bundle.firstCustomerPilot ? (
-                        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.05] px-4 py-3 text-sm text-slate-200">
+                        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.05] px-4 py-4 text-sm text-slate-200">
                           <p className="font-medium text-white">Pilot details saved</p>
                           <p className="mt-1">
                             {bundle.firstCustomerPilot.customerAlias} · {bundle.firstCustomerPilot.targetRolloutTiming}
@@ -565,9 +569,15 @@ export function PlanView({
                         </div>
                       ) : null}
                       <div className="flex flex-wrap gap-3">
-                        <Button className="h-11 px-5" disabled={savingPilotDetails} onClick={saveFirstCustomerPilot}>
-                          {savingPilotDetails ? "Saving..." : "Save Pilot Details"}
-                        </Button>
+                        {!hasSavedFirstCustomerPilot ? (
+                          <Button
+                            className="h-11 px-5"
+                            disabled={savingPilotDetails || !hasRequiredPilotFormDetails}
+                            onClick={saveFirstCustomerPilot}
+                          >
+                            {savingPilotDetails ? "Saving..." : "Save Pilot Details"}
+                          </Button>
+                        ) : null}
                         {hasSavedFirstCustomerPilot ? (
                           <Button
                             className="h-11 px-5"
@@ -864,17 +874,15 @@ export function PlanView({
                                             </>
                                           ) : null}
                                           {isCurrentTask && !isKZeroOwnedCurrentTask && !task.meetingCta && !isBookingTask(task.title) ? (
-                                            <Button
-                                              className="h-10 px-4"
-                                              disabled={savingTaskId === task.id || (isFirstCustomerPilotTask(task.title) && !hasSavedFirstCustomerPilot)}
-                                              onClick={() => markTaskComplete(task.id)}
-                                            >
-                                              {isFirstCustomerPilotTask(task.title) && !hasSavedFirstCustomerPilot
-                                                ? "Save Pilot Details First"
-                                                : savingTaskId === task.id
-                                                  ? "Saving..."
-                                                  : "Mark Complete"}
-                                            </Button>
+                                            !isFirstCustomerPilotTask(task.title) || hasSavedFirstCustomerPilot ? (
+                                              <Button
+                                                className="h-10 px-4"
+                                                disabled={savingTaskId === task.id}
+                                                onClick={() => markTaskComplete(task.id)}
+                                              >
+                                                {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
+                                              </Button>
+                                            ) : null
                                           ) : null}
                                         </div>
                                       </div>
