@@ -150,6 +150,10 @@ function getStatusTone(item: OnboardingCase) {
 }
 
 function getActiveTaskOwnerLabel(item: DashboardCase) {
+  if (item.status === "waiting_on_kzero") {
+    return "KZero Sales Engineer";
+  }
+
   if (item.activeTaskOwner === "kzero_se") {
     return "KZero Sales Engineer";
   }
@@ -199,6 +203,90 @@ function getKzeroActionLabel(item: DashboardCase) {
   }
 
   return "Complete KZero Step";
+}
+
+function getOidcStatusLabel(item: DashboardCase) {
+  return item.oidcClientSecretConfigured ? "Configured" : "Not Configured";
+}
+
+function getMspNeedsToDoLabel(item: DashboardCase) {
+  const title = item.activeTaskTitle?.toLowerCase() ?? "";
+
+  if (title.includes("book") || title.includes("meeting")) {
+    return "The MSP needs to book the next session with the KZero Sales Engineer.";
+  }
+
+  if (title.includes("backup admin")) {
+    return "The MSP needs to add backup admins and confirm a break-glass account.";
+  }
+
+  if (title.includes("employee") || title.includes("contractor")) {
+    return "The MSP needs to add employees and contractors with company email addresses.";
+  }
+
+  if (title.includes("vault") || title.includes("browser extension")) {
+    return "The MSP needs to share the Vault guide and have users import passwords and install the browser extension.";
+  }
+
+  if (title.includes("submit") || title.includes("saas") || title.includes("app")) {
+    return "The MSP needs to submit its SaaS applications for compatibility review.";
+  }
+
+  if (title.includes("review")) {
+    return "The MSP needs to review the onboarding plan and confirm the next rollout session.";
+  }
+
+  return "The MSP needs to complete the current onboarding step so KZero can continue.";
+}
+
+function getNextStepDescription(item: DashboardCase) {
+  const title = item.activeTaskTitle?.toLowerCase() ?? "";
+
+  if (isCompletedCase(item)) {
+    return "This onboarding plan is complete. Use the full plan view for any follow-up rollout details.";
+  }
+
+  if (item.activeTaskOwner === "kzero_se") {
+    if (title.includes("investigate") || title.includes("compatibility")) {
+      return "KZero reviews the submitted SaaS applications, confirms compatibility, and prepares the implementation plan.";
+    }
+
+    if (title.includes("upload onboarding plan")) {
+      return "KZero uploads the onboarding plan so the MSP can review it and schedule the implementation session.";
+    }
+
+    return "KZero is responsible for the next step and can advance this onboarding case from the admin dashboard.";
+  }
+
+  if (item.status === "waiting_on_kzero") {
+    return "KZero is responsible for the next step and can advance this onboarding case from the admin dashboard.";
+  }
+
+  if (item.activeTaskOwner === "shared") {
+    return "This step needs coordination between the MSP and KZero before the rollout can move forward.";
+  }
+
+  return getMspNeedsToDoLabel(item);
+}
+
+function getNextActionHeading(item: DashboardCase) {
+  if (isCompletedCase(item)) {
+    return "Onboarding complete";
+  }
+
+  if (item.activeTaskOwner === "kzero_se") {
+    return "KZero action required";
+  }
+
+  if (item.status === "waiting_on_kzero") {
+    return "KZero action required";
+  }
+
+  if (item.activeTaskOwner === "shared") {
+    return "Joint next step";
+  }
+
+  return "Waiting on MSP";
 }
 
 function isCompletedCase(item: DashboardCase) {
@@ -1268,9 +1356,43 @@ export function InternalDashboard({
             {panelMode === "preview" && selectedCase ? (
               <div className="grid gap-5">
                 <div className="grid gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP account</p>
+                        <p className="mt-2 text-lg font-semibold text-white">{selectedCase.mspName}</p>
+                        <p className="mt-1 text-sm text-slate-300">{selectedCase.primaryContactEmail}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge status={getStatusTone(selectedCase)}>{getWaitingLabel(selectedCase)}</Badge>
+                        <Badge status={selectedCase.oidcClientSecretConfigured ? "complete" : "waiting_on_msp"}>
+                          OIDC {getOidcStatusLabel(selectedCase)}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
                   <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
                     <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current stage</p>
                     <p className="mt-2 text-white">{selectedCase.currentStage}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Next action</p>
+                    <p className="mt-2 text-lg font-semibold text-white">{getNextActionHeading(selectedCase)}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-300">{getNextStepDescription(selectedCase)}</p>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Who owns the next action</p>
+                        <p className="mt-1 text-sm text-slate-200">{getActiveTaskOwnerLabel(selectedCase)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">What happens next</p>
+                        <p className="mt-1 text-sm text-slate-200">
+                          {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
+                            ? "Admin is waiting on the MSP to respond."
+                            : "This case can move forward once the current step is completed."}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
@@ -1294,13 +1416,19 @@ export function InternalDashboard({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access</p>
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">OIDC status</p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Badge status={getStatusTone(selectedCase)}>{getAccessLabel(selectedCase)}</Badge>
+                        <Badge status={selectedCase.oidcClientSecretConfigured ? "complete" : "waiting_on_msp"}>
+                          {getOidcStatusLabel(selectedCase)}
+                        </Badge>
+                        <span className="text-sm text-slate-300">{getAccessLabel(selectedCase)}</span>
                         {selectedCase.oidcClientSecretConfigured ? (
                           <span className="text-sm text-slate-300">Secret: ********</span>
                         ) : null}
                       </div>
+                      <p className="mt-2 text-sm text-slate-400">
+                        {selectedCase.tenantName ? `Tenant: ${selectedCase.tenantName}` : "Tenant realm has not been configured yet."}
+                      </p>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Sales Engineer</p>
@@ -1320,6 +1448,12 @@ export function InternalDashboard({
                         <p className="mt-1 text-sm text-slate-200">{getActiveTaskStatusLabel(selectedCase)}</p>
                       </div>
                     </div>
+                    {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp" ? (
+                      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.08] px-4 py-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-cyan-100">Waiting on MSP</p>
+                        <p className="mt-2 text-sm leading-6 text-cyan-50">{getMspNeedsToDoLabel(selectedCase)}</p>
+                      </div>
+                    ) : null}
                   </div>
                   {selectedCase.firstCustomerPilot ? (
                     <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
@@ -1350,7 +1484,7 @@ export function InternalDashboard({
                 </div>
 
                 <div className="grid gap-3">
-                  {selectedCase.activeTaskOwner === "kzero_se" ? (
+                  {selectedCase.activeTaskOwner === "kzero_se" || selectedCase.status === "waiting_on_kzero" ? (
                     <Button className="justify-start" onClick={handleCompleteKzeroStep}>
                       <Clock3 className="mr-2 h-4 w-4" />
                       {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
