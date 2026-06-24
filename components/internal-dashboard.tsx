@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  ArrowUpDown,
   Building2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   Eye,
   Gauge,
@@ -38,6 +41,8 @@ const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database m
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
+type DashboardSortColumn = "msp" | "access" | "tenant" | "stage" | "progress" | "waiting_on" | "apps" | "last_activity";
+type DashboardSortDirection = "asc" | "desc";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
   activeTaskStatus?: string;
@@ -360,6 +365,92 @@ function sortDashboardCases(items: DashboardCase[]) {
   });
 }
 
+function getDefaultDashboardCaseRank(item: DashboardCase) {
+  if (isKzeroActionRequiredCase(item)) {
+    return 0;
+  }
+
+  if (isWaitingOnMspCase(item)) {
+    return 1;
+  }
+
+  return 2;
+}
+
+function compareDashboardCasesByDefault(left: DashboardCase, right: DashboardCase) {
+  const leftPriority = getDefaultDashboardCaseRank(left);
+  const rightPriority = getDefaultDashboardCaseRank(right);
+
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
+  }
+
+  return getCaseLastActivityTimestamp(right) - getCaseLastActivityTimestamp(left);
+}
+
+function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
+  if (column === "msp") {
+    return item.mspName.toLowerCase();
+  }
+
+  if (column === "access") {
+    return getAccessLabel(item).toLowerCase();
+  }
+
+  if (column === "tenant") {
+    return (item.tenantName ?? "").toLowerCase();
+  }
+
+  if (column === "stage") {
+    return item.currentStage.toLowerCase();
+  }
+
+  if (column === "progress") {
+    return item.progress;
+  }
+
+  if (column === "waiting_on") {
+    return getWaitingLabel(item).toLowerCase();
+  }
+
+  if (column === "apps") {
+    return item.submittedSaasAppCount;
+  }
+
+  return getCaseLastActivityTimestamp(item);
+}
+
+function sortDashboardCasesByColumn(
+  items: DashboardCase[],
+  column: DashboardSortColumn | null,
+  direction: DashboardSortDirection | null
+) {
+  const defaultSorted = sortDashboardCases(items);
+
+  if (!column || !direction) {
+    return defaultSorted;
+  }
+
+  return [...defaultSorted].sort((left, right) => {
+    const leftValue = getSortableValue(left, column);
+    const rightValue = getSortableValue(right, column);
+
+    let comparison = 0;
+
+    if (typeof leftValue === "number" && typeof rightValue === "number") {
+      comparison = leftValue - rightValue;
+    } else {
+      comparison = String(leftValue).localeCompare(String(rightValue), undefined, { sensitivity: "base" });
+    }
+
+    if (comparison !== 0) {
+      return direction === "asc" ? comparison : -comparison;
+    }
+
+    return compareDashboardCasesByDefault(left, right);
+  });
+}
+
 function createEnrollmentState(): EnrollmentFormState {
   return {
     accessMode: "temporary",
@@ -432,7 +523,10 @@ function DashboardTable({
   onConfigureOidc,
   onDelete,
   onEdit,
+  onSortChange,
   onView,
+  sortColumn,
+  sortDirection,
   title
 }: {
   emptyLabel: string;
@@ -440,9 +534,51 @@ function DashboardTable({
   onConfigureOidc: (item: DashboardCase) => void;
   onDelete: (item: DashboardCase) => void;
   onEdit: (item: DashboardCase) => void;
+  onSortChange?: (column: DashboardSortColumn) => void;
   onView: (item: DashboardCase) => void;
+  sortColumn?: DashboardSortColumn | null;
+  sortDirection?: DashboardSortDirection | null;
   title: string;
 }) {
+  const sortableColumns: Array<{ key: DashboardSortColumn; label: string }> = [
+    { key: "msp", label: "MSP" },
+    { key: "access", label: "Access" },
+    { key: "tenant", label: "Tenant" },
+    { key: "stage", label: "Stage" },
+    { key: "progress", label: "Progress" },
+    { key: "waiting_on", label: "Waiting On" },
+    { key: "apps", label: "Apps" },
+    { key: "last_activity", label: "Last Activity" }
+  ];
+
+  function renderSortHeader(column: DashboardSortColumn, label: string) {
+    const isActive = sortColumn === column && !!sortDirection;
+    const ariaSort = isActive ? (sortDirection === "asc" ? "ascending" : "descending") : "none";
+
+    return (
+      <th aria-sort={ariaSort} className="px-4 py-3 font-medium" key={column}>
+        {onSortChange ? (
+          <button
+            className={`inline-flex items-center gap-1.5 transition ${
+              isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
+            }`}
+            onClick={() => onSortChange(column)}
+            type="button"
+          >
+            <span>{label}</span>
+            {isActive ? (
+              sortDirection === "asc" ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ArrowUpDown className="h-3.5 w-3.5" />
+            )}
+          </button>
+        ) : (
+          label
+        )}
+      </th>
+    );
+  }
+
   return (
     <Card className="border-white/10 bg-[#101a2d]">
       <div className="flex items-center justify-between gap-3">
@@ -471,14 +607,7 @@ function DashboardTable({
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
-                  <th className="px-4 py-3 font-medium">MSP</th>
-                  <th className="px-4 py-3 font-medium">Access</th>
-                  <th className="px-4 py-3 font-medium">Tenant</th>
-                  <th className="px-4 py-3 font-medium">Stage</th>
-                  <th className="px-4 py-3 font-medium">Progress</th>
-                  <th className="px-4 py-3 font-medium">Waiting On</th>
-                  <th className="px-4 py-3 font-medium">Apps</th>
-                  <th className="px-4 py-3 font-medium">Last Activity</th>
+                  {sortableColumns.map((column) => renderSortHeader(column.key, column.label))}
                   <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -487,7 +616,13 @@ function DashboardTable({
                   <tr key={item.onboardingPlanId} className="border-b border-white/10 last:border-b-0">
                     <td className="px-4 py-3 align-middle">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-white">{item.mspName}</p>
+                        <button
+                          className="truncate text-left text-sm font-medium text-white transition hover:text-blue-200"
+                          onClick={() => onView(item)}
+                          type="button"
+                        >
+                          {item.mspName}
+                        </button>
                         <p className="mt-1 truncate text-xs text-slate-400">{item.primaryContactEmail}</p>
                       </div>
                     </td>
@@ -586,6 +721,8 @@ export function InternalDashboard({
   const [isCompletingKzeroStep, setIsCompletingKzeroStep] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [quickFilter, setQuickFilter] = useState<DashboardQuickFilter>("all");
+  const [sortColumn, setSortColumn] = useState<DashboardSortColumn | null>(null);
+  const [sortDirection, setSortDirection] = useState<DashboardSortDirection | null>(null);
 
   function getSafeApiErrorMessage(error: unknown) {
     if (error instanceof Error && error.message.trim()) {
@@ -672,8 +809,8 @@ export function InternalDashboard({
   }, [onboardingCases, quickFilter, searchQuery]);
 
   const inProgressCases = useMemo(() => {
-    return sortDashboardCases(filteredCases.filter((item) => !isCompletedCase(item)));
-  }, [filteredCases]);
+    return sortDashboardCasesByColumn(filteredCases.filter((item) => !isCompletedCase(item)), sortColumn, sortDirection);
+  }, [filteredCases, sortColumn, sortDirection]);
 
   const completedCases = useMemo(() => {
     return [...filteredCases.filter((item) => isCompletedCase(item))].sort(
@@ -690,6 +827,27 @@ export function InternalDashboard({
     { label: "OIDC Not Configured", value: "oidc_not_configured" },
     { label: "Completed", value: "completed" }
   ];
+
+  function handleSortChange(column: DashboardSortColumn) {
+    if (sortColumn !== column) {
+      setSortColumn(column);
+      setSortDirection("asc");
+      return;
+    }
+
+    if (sortDirection === "asc") {
+      setSortDirection("desc");
+      return;
+    }
+
+    if (sortDirection === "desc") {
+      setSortColumn(null);
+      setSortDirection(null);
+      return;
+    }
+
+    setSortDirection("asc");
+  }
 
   const issuerPreview = buildKzeroIssuerForTenant(
     panelMode === "enroll" ? enrollmentState.tenantName : oidcState?.tenantName ?? selectedCase?.tenantName ?? ""
@@ -1292,7 +1450,10 @@ export function InternalDashboard({
                   onConfigureOidc={openOidc}
                   onDelete={openDelete}
                   onEdit={openEdit}
+                  onSortChange={handleSortChange}
                   onView={openPreview}
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
                   title="In Progress MSPs"
                 />
 
