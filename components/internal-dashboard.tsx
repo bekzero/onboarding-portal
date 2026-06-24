@@ -11,6 +11,7 @@ import {
   KeyRound,
   Pencil,
   PlusCircle,
+  Search,
   TimerReset,
   Trash2,
   X
@@ -36,6 +37,7 @@ const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
 const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database migration and environment variables.";
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete";
+type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
   activeTaskStatus?: string;
@@ -197,6 +199,77 @@ function getKzeroActionLabel(item: DashboardCase) {
   }
 
   return "Complete KZero Step";
+}
+
+function isCompletedCase(item: DashboardCase) {
+  return item.progress >= 100 || item.status === "complete";
+}
+
+function isWaitingOnMspCase(item: DashboardCase) {
+  return !isCompletedCase(item) && item.status === "waiting_on_msp";
+}
+
+function isKzeroActionRequiredCase(item: DashboardCase) {
+  return !isCompletedCase(item) && (item.status === "waiting_on_kzero" || item.activeTaskOwner === "kzero_se");
+}
+
+function isOidcNotConfiguredCase(item: DashboardCase) {
+  return !item.oidcClientSecretConfigured;
+}
+
+function getCaseLastActivityTimestamp(item: DashboardCase) {
+  const timestamp = Date.parse(item.lastActivity);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function matchesQuickFilter(item: DashboardCase, filter: DashboardQuickFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (filter === "waiting_on_msp") {
+    return isWaitingOnMspCase(item);
+  }
+
+  if (filter === "waiting_on_kzero") {
+    return isKzeroActionRequiredCase(item);
+  }
+
+  if (filter === "oidc_not_configured") {
+    return isOidcNotConfiguredCase(item);
+  }
+
+  return isCompletedCase(item);
+}
+
+function matchesSearchQuery(item: DashboardCase, searchQuery: string) {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const searchableFields = [
+    item.mspName,
+    item.primaryContactEmail,
+    item.tenantName ?? "",
+    item.currentStage
+  ];
+
+  return searchableFields.some((field) => field.toLowerCase().includes(normalizedQuery));
+}
+
+function sortDashboardCases(items: DashboardCase[]) {
+  return [...items].sort((left, right) => {
+    const leftPriority = isKzeroActionRequiredCase(left) ? 0 : isWaitingOnMspCase(left) ? 1 : 2;
+    const rightPriority = isKzeroActionRequiredCase(right) ? 0 : isWaitingOnMspCase(right) ? 1 : 2;
+
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+
+    return getCaseLastActivityTimestamp(right) - getCaseLastActivityTimestamp(left);
+  });
 }
 
 function createEnrollmentState(): EnrollmentFormState {
@@ -423,6 +496,8 @@ export function InternalDashboard({
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompletingKzeroStep, setIsCompletingKzeroStep] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [quickFilter, setQuickFilter] = useState<DashboardQuickFilter>("all");
 
   function getSafeApiErrorMessage(error: unknown) {
     if (error instanceof Error && error.message.trim()) {
@@ -504,10 +579,29 @@ export function InternalDashboard({
     ? onboardingCases.find((item) => item.onboardingPlanId === selectedCaseId) ?? null
     : null;
 
-  const inProgressCases = onboardingCases.filter((item) => item.progress < 100);
-  const completedCases = onboardingCases.filter((item) => item.progress >= 100);
+  const filteredCases = useMemo(() => {
+    return onboardingCases.filter((item) => matchesSearchQuery(item, searchQuery) && matchesQuickFilter(item, quickFilter));
+  }, [onboardingCases, quickFilter, searchQuery]);
+
+  const inProgressCases = useMemo(() => {
+    return sortDashboardCases(filteredCases.filter((item) => !isCompletedCase(item)));
+  }, [filteredCases]);
+
+  const completedCases = useMemo(() => {
+    return [...filteredCases.filter((item) => isCompletedCase(item))].sort(
+      (left, right) => getCaseLastActivityTimestamp(right) - getCaseLastActivityTimestamp(left)
+    );
+  }, [filteredCases]);
+
   const waitingOnMsp = inProgressCases.filter((item) => item.status === "waiting_on_msp").length;
   const waitingOnKZero = inProgressCases.filter((item) => item.status === "waiting_on_kzero").length;
+  const quickFilters: Array<{ label: string; value: DashboardQuickFilter }> = [
+    { label: "All", value: "all" },
+    { label: "Waiting on MSP", value: "waiting_on_msp" },
+    { label: "KZero Action Required", value: "waiting_on_kzero" },
+    { label: "OIDC Not Configured", value: "oidc_not_configured" },
+    { label: "Completed", value: "completed" }
+  ];
 
   const issuerPreview = buildKzeroIssuerForTenant(
     panelMode === "enroll" ? enrollmentState.tenantName : oidcState?.tenantName ?? selectedCase?.tenantName ?? ""
@@ -1067,8 +1161,45 @@ export function InternalDashboard({
               </Card>
             ) : (
               <>
+                <Card className="border-white/10 bg-[#101a2d]">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div className="w-full max-w-xl">
+                      <label className="block text-xs uppercase tracking-[0.22em] text-slate-400" htmlFor="msp-search">
+                        Search MSPs
+                      </label>
+                      <div className="relative mt-2">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                        <input
+                          className="h-11 w-full rounded-2xl border border-white/10 bg-[#0a1424] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60"
+                          id="msp-search"
+                          onChange={(event) => setSearchQuery(event.target.value)}
+                          placeholder="Search MSP name, email, tenant, or stage"
+                          type="search"
+                          value={searchQuery}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {quickFilters.map((filterOption) => (
+                        <Button
+                          className="h-10"
+                          key={filterOption.value}
+                          onClick={() => setQuickFilter(filterOption.value)}
+                          variant={quickFilter === filterOption.value ? "default" : "outline"}
+                        >
+                          {filterOption.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+
                 <DashboardTable
-                  emptyLabel="No in-progress MSPs right now."
+                  emptyLabel={
+                    searchQuery || quickFilter !== "all"
+                      ? "No in-progress MSPs match the current search and filters."
+                      : "No in-progress MSPs right now."
+                  }
                   items={inProgressCases}
                   onConfigureOidc={openOidc}
                   onDelete={openDelete}
@@ -1078,7 +1209,11 @@ export function InternalDashboard({
                 />
 
                 <DashboardTable
-                  emptyLabel="No completed MSPs yet."
+                  emptyLabel={
+                    searchQuery || quickFilter !== "all"
+                      ? "No completed MSPs match the current search and filters."
+                      : "No completed MSPs yet."
+                  }
                   items={completedCases}
                   onConfigureOidc={openOidc}
                   onDelete={openDelete}
