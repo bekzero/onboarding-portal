@@ -35,6 +35,17 @@ type FirstCustomerPilotFormState = {
   targetRolloutTiming: string;
 };
 
+type AppSubmissionFormState = {
+  loginUrl: string;
+  name: string;
+  notes: string;
+};
+
+type SubmittedPortalApp = PlanBundle["apps"][number] & {
+  loginUrl?: string;
+  notes?: string;
+};
+
 function formatLabel(value: string) {
   return value.replaceAll("_", " ");
 }
@@ -127,6 +138,10 @@ function isBookingTask(title: string) {
     (normalizedTitle.includes("meeting") || normalizedTitle.includes("call") || normalizedTitle.includes("session"));
 }
 
+function isSaasSubmissionTask(title: string) {
+  return title.toLowerCase().includes("submit saas apps");
+}
+
 function getMeetingButtonLabel(title: string) {
   return title.toLowerCase().includes("implementation") ? "Book Implementation Session" : "Book Meeting";
 }
@@ -193,6 +208,14 @@ function createFirstCustomerPilotFormState(bundle: PlanBundle): FirstCustomerPil
   };
 }
 
+function createAppSubmissionFormState(): AppSubmissionFormState {
+  return {
+    loginUrl: "",
+    name: "",
+    notes: ""
+  };
+}
+
 function hasRequiredFirstCustomerPilotDetails(pilot: Pick<FirstCustomerPilotFormState, "customerAlias" | "targetRolloutTiming">) {
   return Boolean(pilot.customerAlias.trim() && pilot.targetRolloutTiming.trim());
 }
@@ -210,6 +233,8 @@ export function PlanView({
   const [bundle, setBundle] = useState<PlanBundle>(initialBundle);
   const [guidePreview, setGuidePreview] = useState<GuidePreviewState>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
+  const [submittedApps, setSubmittedApps] = useState<SubmittedPortalApp[]>(initialBundle.apps);
+  const [appForm, setAppForm] = useState<AppSubmissionFormState>(createAppSubmissionFormState);
   const [pilotForm, setPilotForm] = useState<FirstCustomerPilotFormState>(() => createFirstCustomerPilotFormState(initialBundle));
   const [savingPilotDetails, setSavingPilotDetails] = useState(false);
   const [pilotError, setPilotError] = useState<string | null>(null);
@@ -233,6 +258,7 @@ export function PlanView({
   const kzeroContact = users.find((user) => user.role === "sales_engineer");
   const isKZeroOwnedCurrentTask = !isPlanComplete && nextTask.owner === "kzero_se";
   const isKickoffBookingTask = isBookingTask(nextTask.title);
+  const isSubmittingSaasApps = isSaasSubmissionTask(nextTask.title);
   const isSelectingFirstCustomerPilot = isFirstCustomerPilotTask(nextTask.title);
   const hasSavedFirstCustomerPilot =
     Boolean(bundle.firstCustomerPilot?.customerAlias?.trim() && bundle.firstCustomerPilot?.targetRolloutTiming?.trim());
@@ -259,6 +285,8 @@ export function PlanView({
     ? "All onboarding steps are complete."
     : isKZeroOwnedCurrentTask
     ? "No action needed from you right now."
+    : isSubmittingSaasApps
+      ? "Submit your SaaS applications directly from the Apps section."
     : isKickoffBookingTask
       ? "Book your kickoff call with your KZero Sales Engineer to begin NFR tenant setup."
       : nextTaskDescription;
@@ -308,21 +336,41 @@ export function PlanView({
     setPilotForm(createFirstCustomerPilotFormState(bundle));
   }, [bundle]);
 
+  useEffect(() => {
+    setSubmittedApps((current) => {
+      const localOnlyApps = current.filter((app) => !bundle.apps.some((serverApp) => serverApp.id === app.id));
+      return [...bundle.apps, ...localOnlyApps];
+    });
+  }, [bundle.apps]);
+
   function goToTab(targetTab: PlanTab) {
     setActiveTab(targetTab);
   }
 
-  function goToCurrentTask() {
-    setActiveTab("tasks");
+  function goToTabSection(targetTab: PlanTab, elementId: string) {
+    setActiveTab(targetTab);
 
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        document.getElementById("current-task-card")?.scrollIntoView({
+        const target = document.getElementById(elementId);
+        if (!target) {
+          return;
+        }
+
+        target.scrollIntoView({
           behavior: "smooth",
           block: "start"
         });
+
+        if (target instanceof HTMLElement) {
+          target.focus({ preventScroll: true });
+        }
       });
     });
+  }
+
+  function goToCurrentTask() {
+    goToTabSection("tasks", "current-task-card");
   }
 
   function getCurrentActionTargetTab() {
@@ -342,14 +390,16 @@ export function PlanView({
   const currentActionTargetTab = getCurrentActionTargetTab();
   const currentActionCtaLabel =
     currentActionTargetTab === "apps"
-      ? "Go to Apps"
+      ? "Submit SaaS Apps"
       : currentActionTargetTab === "documents"
         ? "Go to Documents"
+        : isSelectingFirstCustomerPilot
+          ? "Select First Customer Pilot"
         : "Go to Current Task";
 
   function handleCurrentActionCta() {
     if (currentActionTargetTab === "apps") {
-      goToTab("apps");
+      goToTabSection("apps", "apps-submission-form");
       return;
     }
 
@@ -358,7 +408,40 @@ export function PlanView({
       return;
     }
 
+    if (isSelectingFirstCustomerPilot) {
+      goToTabSection("tasks", "first-customer-pilot-form");
+      return;
+    }
+
     goToCurrentTask();
+  }
+
+  function openAppSubmissionForm() {
+    goToTabSection("apps", "apps-submission-form");
+  }
+
+  function openFirstCustomerPilotForm() {
+    goToTabSection("tasks", "first-customer-pilot-form");
+  }
+
+  function submitPortalApp() {
+    const trimmedName = appForm.name.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    setSubmittedApps((current) => [
+      {
+        id: `local-app-${Date.now()}`,
+        loginUrl: appForm.loginUrl.trim() || undefined,
+        name: trimmedName,
+        notes: appForm.notes.trim() || undefined,
+        organizationId: bundle.organization.id,
+        status: "submitted"
+      },
+      ...current
+    ]);
+    setAppForm(createAppSubmissionFormState());
   }
 
   async function markTaskComplete(taskId: string) {
@@ -554,21 +637,53 @@ export function PlanView({
                           {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
                         </Button>
                       </>
-                    ) : (
-                      !isSelectingFirstCustomerPilot || hasSavedFirstCustomerPilot ? (
+                    ) : isSubmittingSaasApps ? (
+                      <>
+                        <Button className="h-11 px-5" onClick={openAppSubmissionForm}>
+                          Submit SaaS Apps
+                        </Button>
                         <Button
                           className="h-11 px-5"
                           disabled={savingTaskId === nextTask.id}
                           onClick={() => markTaskComplete(nextTask.id)}
+                          variant="outline"
                         >
                           {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
                         </Button>
-                      ) : null
+                      </>
+                    ) : isSelectingFirstCustomerPilot ? (
+                      <>
+                        <Button className="h-11 px-5" onClick={openFirstCustomerPilotForm}>
+                          Select First Customer Pilot
+                        </Button>
+                        {hasSavedFirstCustomerPilot ? (
+                          <Button
+                            className="h-11 px-5"
+                            disabled={savingTaskId === nextTask.id}
+                            onClick={() => markTaskComplete(nextTask.id)}
+                            variant="outline"
+                          >
+                            {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
+                          </Button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <Button
+                        className="h-11 px-5"
+                        disabled={savingTaskId === nextTask.id}
+                        onClick={() => markTaskComplete(nextTask.id)}
+                      >
+                        {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
+                      </Button>
                     )
                   ) : null}
                 </div>
                 {isSelectingFirstCustomerPilot ? (
-                  <div className="rounded-[1.2rem] border border-white/10 bg-[#0a1424]/85 p-4">
+                  <div
+                    className="rounded-[1.2rem] border border-white/10 bg-[#0a1424]/85 p-4"
+                    id="first-customer-pilot-form"
+                    tabIndex={-1}
+                  >
                     <div className="flex flex-col gap-4">
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">First Customer Pilot</p>
@@ -699,7 +814,7 @@ export function PlanView({
                     </div>
                     <div className="rounded-xl bg-[#0a1424] px-3 py-2">
                       <p className="text-slate-400">Submitted Apps</p>
-                      <p className="mt-1 font-semibold text-white">{bundle.apps.length}</p>
+                      <p className="mt-1 font-semibold text-white">{submittedApps.length}</p>
                     </div>
                   </div>
                 </Card>
@@ -877,6 +992,7 @@ export function PlanView({
                                   return (
                                     <div
                                       id={isCurrentTask ? "current-task-card" : undefined}
+                                      tabIndex={isCurrentTask ? -1 : undefined}
                                       key={task.id}
                                       className={`rounded-[1.2rem] border p-4 ${taskToneClass}`}
                                     >
@@ -923,6 +1039,16 @@ export function PlanView({
                                               {guides.length > 1 ? "View Guides" : "View Guide"}
                                             </Button>
                                           ) : null}
+                                          {isCurrentTask && isSaasSubmissionTask(task.title) ? (
+                                            <Button className="h-10 px-4" onClick={openAppSubmissionForm}>
+                                              Submit SaaS Apps
+                                            </Button>
+                                          ) : null}
+                                          {isCurrentTask && isFirstCustomerPilotTask(task.title) ? (
+                                            <Button className="h-10 px-4" onClick={openFirstCustomerPilotForm}>
+                                              Select First Customer Pilot
+                                            </Button>
+                                          ) : null}
                                           {isCurrentTask && (task.meetingCta || isBookingTask(task.title)) ? (
                                             <>
                                               <a
@@ -944,8 +1070,18 @@ export function PlanView({
                                               </Button>
                                             </>
                                           ) : null}
+                                          {isCurrentTask && isSaasSubmissionTask(task.title) ? (
+                                            <Button
+                                              className="h-10 px-4"
+                                              disabled={savingTaskId === task.id}
+                                              onClick={() => markTaskComplete(task.id)}
+                                              variant="outline"
+                                            >
+                                              {savingTaskId === task.id ? "Saving..." : "Mark Complete"}
+                                            </Button>
+                                          ) : null}
                                           {isCurrentTask && !isKZeroOwnedCurrentTask && !task.meetingCta && !isBookingTask(task.title) ? (
-                                            !isFirstCustomerPilotTask(task.title) || hasSavedFirstCustomerPilot ? (
+                                            (!isFirstCustomerPilotTask(task.title) || hasSavedFirstCustomerPilot) && !isSaasSubmissionTask(task.title) ? (
                                               <Button
                                                 className="h-10 px-4"
                                                 disabled={savingTaskId === task.id}
@@ -975,9 +1111,58 @@ export function PlanView({
               <Card className="border-white/10 bg-[#101a2d] p-4">
                 <h3 className="text-lg font-semibold text-white">SaaS App Submissions</h3>
                 <p className="mt-1 text-sm text-slate-300">Apps currently in the compatibility review queue.</p>
+                <div
+                  className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4"
+                  id="apps-submission-form"
+                  tabIndex={-1}
+                >
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Submit App For Review</p>
+                      <p className="mt-2 text-sm text-slate-300">
+                        Add each SaaS application you want KZero to review for SSO readiness.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <label className="grid gap-2 text-sm text-slate-300">
+                        <span>App name</span>
+                        <input
+                          className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                          onChange={(event) => setAppForm((current) => ({ ...current, name: event.target.value }))}
+                          placeholder="Microsoft 365"
+                          value={appForm.name}
+                        />
+                      </label>
+                      <label className="grid gap-2 text-sm text-slate-300">
+                        <span>Login URL</span>
+                        <input
+                          className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                          onChange={(event) => setAppForm((current) => ({ ...current, loginUrl: event.target.value }))}
+                          placeholder="https://login.example.com"
+                          type="url"
+                          value={appForm.loginUrl}
+                        />
+                      </label>
+                      <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                        <span>Notes</span>
+                        <textarea
+                          className="min-h-[110px] rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                          onChange={(event) => setAppForm((current) => ({ ...current, notes: event.target.value }))}
+                          placeholder="Known SSO requirements, MFA expectations, or compatibility notes"
+                          value={appForm.notes}
+                        />
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Button className="h-10 px-4" disabled={!appForm.name.trim()} onClick={submitPortalApp}>
+                        Add SaaS Application
+                      </Button>
+                    </div>
+                  </div>
+                </div>
                 <div className="mt-4 grid gap-3">
-                  {bundle.apps.length > 0 ? (
-                    bundle.apps.map((app) => (
+                  {submittedApps.length > 0 ? (
+                    submittedApps.map((app) => (
                       <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
                         <div className="flex items-center justify-between gap-3">
                           <p className="font-medium text-white">{app.name}</p>
@@ -985,6 +1170,8 @@ export function PlanView({
                             {formatLabel(app.status)}
                           </span>
                         </div>
+                        {app.loginUrl ? <p className="mt-2 text-sm text-slate-300">{app.loginUrl}</p> : null}
+                        {app.notes ? <p className="mt-2 text-sm text-slate-400">{app.notes}</p> : null}
                       </div>
                     ))
                   ) : (
