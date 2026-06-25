@@ -111,7 +111,7 @@ function isAppSubmissionTask(task: Task) {
 }
 
 function isDocumentationTask(task: Task) {
-  return task.title.toLowerCase().includes("distribute vault");
+  return task.title.toLowerCase().includes("share vault");
 }
 
 function isKZeroOwnedTask(task: Task) {
@@ -290,7 +290,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
     : "Complete";
   const afterThisLabel = followingTask
     ? currentTask && isBookingTask(currentTask)
-      ? "Add backup admins"
+      ? "Add Backup Administrators"
       : followingTask.title
     : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [

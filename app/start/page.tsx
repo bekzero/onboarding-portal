@@ -89,54 +89,71 @@ export default function StartPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8 md:px-10">
-      <div className="mb-4 flex justify-between gap-3">
-        <Link href="/" className="text-sm text-slate-400 transition-colors hover:text-blue-200">
-          Back
-        </Link>
-        <Link href="/admin-login" className="text-sm text-slate-400 transition-colors hover:text-blue-200">
-          Admin
-        </Link>
-      </div>
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-6 md:px-10 md:py-8">
+      <header className="rounded-[1.6rem] border border-white/10 bg-[#101a2d] px-5 py-4 shadow-panel md:px-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <KzeroLogo className="w-fit shrink-0" imageClassName="h-auto w-[210px]" priority surface="dark" />
+          <div className="flex flex-wrap gap-3">
+            <Link href="/">
+              <Button className="h-10 px-4" variant="outline">
+                Back to Home
+              </Button>
+            </Link>
+            <Link href="/admin-login">
+              <Button className="h-10 px-4" variant="outline">
+                Admin Sign In
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </header>
 
-      <main className="grid gap-6">
-        <Card className="overflow-hidden border-white/10 bg-[linear-gradient(135deg,#1e3a75_0%,#111d32_52%,#09111d_100%)] p-0">
-          <div className="px-6 py-8 md:px-8 md:py-10">
+      <main className="mt-5 grid gap-6">
+        <Card className="overflow-hidden border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(64,109,191,0.35),transparent_34%),linear-gradient(135deg,#1d376d_0%,#111d32_54%,#09111d_100%)] p-0">
+          <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 xl:grid-cols-[1.1fr_0.9fr] xl:items-center">
             <div className="space-y-5">
-              <div className="flex items-center gap-3">
-                <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" priority surface="dark" />
+              <div className="inline-flex rounded-full border border-blue-200/15 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-blue-100/80">
+                Secure Portal Lookup
               </div>
-              <div className="space-y-3">
-                <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white md:text-5xl">
-                  Find Your KZero Onboarding Portal
+              <div className="space-y-4">
+                <h1 className="max-w-4xl text-4xl font-semibold tracking-tight text-white md:text-5xl xl:text-[3.35rem]">
+                  Find Your KZero Passwordless Onboarding Portal
                 </h1>
-                <p className="max-w-2xl text-base leading-7 text-blue-100/78">
-                  Enter your MSP name or KZero tenant name to continue into your onboarding plan.
+                <p className="max-w-3xl text-base leading-7 text-blue-100/78 md:text-lg">
+                  Enter the MSP or tenant name provided by your KZero Passwordless Sales Engineer.
                 </p>
               </div>
-              <div className="grid max-w-xl gap-3">
-                <label className="grid gap-2 text-sm text-blue-100/82">
-                  <span>MSP or tenant name</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0b1424]/90 px-4 py-3 text-white outline-none placeholder:text-slate-500"
-                    onChange={(event) => {
-                      setTenantName(event.target.value);
-                      setError("");
-                    }}
-                    placeholder="your-tenant-name"
-                    value={tenantName}
-                  />
-                </label>
-                <p className="text-sm text-slate-300">
-                  Enter the MSP or tenant name provided by your KZero Sales Engineer.
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <Button className="h-11 px-5" onClick={handleContinue}>
-                    Continue
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
+            </div>
+
+            <div className="rounded-[1.75rem] border border-white/10 bg-[#0b1424]/88 p-6">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-lg font-semibold text-white">Continue To Your Workspace</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">
+                    Use the exact MSP or tenant name shared with your team.
+                  </p>
                 </div>
-                {error ? <p className="text-sm text-amber-200">{error}</p> : null}
+                <div className="grid gap-3">
+                  <label className="grid gap-2 text-sm text-blue-100/82">
+                    <span>MSP or Tenant Name</span>
+                    <input
+                      className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none placeholder:text-slate-500"
+                      onChange={(event) => {
+                        setTenantName(event.target.value);
+                        setError("");
+                      }}
+                      placeholder="Enter your tenant name"
+                      value={tenantName}
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-3">
+                    <Button className="h-11 px-5" onClick={handleContinue}>
+                      Continue
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </div>
+                  {error ? <p className="text-sm leading-6 text-amber-200">{error}</p> : null}
+                </div>
               </div>
             </div>
           </div>

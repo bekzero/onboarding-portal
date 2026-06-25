@@ -66,6 +66,30 @@ function formatTaskStatusLabel(status: string) {
   return formatLabel(status);
 }
 
+function formatCurrentStepStatusLabel(status: string) {
+  if (status === "waiting_on_msp") {
+    return "Waiting on MSP";
+  }
+
+  if (status === "waiting_on_kzero") {
+    return "KZero Action Required";
+  }
+
+  if (status === "not_started") {
+    return "Upcoming";
+  }
+
+  if (status === "in_progress") {
+    return "In Progress";
+  }
+
+  if (status === "complete") {
+    return "Complete";
+  }
+
+  return formatLabel(status);
+}
+
 function getPortalTaskStatusLabel(task: PlanBundle["tasks"][number], isLocked: boolean) {
   if (isLocked) {
     return "Locked";
@@ -116,6 +140,10 @@ function formatTaskOwnerLabelShort(owner: string) {
   return "You";
 }
 
+function formatPlanTypeLabel(tenantType: PlanBundle["plan"]["tenantType"]) {
+  return tenantType === "nfr" ? "NFR Plan" : "Customer Plan";
+}
+
 function taskTone(status: string) {
   if (status === "complete") {
     return "border-emerald-400/20 bg-emerald-400/[0.05]";
@@ -158,40 +186,40 @@ function isFirstCustomerPilotTask(title: string) {
 }
 
 function getTaskDisplayTitle(task: Pick<PlanBundle["tasks"][number], "title">) {
-  if (task.title === "Investigate app compatibility and draft plan") {
-    return "Review app compatibility and prepare the onboarding plan";
-  }
-
-  if (task.title === "Upload onboarding plan for review") {
-    return "Review the onboarding plan";
-  }
-
   return task.title;
 }
 
 function getTaskDisplayDescription(task: Pick<PlanBundle["tasks"][number], "title" | "description">) {
-  if (task.title === "Add employees and contractors") {
-    return "Add the members of your team who will participate in the NFR rollout using their company email addresses.";
+  if (task.title === "Add Backup Administrators") {
+    return "Open the KZero Passwordless Dashboard, select the correct organization, use Add Admin, send the invite, and confirm backup administrators and break-glass coverage are in place.";
   }
 
-  if (task.title === "Distribute Vault and extension guidance") {
-    return "Share the Vault and browser extension guides with the members of your team you added in the previous step. Confirm they can import passwords and install the extension in Edge, Chrome, or Brave.";
+  if (task.title === "Add Employees and Contractors") {
+    return "Open the KZero Passwordless Dashboard, select the correct tenant, open Users, choose Add User, send the invite, and confirm the invited users appear in the tenant after activation.";
   }
 
-  if (task.title === "Submit SaaS apps for compatibility review") {
-    return "Submit the SaaS applications you want KZero to review for SSO readiness.";
+  if (task.title === "Share Vault and Browser Extension Guidance") {
+    return "Share the KZero Passwordless Vault and browser extension guide collections with your team so they can prepare for password import and install the supported browser extension.";
   }
 
-  if (task.title === "Investigate app compatibility and draft plan") {
-    return "KZero reviews the applications your team submitted and prepares the onboarding plan.";
+  if (task.title === "Submit SaaS Applications for Review") {
+    return "Submit your priority SaaS applications with login URLs and notes where available so KZero Passwordless can begin compatibility review.";
   }
 
-  if (task.title === "Upload onboarding plan for review") {
-    return "KZero uploads the onboarding plan with recommended app sequencing and implementation guidance.";
+  if (task.title === "Review App Compatibility and Prepare the Onboarding Plan") {
+    return "KZero is working on this. No action needed from you right now.";
   }
 
-  if (task.title === "Complete first customer rollout") {
-    return "Apply the validated rollout process to the first customer pilot.";
+  if (task.title === "Upload the Onboarding Plan") {
+    return "KZero is working on this. No action needed from you right now. Your team will review the plan as soon as it is available.";
+  }
+
+  if (task.title === "KZero Reviews Pilot Plan") {
+    return "KZero is working on this. No action needed from you right now.";
+  }
+
+  if (task.title === "Complete First Customer Rollout") {
+    return "Apply the validated KZero Passwordless rollout process to the first customer tenant and confirm the initial rollout is complete.";
   }
 
   return task.description;
@@ -274,7 +302,7 @@ export function PlanView({
   const yourNextAction = isPlanComplete
     ? "Onboarding complete"
     : isKZeroOwnedCurrentTask
-      ? "KZero is reviewing this."
+      ? "KZero is working on this."
       : nextTaskTitle;
   const yourNextActionDetail = isPlanComplete
     ? "Your team has completed the current onboarding plan."
@@ -282,23 +310,14 @@ export function PlanView({
     ? "No action needed from you right now. We'll update this plan when the next step is ready."
     : nextTaskDescription;
   const actionStatusMessage = isPlanComplete
-    ? "All onboarding steps are complete."
+    ? "All onboarding steps in this plan are complete."
     : isKZeroOwnedCurrentTask
-    ? "No action needed from you right now."
-    : isSubmittingSaasApps
-      ? "Submit your SaaS applications directly from the Apps section."
-    : isKickoffBookingTask
-      ? "Book your kickoff call with your KZero Sales Engineer to begin NFR tenant setup."
-      : nextTaskDescription;
-  const actionStatusReason = isPlanComplete
-    ? "Your progress is saved and the onboarding plan is complete."
-    : isBlocked
-    ? "This step depends on KZero completing work before your team can move to the next milestone."
-    : isKZeroOwnedCurrentTask
-    ? "KZero is currently handling the work required to keep your onboarding plan moving."
-    : isKickoffBookingTask
-      ? "This meeting starts the NFR deployment and confirms the initial tenant configuration."
-      : `Completing this step keeps ${safeNextStepPhase?.title ?? "your onboarding"} on track and unlocks the next milestone.`;
+      ? "KZero is working on this. No action needed from you right now."
+        : isSubmittingSaasApps
+          ? "Submit your SaaS applications from the Apps section to continue."
+        : isKickoffBookingTask
+          ? "Book your kickoff meeting to begin NFR tenant setup."
+          : formatCurrentStepStatusLabel(nextTask.status);
   const whatHappensNext = isPlanComplete
     ? "You can return to this workspace at any time to review completed onboarding milestones."
     : isKZeroOwnedCurrentTask
@@ -316,14 +335,16 @@ export function PlanView({
     : nextTask.owner === "shared"
       ? "Your team and KZero"
       : "Your team";
-  const currentStatusLabel = isPlanComplete ? "Complete" : isBlocked ? "Blocked" : formatTaskStatusLabel(nextTask.status);
-  const afterThisLabel = isPlanComplete
-    ? "No further action required"
+  const currentStatusLabel = isPlanComplete
+    ? "Complete"
+    : isKZeroOwnedCurrentTask
+      ? "KZero Action Required"
+      : formatCurrentStepStatusLabel(nextTask.status);
+  const nextStepLabel = isPlanComplete
+    ? "No further step"
     : followingTask
-    ? isKickoffBookingTask
-      ? "Add backup admins"
-      : getTaskDisplayTitle(followingTask)
-    : "Complete onboarding milestone";
+      ? getTaskDisplayTitle(followingTask)
+      : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [
     { id: "overview", label: "Status" },
     { id: "tasks", label: "Tasks" },
@@ -507,35 +528,34 @@ export function PlanView({
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 md:px-6 md:py-6">
-      <header className="rounded-[1.7rem] border border-white/10 bg-[#101c31]/90 px-4 py-4 shadow-panel md:px-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
-            <KzeroLogo className="w-fit shrink-0" imageClassName="h-auto w-[196px]" surface="dark" />
+      <header className="rounded-[1.55rem] border border-white/10 bg-[#101c31]/92 px-4 py-4 shadow-panel md:px-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-start gap-4">
+            <KzeroLogo className="w-fit shrink-0" imageClassName="h-auto w-[188px]" surface="dark" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-100/80">
-                  {bundle.plan.tenantType.toUpperCase()} plan
-                </p>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-blue-100/80">
+                  {formatPlanTypeLabel(bundle.plan.tenantType)}
+                </span>
               </div>
-              <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{bundle.plan.title}</h1>
-              <p className="mt-1 text-sm text-slate-300">{bundle.organization.name} - KZero Passwordless onboarding plan</p>
+              <h1 className="mt-2 text-2xl font-semibold text-white md:text-3xl">{bundle.organization.name}</h1>
+              <p className="mt-1 text-sm text-slate-300">KZero Passwordless onboarding workspace</p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 lg:items-end">
-            <div className="flex min-w-[220px] items-center gap-3 rounded-2xl border border-white/10 bg-[#0b1424] px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between text-xs uppercase tracking-[0.24em] text-slate-400">
-                  <span>Progress</span>
-                  <span>{bundle.plan.progress}%</span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-white/10">
-                  <div
-                    className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
-                    style={{ width: `${bundle.plan.progress}%` }}
-                  />
-                </div>
+          <div className="flex flex-col gap-3 xl:items-end">
+            <div className="min-w-[250px] rounded-2xl border border-white/10 bg-[#0b1424] px-4 py-3">
+              <div className="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-slate-400">
+                <span>Progress Summary</span>
+                <span>{bundle.plan.progress}%</span>
               </div>
+              <div className="mt-2 h-2 rounded-full bg-white/10">
+                <div
+                  className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
+                  style={{ width: `${bundle.plan.progress}%` }}
+                />
+              </div>
+              <p className="mt-2 text-sm text-slate-300">{completedTasks} completed steps across your current plan.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/">
@@ -571,30 +591,38 @@ export function PlanView({
           <section className="grid gap-5 lg:col-span-8">
             <Card className="border-white/10 bg-[linear-gradient(135deg,#223c78_0%,#101c31_54%,#09111d_100%)] p-5 md:p-6">
               <div className="flex flex-col gap-5">
-                <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.26em] text-blue-100/80">
+                <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.24em] text-blue-100/80">
                   <span>{safeNextStepPhase?.title ?? "Kickoff"}</span>
                   <span className="text-slate-500">/</span>
                   <span>Current Step</span>
                 </div>
-                <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr] md:items-start">
-                  <div className="space-y-3">
-                    <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-white md:text-[2.8rem]">
-                      {yourNextAction}
-                    </h2>
-                    <p className="max-w-2xl text-sm leading-7 text-blue-100/78">{yourNextActionDetail}</p>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-blue-100/78">
-                      <span className="rounded-full bg-white/10 px-3 py-1">{formatTaskStatusLabel(nextTask.status)}</span>
-                      <span>Current milestone: {safeNextStepPhase?.title ?? "Kickoff"}</span>
-                      {nextTask.dueLabel ? <span>Due: {nextTask.dueLabel}</span> : null}
+                <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr] lg:items-start">
+                  <div className="rounded-[1.45rem] border border-white/10 bg-[#0a1424]/50 p-5">
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-white md:text-[2.6rem]">
+                          {currentStepLabel}
+                        </h2>
+                        <p className="max-w-3xl text-sm leading-7 text-blue-100/80">{yourNextActionDetail}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-white">
+                          {currentOwnerLabel}
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-white">
+                          {currentStatusLabel}
+                        </span>
+                        {nextTask.dueLabel ? (
+                          <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-white">
+                            {nextTask.dueLabel}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-                  <div className="rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4 text-sm">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">At a Glance</p>
+                  <div className="rounded-[1.45rem] border border-white/10 bg-[#0a1424]/78 p-5 text-sm">
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Step Summary</p>
                     <div className="mt-4 grid gap-3">
-                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-                        <p className="text-slate-400">Current Step</p>
-                        <p className="text-right font-medium text-white">{currentStepLabel}</p>
-                      </div>
                       <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
                         <p className="text-slate-400">Owner</p>
                         <p className="text-right font-medium text-white">{currentOwnerLabel}</p>
@@ -603,16 +631,14 @@ export function PlanView({
                         <p className="text-slate-400">Status</p>
                         <p className="text-right font-medium text-white">{currentStatusLabel}</p>
                       </div>
-                      <div className="flex items-start justify-between gap-4">
-                        <p className="text-slate-400">After This</p>
-                        <p className="text-right font-medium text-white">{afterThisLabel}</p>
+                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
+                        <p className="text-slate-400">Due / Timing</p>
+                        <p className="text-right font-medium text-white">{nextTask.dueLabel ?? "No specific due date"}</p>
                       </div>
-                      {isBlocked ? (
-                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-slate-200">
-                          <p className="text-[11px] uppercase tracking-[0.2em] text-amber-200">Blocked</p>
-                          <p className="mt-2">{actionStatusReason}</p>
-                        </div>
-                      ) : null}
+                      <div className="flex items-start justify-between gap-4">
+                        <p className="text-slate-400">Next Step</p>
+                        <p className="text-right font-medium text-white">{nextStepLabel}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -868,7 +894,7 @@ export function PlanView({
                       <h3 className="text-lg font-semibold text-white">Current Status</h3>
                       <p className="mt-1 text-sm text-slate-300">
                         {isKZeroOwnedCurrentTask
-                          ? "KZero is reviewing this. No action needed from you right now."
+                          ? "KZero is working on this. No action needed from you right now."
                           : "Use the action button to jump to the place where this step is completed."}
                       </p>
                     </div>
@@ -919,7 +945,7 @@ export function PlanView({
                       <Clock3 className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is reviewing this</p>
+                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
                       <p className="mt-1 text-lg font-semibold text-white">{nextTaskTitle}</p>
                       <p className="mt-1 text-sm leading-6 text-slate-300">{nextTaskDescription}</p>
                     </div>
@@ -1022,8 +1048,11 @@ export function PlanView({
                                             ) : null}
                                           </div>
                                           <p className="mt-1 text-sm leading-6 text-slate-300">
-                                            {isLocked ? "Complete previous steps to unlock." : getTaskDisplayDescription(task)}
+                                            {isLocked ? "Complete the previous step to unlock this task." : getTaskDisplayDescription(task)}
                                           </p>
+                                          {isCurrentTask && task.owner === "kzero_se" ? (
+                                            <p className="mt-2 text-sm text-amber-100/90">No action needed from you right now.</p>
+                                          ) : null}
                                         </div>
 
                                         <div className="flex shrink-0 flex-col items-start gap-2 md:items-end">

@@ -17,7 +17,7 @@ export type GuidePreviewResult = {
 export function getTaskGuides(title: string): TaskGuide[] {
   const normalizedTitle = title.toLowerCase();
 
-  if (normalizedTitle.includes("add backup admins")) {
+  if (normalizedTitle.includes("add backup administrator")) {
     return [
       {
         title: "Create a New Dashboard Administrator",
@@ -29,20 +29,20 @@ export function getTaskGuides(title: string): TaskGuide[] {
   if (normalizedTitle.includes("add employees and contractors")) {
     return [
       {
-        title: "Add Users to a Tenant",
+        title: "Individually Add Users to a Tenant",
         href: "https://partners.kzero.com/library/admin-guides/admin-dashboard-management/dashboard-administration-individually-adding-users-to-a-tenant"
       }
     ];
   }
 
-  if (normalizedTitle.includes("distribute vault") || normalizedTitle.includes("extension guidance")) {
+  if (normalizedTitle.includes("share vault") || normalizedTitle.includes("browser extension guidance")) {
     return [
       {
-        title: "Import Passwords",
+        title: "Vault Password Import Guides",
         href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords"
       },
       {
-        title: "End-User Guides",
+        title: "Vault and Extension End-User Guides",
         href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/end-user-guides"
       }
     ];

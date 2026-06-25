@@ -147,31 +147,31 @@ export const phases: Phase[] = [
   {
     id: "phase-kickoff",
     title: "Kickoff",
-    description: "Start onboarding and confirm the initial NFR tenant setup.",
+    description: "Start your KZero Passwordless onboarding plan and confirm the first tenant setup activities.",
     order: 1
   },
   {
     id: "phase-tenant-setup",
     title: "Tenant Setup",
-    description: "Prepare your team for the NFR rollout.",
+    description: "Prepare your team, tenant access, and user readiness for the first rollout wave.",
     order: 2
   },
   {
     id: "phase-app-review",
     title: "App Review",
-    description: "Submit your SaaS applications so KZero can review them for SSO readiness.",
+    description: "Submit your priority SaaS applications so KZero Passwordless can review them for SSO readiness.",
     order: 3
   },
   {
     id: "phase-sso-rollout",
     title: "SSO Rollout",
-    description: "Review the onboarding plan and implement your first set of applications.",
+    description: "Review the onboarding plan and implement the first SSO application wave with your KZero Sales Engineer.",
     order: 4
   },
   {
     id: "phase-customer-rollout",
     title: "First Customer Pilot",
-    description: "Confirm your first customer pilot and prepare the customer tenant.",
+    description: "Confirm the first customer pilot and prepare the customer tenant for rollout.",
     order: 5
   }
 ];
@@ -303,8 +303,8 @@ export const users: User[] = [
 const baseTasks: Omit<Task, "id">[] = [
   {
     phaseId: "phase-kickoff",
-    title: "Book setup call with KZero Sales Engineer",
-    description: "Schedule the kickoff meeting with your KZero Sales Engineer to deploy and configure the NFR tenant.",
+    title: "Book Setup Call with Your KZero Sales Engineer",
+    description: "Schedule the kickoff meeting with your KZero Sales Engineer to begin NFR tenant setup and confirm the first rollout steps.",
     owner: "msp",
     status: "waiting_on_msp",
     dueLabel: "This week",
@@ -312,88 +312,88 @@ const baseTasks: Omit<Task, "id">[] = [
   },
   {
     phaseId: "phase-tenant-setup",
-    title: "Add backup admins",
-    description: "Add backup administrators, including a break-glass account, to the MSP Dashboard.",
+    title: "Add Backup Administrators",
+    description: "Invite backup administrators in the KZero Passwordless Dashboard so your tenant is not dependent on a single admin account. Complete this step when backup administrators are invited, break-glass coverage is identified, and the invited administrators can access the dashboard.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-tenant-setup",
-    title: "Add employees and contractors",
-    description: "Add the members of your team who will participate in the NFR rollout using their company email addresses.",
+    title: "Add Employees and Contractors",
+    description: "Invite the members of your team who will participate in the NFR rollout using their company email addresses. Complete this step when pilot users are invited, activation emails are sent, and the users appear in the selected tenant.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-tenant-setup",
-    title: "Distribute Vault and extension guidance",
-    description: "Share the Vault and browser extension guides with the members of your team you added in the previous step. Confirm they can import passwords and install the extension in Edge, Chrome, or Brave.",
+    title: "Share Vault and Browser Extension Guidance",
+    description: "Share the KZero Passwordless Vault and browser extension guides with the users you added. Complete this step when your team knows where to find the guides, understands password import preparation, and knows which browsers and extensions are supported.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-app-review",
-    title: "Submit SaaS apps for compatibility review",
-    description: "Submit the SaaS applications you want KZero to review for SSO readiness.",
+    title: "Submit SaaS Applications for Review",
+    description: "Submit the SaaS applications your team wants KZero Passwordless to review for SSO readiness and rollout planning. Complete this step when priority applications, login URLs, and supporting notes are included where available.",
     owner: "msp",
     status: "waiting_on_msp"
   },
   {
     phaseId: "phase-app-review",
-    title: "Review app compatibility and prepare the onboarding plan",
-    description: "KZero reviews the applications your team submitted and prepares the onboarding plan.",
+    title: "Review App Compatibility and Prepare the Onboarding Plan",
+    description: "KZero reviews the submitted applications and prepares a recommended implementation plan for the first SSO rollout wave.",
     owner: "kzero_se",
     status: "waiting_on_kzero",
     waitingOn: "kzero"
   },
   {
     phaseId: "phase-sso-rollout",
-    title: "Review the onboarding plan",
-    description: "KZero will upload the onboarding plan with recommended app sequencing and implementation guidance.",
+    title: "Upload the Onboarding Plan",
+    description: "KZero will upload the onboarding plan with recommended app sequencing and implementation guidance so your team can review it before implementation.",
     owner: "kzero_se",
     status: "not_started"
   },
   {
     phaseId: "phase-sso-rollout",
-    title: "Book SSO implementation meeting",
-    description: "Schedule a working session to implement the first 3-5 apps or until your team is comfortable.",
+    title: "Book the SSO Implementation Session",
+    description: "Schedule a working session with your KZero Sales Engineer to implement the first SSO application wave.",
     owner: "shared",
     status: "not_started",
     meetingCta: "Book implementation session"
   },
   {
     phaseId: "phase-customer-rollout",
-    title: "Select first customer pilot",
-    description: "Provide the customer name or alias, estimated user count, target rollout timing, and any rollout notes.",
+    title: "Select First Customer Pilot",
+    description: "Provide the customer name or alias, estimated user count, target rollout timing, and any rollout notes so KZero Passwordless can prepare the first customer rollout.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-customer-rollout",
-    title: "Confirm customer readiness",
-    description: "Confirm the customer has agreed to participate, customer admins are identified, and rollout timing is acceptable.",
+    title: "Confirm Customer Readiness",
+    description: "Confirm the customer has agreed to participate, customer administrators are identified, and the rollout timing is acceptable for the first pilot.",
     owner: "msp",
     status: "not_started"
   },
   {
     phaseId: "phase-customer-rollout",
-    title: "KZero reviews pilot plan",
-    description: "KZero reviews the first customer details and confirms the rollout approach.",
+    title: "KZero Reviews Pilot Plan",
+    description: "KZero reviews the first customer details and confirms the rollout approach for the pilot tenant.",
     owner: "kzero_se",
     status: "not_started"
   },
   {
     phaseId: "phase-customer-rollout",
-    title: "Book customer rollout session",
-    description: "Schedule a working session to prepare the first customer tenant.",
+    title: "Book Customer Rollout Session",
+    description: "Schedule a working session with your KZero Sales Engineer to prepare the first customer tenant for rollout.",
     owner: "shared",
     status: "not_started",
     meetingCta: "Book customer rollout session"
   },
   {
     phaseId: "phase-customer-rollout",
-    title: "Complete first customer rollout",
-    description: "Apply the validated rollout process to the first customer pilot.",
+    title: "Complete First Customer Rollout",
+    description: "Apply the validated KZero Passwordless rollout process to the first customer tenant and confirm the initial rollout is complete.",
     owner: "shared",
     status: "not_started"
   }

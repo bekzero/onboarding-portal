@@ -22,7 +22,7 @@ import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { FirstCustomerPilot, OnboardingCase, TenantType, User } from "@/lib/mock-data";
+import { getPlanBundle, type FirstCustomerPilot, type OnboardingCase, type TenantType, type User } from "@/lib/mock-data";
 import {
   readAdminCaseOverridesFromStorage,
   saveAdminCaseOverridesToStorage,
@@ -109,12 +109,66 @@ type OidcFormState = {
   tenantName: string;
 };
 
+const ONBOARDING_STAGE_OPTIONS = [
+  "Kickoff",
+  "Tenant Setup",
+  "App Review",
+  "SSO Rollout",
+  "First Customer Pilot",
+  "Repeatable Rollout Ready"
+] as const;
+
+const STATUS_OPTIONS: Array<{ label: string; value: OnboardingCase["status"] }> = [
+  { label: "Waiting on MSP", value: "waiting_on_msp" },
+  { label: "KZero Action Required", value: "waiting_on_kzero" },
+  { label: "In Progress", value: "in_progress" },
+  { label: "Complete", value: "complete" }
+];
+
+const ACCESS_MODE_OPTIONS: Array<{ label: string; value: OnboardingCase["accessMode"] }> = [
+  { label: "Temporary Access", value: "temporary" },
+  { label: "KZero OIDC", value: "oidc" }
+];
+
 function formatDateLabel() {
   return new Intl.DateTimeFormat("en-US", {
     day: "numeric",
     month: "long",
     year: "numeric"
   }).format(new Date());
+}
+
+function formatDateInputValue(value: string) {
+  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return value;
+  }
+
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return "";
+  }
+
+  const date = new Date(parsed);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateDisplayValue(value: string) {
+  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!isoMatch) {
+    return value.trim();
+  }
+
+  const [, year, month, day] = isoMatch;
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(new Date(`${year}-${month}-${day}T00:00:00Z`));
 }
 
 function getAccessLabel(item: OnboardingCase) {
@@ -190,6 +244,22 @@ function getActiveTaskStatusLabel(item: DashboardCase) {
 
   if (item.status === "waiting_on_kzero") {
     return "KZero Action Required";
+  }
+
+  return "In Progress";
+}
+
+function getPreviewTaskStatusLabel(item: DashboardCase) {
+  if (item.progress >= 100 || item.status === "complete") {
+    return "Complete";
+  }
+
+  if (item.activeTaskOwner === "kzero_se" || item.status === "waiting_on_kzero") {
+    return "KZero Action Required";
+  }
+
+  if (item.activeTaskOwner === "msp" || item.status === "waiting_on_msp") {
+    return "Waiting on MSP";
   }
 
   return "In Progress";
@@ -450,6 +520,13 @@ function sortDashboardCasesByColumn(
   });
 }
 
+function isMeaningfulAdminComment(body: string) {
+  const normalizedBody = body.toLowerCase();
+  return !normalizedBody.includes("placeholder") &&
+    !normalizedBody.includes("kickoff booking link is ready when abcmsp is ready to schedule") &&
+    !normalizedBody.includes("demo-generated onboarding case");
+}
+
 function createEnrollmentState(): EnrollmentFormState {
   return {
     accessMode: "temporary",
@@ -471,7 +548,7 @@ function createEditState(item: OnboardingCase): EditFormState {
   return {
     accessMode: item.accessMode,
     currentStage: item.currentStage,
-    lastActivity: item.lastActivity,
+    lastActivity: formatDateInputValue(item.lastActivity),
     mspName: item.mspName,
     primaryContactEmail: item.primaryContactEmail,
     progress: item.progress,
@@ -754,6 +831,13 @@ export function InternalDashboard({
   const selectedCase = selectedCaseId
     ? onboardingCases.find((item) => item.onboardingPlanId === selectedCaseId) ?? null
     : null;
+  const selectedCaseBundle = useMemo(
+    () => (selectedCase ? getPlanBundle(selectedCase.onboardingPlanId) : null),
+    [selectedCase]
+  );
+  const selectedCaseApps = selectedCaseBundle?.apps ?? [];
+  const selectedCaseDocuments = selectedCaseBundle?.attachments ?? [];
+  const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
 
   const filteredCases = useMemo(() => {
     return onboardingCases.filter((item) => matchesSearchQuery(item, searchQuery) && matchesQuickFilter(item, quickFilter));
@@ -980,6 +1064,7 @@ export function InternalDashboard({
 
     const nextProgress = Math.max(0, Math.min(100, Number(editState.progress) || 0));
     const exactTenantName = editState.tenantName.trim();
+    const nextLastActivity = formatDateDisplayValue(editState.lastActivity) || selectedCase.lastActivity;
     const hasExistingOidcConfig = Boolean(
       selectedCase.oidcClientId && selectedCase.oidcClientSecretConfigured && (selectedCase.tenantName ?? exactTenantName)
     );
@@ -1000,7 +1085,7 @@ export function InternalDashboard({
             accessMode: nextAccessMode,
             assignedSalesEngineer: SALES_ENGINEER_NAME,
             currentStage: editState.currentStage,
-            lastActivity: editState.lastActivity,
+            lastActivity: nextLastActivity,
             name: editState.mspName,
             primaryContactEmail: editState.primaryContactEmail,
             progress: nextProgress,
@@ -1032,7 +1117,7 @@ export function InternalDashboard({
         ...caseOverrides[selectedCase.onboardingPlanId],
         accessMode: nextAccessMode,
         currentStage: editState.currentStage.trim() || selectedCase.currentStage,
-        lastActivity: editState.lastActivity.trim() || selectedCase.lastActivity,
+        lastActivity: nextLastActivity,
         mspName: editState.mspName.trim() || selectedCase.mspName,
         oidcStatus: nextOidcStatus,
         primaryContactEmail: editState.primaryContactEmail.trim() || selectedCase.primaryContactEmail,
@@ -1231,26 +1316,40 @@ export function InternalDashboard({
 
   return (
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
-      <section className="min-w-0 grid gap-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold text-white">MSP Onboarding Reporting</h2>
-            <p className="mt-1 text-sm text-slate-300">
-              Track live onboarding status, ownership, and OIDC readiness across MSP accounts.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/">
-              <Button className="h-10 px-4" variant="outline">
-                Back to Main Page
+      <section className="min-w-0 grid gap-4">
+        <Card className="border-white/10 bg-[#101a2d] px-4 py-4 md:px-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center">
+              <KzeroLogo
+                className="w-fit shrink-0"
+                imageClassName="h-auto w-[190px] md:w-[200px]"
+                surface="dark"
+              />
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-2xl font-semibold text-white">Sales Engineer Dashboard</h2>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
+                    Admin
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-slate-300">
+                  Manage MSP onboarding, OIDC readiness, and rollout progress.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/">
+                <Button className="h-10 px-4" variant="outline">
+                  Back to Main Page
+                </Button>
+              </Link>
+              <Button className="h-10 px-4" onClick={openEnroll}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Enroll MSP
               </Button>
-            </Link>
-            <Button className="h-10 px-4" onClick={openEnroll}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Enroll MSP
-            </Button>
+            </div>
           </div>
-        </div>
+        </Card>
 
         {isLoading ? (
           <Card className="border-white/10 bg-[#101a2d] px-5 py-8">
@@ -1425,8 +1524,16 @@ export function InternalDashboard({
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 p-4 md:p-6">
-          <Card className="max-h-[calc(100vh-2rem)] w-full max-w-[520px] overflow-y-auto border-white/10 bg-[#101a2d] md:max-h-[calc(100vh-3rem)]">
-            <div className="mb-5 flex items-start justify-between gap-4">
+          <Card
+            className={`w-full overflow-hidden border-white/10 bg-[#101a2d] ${
+              panelMode === "preview"
+                ? "max-h-[calc(100vh-2rem)] max-w-[1040px] md:max-h-[calc(100vh-3rem)]"
+                : panelMode === "edit"
+                  ? "max-h-[calc(100vh-2rem)] max-w-[940px] md:max-h-[calc(100vh-3rem)]"
+                : "max-h-[calc(100vh-2rem)] max-w-[520px] overflow-y-auto md:max-h-[calc(100vh-3rem)]"
+            }`}
+          >
+            <div className={`flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "edit") ? "sticky top-0 z-20" : "mb-5"}`}>
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-blue-200">
                   {panelMode === "preview"
@@ -1453,6 +1560,17 @@ export function InternalDashboard({
                         ? "Update account details and case status."
                         : getAccessLabel(selectedCase!)}
                 </p>
+                {panelMode === "preview" && selectedCase ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge status={getStatusTone(selectedCase)}>{getWaitingLabel(selectedCase)}</Badge>
+                    <Badge status={selectedCase.oidcClientSecretConfigured ? "complete" : "waiting_on_msp"}>
+                      OIDC {getOidcStatusLabel(selectedCase)}
+                    </Badge>
+                    <Badge status={selectedCase.oidcClientSecretConfigured ? "complete" : "in_progress"}>
+                      {getAccessLabel(selectedCase)}
+                    </Badge>
+                  </div>
+                ) : null}
               </div>
               <Button aria-label="Close panel" className="h-9 px-2.5" onClick={closePanel} title="Close" variant="outline">
                 <X className="h-4 w-4" />
@@ -1460,159 +1578,211 @@ export function InternalDashboard({
             </div>
 
             {panelMode === "preview" && selectedCase ? (
-              <div className="grid gap-5">
-                <div className="grid gap-3">
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP account</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{selectedCase.mspName}</p>
-                        <p className="mt-1 text-sm text-slate-300">{selectedCase.primaryContactEmail}</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge status={getStatusTone(selectedCase)}>{getWaitingLabel(selectedCase)}</Badge>
-                        <Badge status={selectedCase.oidcClientSecretConfigured ? "complete" : "waiting_on_msp"}>
-                          OIDC {getOidcStatusLabel(selectedCase)}
-                        </Badge>
-                      </div>
+              <>
+                <div className="sticky top-[89px] z-10 border-b border-white/10 bg-[#101a2d]/95 px-4 py-4 backdrop-blur md:px-6">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Case Actions</p>
+                      <p className="mt-1 text-sm text-slate-300">Advance or update this MSP case from here.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedCase.activeTaskOwner === "kzero_se" || selectedCase.status === "waiting_on_kzero" ? (
+                        <Button onClick={handleCompleteKzeroStep}>
+                          <Clock3 className="mr-2 h-4 w-4" />
+                          {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
+                        </Button>
+                      ) : null}
+                      <Button onClick={() => openEdit(selectedCase)} variant="outline">
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit MSP
+                      </Button>
+                      <Button onClick={() => openOidc(selectedCase)} variant="outline">
+                        <KeyRound className="mr-2 h-4 w-4" />
+                        Configure OIDC
+                      </Button>
+                      <Button onClick={() => openDelete(selectedCase)} variant="outline">
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete MSP
+                      </Button>
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current stage</p>
-                    <p className="mt-2 text-white">{selectedCase.currentStage}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Next action</p>
-                    <p className="mt-2 text-lg font-semibold text-white">{getNextActionHeading(selectedCase)}</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-300">{getNextStepDescription(selectedCase)}</p>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Who owns the next action</p>
-                        <p className="mt-1 text-sm text-slate-200">{getActiveTaskOwnerLabel(selectedCase)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">What happens next</p>
-                        <p className="mt-1 text-sm text-slate-200">
-                          {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
-                            ? "Admin is waiting on the MSP to respond."
-                            : "This case can move forward once the current step is completed."}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Progress</p>
-                      <p className="mt-2 text-white">{selectedCase.progress}%</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Waiting status</p>
-                      <p className="mt-2 text-white">{getWaitingLabel(selectedCase)}</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Submitted apps</p>
-                      <p className="mt-2 text-white">{selectedCase.submittedSaasAppCount}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Documents</p>
-                      <p className="mt-2 text-white">2 planned</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">OIDC status</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <Badge status={selectedCase.oidcClientSecretConfigured ? "complete" : "waiting_on_msp"}>
-                          {getOidcStatusLabel(selectedCase)}
-                        </Badge>
-                        <span className="text-sm text-slate-300">{getAccessLabel(selectedCase)}</span>
-                        {selectedCase.oidcClientSecretConfigured ? (
-                          <span className="text-sm text-slate-300">Secret: ********</span>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 text-sm text-slate-400">
-                        {selectedCase.tenantName ? `Tenant: ${selectedCase.tenantName}` : "Tenant realm has not been configured yet."}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Sales Engineer</p>
-                      <p className="mt-2 text-white">{SALES_ENGINEER_NAME}</p>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current active task</p>
-                    <p className="mt-2 text-white">{selectedCase.activeTaskTitle ?? "No active task"}</p>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Owner</p>
-                        <p className="mt-1 text-sm text-slate-200">{getActiveTaskOwnerLabel(selectedCase)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Status</p>
-                        <p className="mt-1 text-sm text-slate-200">{getActiveTaskStatusLabel(selectedCase)}</p>
-                      </div>
-                    </div>
-                    {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp" ? (
-                      <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.08] px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-cyan-100">Waiting on MSP</p>
-                        <p className="mt-2 text-sm leading-6 text-cyan-50">{getMspNeedsToDoLabel(selectedCase)}</p>
-                      </div>
-                    ) : null}
-                  </div>
-                  {selectedCase.firstCustomerPilot ? (
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">First Customer Pilot</p>
-                      <p className="mt-2 text-white">{selectedCase.firstCustomerPilot.customerAlias}</p>
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Target timing</p>
-                          <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.targetRolloutTiming}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Estimated users</p>
-                          <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.estimatedUserCount ?? "Not provided"}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer admin</p>
-                          <p className="mt-1 text-sm text-slate-200">
-                            {selectedCase.firstCustomerPilot.adminContactName ?? selectedCase.firstCustomerPilot.adminContactEmail ?? "Not provided"}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Notes</p>
-                          <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.notes ?? "No notes yet"}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
 
-                <div className="grid gap-3">
-                  {selectedCase.activeTaskOwner === "kzero_se" || selectedCase.status === "waiting_on_kzero" ? (
-                    <Button className="justify-start" onClick={handleCompleteKzeroStep}>
-                      <Clock3 className="mr-2 h-4 w-4" />
-                      {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
-                    </Button>
-                  ) : null}
-                  <Button className="justify-start" onClick={() => openEdit(selectedCase)} variant="outline">
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit MSP
-                  </Button>
-                  <Button className="justify-start" onClick={() => openOidc(selectedCase)} variant="outline">
-                    <KeyRound className="mr-2 h-4 w-4" />
-                    Configure OIDC
-                  </Button>
-                  <Button className="justify-start" onClick={() => openDelete(selectedCase)} variant="outline">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete MSP
-                  </Button>
-                  <Link href={selectedCase.actionHref}>
-                    <Button className="w-full">Open full onboarding plan</Button>
-                  </Link>
+                <div className="max-h-[calc(100vh-11.5rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12.5rem)] md:px-6 md:py-6">
+                  <div className="grid gap-6">
+                    <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
+                      <div className="grid gap-4">
+                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current Stage</p>
+                          <p className="mt-2 text-lg font-semibold text-white">{selectedCase.currentStage}</p>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current Active Task</p>
+                            <Badge status={getStatusTone(selectedCase)}>{getPreviewTaskStatusLabel(selectedCase)}</Badge>
+                          </div>
+                          <p className="mt-3 text-lg font-semibold text-white">{selectedCase.activeTaskTitle ?? "No active task"}</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-300">{getNextStepDescription(selectedCase)}</p>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Who Owns The Next Action</p>
+                            <p className="mt-2 text-base font-semibold text-white">{getActiveTaskOwnerLabel(selectedCase)}</p>
+                            <p className="mt-2 text-sm text-slate-300">{getNextActionHeading(selectedCase)}</p>
+                          </div>
+                          <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">What Happens Next</p>
+                            <p className="mt-2 text-sm leading-6 text-slate-300">
+                              {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
+                                ? "The plan stays with the MSP until the current onboarding step is completed."
+                                : "The case can move forward as soon as the current KZero step is completed."}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
+                            {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
+                              ? "What The MSP Needs To Do"
+                              : "What KZero Needs To Do"}
+                          </p>
+                          <p className="mt-2 text-sm leading-6 text-slate-300">
+                            {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
+                              ? getMspNeedsToDoLabel(selectedCase)
+                              : getNextStepDescription(selectedCase)}
+                          </p>
+                        </div>
+
+                        {selectedCase.firstCustomerPilot ? (
+                          <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">First Customer Pilot</p>
+                            <p className="mt-2 text-lg font-semibold text-white">{selectedCase.firstCustomerPilot.customerAlias}</p>
+                            <div className="mt-4 grid gap-4 md:grid-cols-2">
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Target Timing</p>
+                                <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.targetRolloutTiming}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Estimated Users</p>
+                                <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.estimatedUserCount ?? "Not provided"}</p>
+                              </div>
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer Admin</p>
+                                <p className="mt-1 text-sm text-slate-200">
+                                  {selectedCase.firstCustomerPilot.adminContactName ?? selectedCase.firstCustomerPilot.adminContactEmail ?? "Not provided"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Notes</p>
+                                <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.notes ?? "No notes yet"}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="grid gap-4">
+                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Summary</p>
+                          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Progress</p>
+                              <p className="mt-1 text-lg font-semibold text-white">{selectedCase.progress}%</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Waiting Status</p>
+                              <p className="mt-1 text-sm text-slate-200">{getWaitingLabel(selectedCase)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Access Mode</p>
+                              <p className="mt-1 text-sm text-slate-200">{getAccessLabel(selectedCase)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">OIDC Status</p>
+                              <p className="mt-1 text-sm text-slate-200">{getOidcStatusLabel(selectedCase)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tenant Realm</p>
+                              <p className="mt-1 text-sm text-slate-200">{selectedCase.tenantName ?? "Not configured"}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sales Engineer</p>
+                              <p className="mt-1 text-sm text-slate-200">{SALES_ENGINEER_NAME}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Last Activity</p>
+                              <p className="mt-1 text-sm text-slate-200">{selectedCase.lastActivity}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-3">
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-white">Submitted Apps</p>
+                          <span className="text-xs uppercase tracking-[0.2em] text-slate-400">{selectedCase.submittedSaasAppCount}</span>
+                        </div>
+                        <div className="mt-3 grid gap-2">
+                          {selectedCaseApps.length > 0 ? (
+                            selectedCaseApps.slice(0, 4).map((app) => (
+                              <div key={app.id} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
+                                <p className="text-sm text-white">{app.name}</p>
+                                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{app.status.replaceAll("_", " ")}</p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-300">
+                              {selectedCase.submittedSaasAppCount > 0
+                                ? `${selectedCase.submittedSaasAppCount} apps submitted for review.`
+                                : "No SaaS apps submitted yet."}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-sm font-semibold text-white">Documents</p>
+                        <div className="mt-3 grid gap-2">
+                          {selectedCaseDocuments.length > 0 ? (
+                            selectedCaseDocuments.map((attachment) => (
+                              <div key={attachment.id} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
+                                <p className="text-sm text-white">{attachment.name}</p>
+                                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{attachment.kind}</p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-sm text-slate-300">No documents attached yet.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedCaseComments.length > 0 ? (
+                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                          <p className="text-sm font-semibold text-white">Notes / Activity</p>
+                          <div className="mt-3 grid gap-2">
+                            {selectedCaseComments.slice(0, 3).map((comment) => (
+                              <div key={comment.id} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
+                                <p className="text-sm font-medium text-white">{comment.author}</p>
+                                <p className="mt-1 text-sm leading-6 text-slate-300">{comment.body}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div>
+                      <Link href={selectedCase.actionHref}>
+                        <Button className="w-full md:w-auto">Open Full Onboarding Plan</Button>
+                      </Link>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </>
             ) : null}
 
             {panelMode === "delete" && selectedCase ? (
@@ -1647,136 +1817,186 @@ export function InternalDashboard({
             ) : null}
 
             {panelMode === "edit" && selectedCase && editState ? (
-              <div className="grid gap-4">
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>MSP name</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) => setEditState((current) => (current ? { ...current, mspName: event.target.value } : current))}
-                    value={editState.mspName}
-                  />
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Primary contact email</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEditState((current) => (current ? { ...current, primaryContactEmail: event.target.value } : current))
-                    }
-                    type="email"
-                    value={editState.primaryContactEmail}
-                  />
-                </label>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Assigned Sales Engineer</p>
-                  <p className="mt-2 text-white">{SALES_ENGINEER_NAME}</p>
+              <>
+                <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12rem)] md:px-6 md:py-6">
+                  <div className="grid gap-5">
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP Account</p>
+                        <div className="mt-4 grid gap-4">
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>MSP Name</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) => setEditState((current) => (current ? { ...current, mspName: event.target.value } : current))}
+                              value={editState.mspName}
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Primary Contact Email</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) => (current ? { ...current, primaryContactEmail: event.target.value } : current))
+                              }
+                              type="email"
+                              value={editState.primaryContactEmail}
+                            />
+                          </label>
+                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Assigned Sales Engineer</p>
+                            <p className="mt-2 text-sm text-white">{SALES_ENGINEER_NAME}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Onboarding Status</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                            <span>Current Stage</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) =>
+                                  current ? { ...current, currentStage: event.target.value } : current
+                                )
+                              }
+                              value={editState.currentStage}
+                            >
+                              {ONBOARDING_STAGE_OPTIONS.map((stage) => (
+                                <option key={stage} value={stage}>
+                                  {stage}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Status</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) =>
+                                  current ? { ...current, status: event.target.value as OnboardingCase["status"] } : current
+                                )
+                              }
+                              value={editState.status}
+                            >
+                              {STATUS_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Last Activity</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) => (current ? { ...current, lastActivity: event.target.value } : current))
+                              }
+                              type="date"
+                              value={editState.lastActivity}
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Progress</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              max={100}
+                              min={0}
+                              onChange={(event) =>
+                                setEditState((current) =>
+                                  current ? { ...current, progress: Math.max(0, Math.min(100, Number(event.target.value) || 0)) } : current
+                                )
+                              }
+                              type="number"
+                              value={editState.progress}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access & OIDC</p>
+                        <div className="mt-4 grid gap-4">
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Access Mode</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) =>
+                                  current
+                                    ? { ...current, accessMode: event.target.value as OnboardingCase["accessMode"] }
+                                    : current
+                                )
+                              }
+                              value={editState.accessMode}
+                            >
+                              {ACCESS_MODE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Tenant Realm</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) => (current ? { ...current, tenantName: event.target.value } : current))
+                              }
+                              value={editState.tenantName}
+                            />
+                          </label>
+                          <p className="text-xs leading-5 text-slate-400">
+                            Tenant realm casing is preserved exactly for KZero OIDC configuration.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Reporting Details</p>
+                        <div className="mt-4 grid gap-4">
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Submitted Apps</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              min={0}
+                              onChange={(event) =>
+                                setEditState((current) =>
+                                  current ? { ...current, submittedSaasAppCount: Math.max(0, Number(event.target.value) || 0) } : current
+                                )
+                              }
+                              type="number"
+                              value={editState.submittedSaasAppCount}
+                            />
+                          </label>
+                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Current Waiting Status</p>
+                            <p className="mt-2 text-sm text-white">
+                              {STATUS_OPTIONS.find((option) => option.value === editState.status)?.label ?? "In Progress"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Tenant name</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEditState((current) => (current ? { ...current, tenantName: event.target.value } : current))
-                    }
-                    value={editState.tenantName}
-                  />
-                </label>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Access mode</span>
-                    <select
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      onChange={(event) =>
-                        setEditState((current) =>
-                          current
-                            ? { ...current, accessMode: event.target.value as OnboardingCase["accessMode"] }
-                            : current
-                        )
-                      }
-                      value={editState.accessMode}
-                    >
-                      <option value="temporary">temporary</option>
-                      <option value="oidc">oidc</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Current stage</span>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      onChange={(event) =>
-                        setEditState((current) => (current ? { ...current, currentStage: event.target.value } : current))
-                      }
-                      value={editState.currentStage}
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Progress %</span>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      max={100}
-                      min={0}
-                      onChange={(event) =>
-                        setEditState((current) =>
-                          current ? { ...current, progress: Number(event.target.value) || 0 } : current
-                        )
-                      }
-                      type="number"
-                      value={editState.progress}
-                    />
-                  </label>
-                </div>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Submitted apps</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    min={0}
-                    onChange={(event) =>
-                      setEditState((current) =>
-                        current ? { ...current, submittedSaasAppCount: Number(event.target.value) || 0 } : current
-                      )
-                    }
-                    type="number"
-                    value={editState.submittedSaasAppCount}
-                  />
-                </label>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Status</span>
-                    <select
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      onChange={(event) =>
-                        setEditState((current) =>
-                          current ? { ...current, status: event.target.value as OnboardingCase["status"] } : current
-                        )
-                      }
-                      value={editState.status}
-                    >
-                      <option value="waiting_on_msp">waiting_on_msp</option>
-                      <option value="waiting_on_kzero">waiting_on_kzero</option>
-                      <option value="in_progress">in_progress</option>
-                      <option value="complete">complete</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Last Activity</span>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      onChange={(event) =>
-                        setEditState((current) => (current ? { ...current, lastActivity: event.target.value } : current))
-                      }
-                      value={editState.lastActivity}
-                    />
-                  </label>
-                </div>
-                <div className="flex gap-3">
-                  <Button className="flex-1" onClick={handleSaveEdit}>
+
+                <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:flex-row md:justify-end md:px-6">
+                  <Button className="md:min-w-[180px]" onClick={handleSaveEdit}>
                     Save MSP Details
                   </Button>
                   <Button onClick={closePanel} variant="outline">
                     Cancel
                   </Button>
                 </div>
-              </div>
+              </>
             ) : null}
 
             {panelMode === "oidc" && selectedCase && oidcState ? (
