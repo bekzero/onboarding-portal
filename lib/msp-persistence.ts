@@ -1042,6 +1042,42 @@ export async function getAdminDashboardCases() {
   return msps.map(toAdminDashboardCase);
 }
 
+export async function getAdminPortalAccessByMspId(mspId: string) {
+  ensureDatabaseConfigured();
+
+  const msp = await prisma.msp.findUnique({
+    where: { id: mspId },
+    select: {
+      id: true,
+      name: true,
+      onboardingPlans: {
+        orderBy: {
+          createdAt: "asc"
+        },
+        select: {
+          planId: true
+        },
+        take: 1
+      },
+      oidcConfig: {
+        select: {
+          tenantRealm: true
+        }
+      }
+    }
+  });
+
+  if (!msp) {
+    return null;
+  }
+
+  return {
+    id: msp.id,
+    planId: msp.onboardingPlans[0]?.planId ?? null,
+    tenantName: msp.oidcConfig?.tenantRealm ?? msp.name
+  };
+}
+
 export async function getOidcConfigForMsp(mspId: string) {
   ensureDatabaseConfigured();
 

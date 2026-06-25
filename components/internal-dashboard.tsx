@@ -851,6 +851,8 @@ export function InternalDashboard({
   const selectedCaseApps = selectedCaseBundle?.apps ?? [];
   const selectedCaseDocuments = selectedCaseBundle?.attachments ?? [];
   const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
+  const adminPortalOpenHref = selectedCase?.mspId ? `/api/admin/msps/${selectedCase.mspId}/open-portal` : null;
+  const canOpenPortalAsAdmin = Boolean(selectedCase?.mspId && useServerData);
 
   const filteredCases = useMemo(() => {
     return onboardingCases.filter((item) => matchesSearchQuery(item, searchQuery) && matchesQuickFilter(item, quickFilter));
@@ -1598,7 +1600,11 @@ export function InternalDashboard({
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
                       <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Case Actions</p>
-                      <p className="mt-1 text-sm text-slate-300">Advance or update this MSP case from here.</p>
+                      <p className="mt-1 text-sm text-slate-300">
+                        {canOpenPortalAsAdmin
+                          ? "Advance, update, or open this onboarding case with admin access."
+                          : "Advance or update this MSP case from here."}
+                      </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {selectedCase.activeTaskOwner === "kzero_se" || selectedCase.status === "waiting_on_kzero" ? (
@@ -1606,6 +1612,11 @@ export function InternalDashboard({
                           <Clock3 className="mr-2 h-4 w-4" />
                           {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
                         </Button>
+                      ) : null}
+                      {canOpenPortalAsAdmin && adminPortalOpenHref ? (
+                        <a href={adminPortalOpenHref} rel="noreferrer" target="_blank">
+                          <Button>Open Onboarding Case</Button>
+                        </a>
                       ) : null}
                       <Button onClick={() => openEdit(selectedCase)} variant="outline">
                         <Pencil className="mr-2 h-4 w-4" />
@@ -1621,6 +1632,11 @@ export function InternalDashboard({
                       </Button>
                     </div>
                   </div>
+                  {!canOpenPortalAsAdmin ? (
+                    <p className="mt-3 text-xs text-slate-400">
+                      Open Onboarding Case is available for server-backed MSP records and uses admin-authenticated portal access.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="max-h-[calc(100vh-11.5rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12.5rem)] md:px-6 md:py-6">
