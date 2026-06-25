@@ -760,6 +760,7 @@ export function InternalDashboard({
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompletingKzeroStep, setIsCompletingKzeroStep] = useState(false);
+  const [isCaseActionsMenuOpen, setIsCaseActionsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [quickFilter, setQuickFilter] = useState<DashboardQuickFilter>("all");
   const [sortColumn, setSortColumn] = useState<DashboardSortColumn | null>(null);
@@ -823,6 +824,10 @@ export function InternalDashboard({
     setCaseOverrides(readAdminCaseOverridesFromStorage());
     void loadDashboardCases();
   }, []);
+
+  useEffect(() => {
+    setIsCaseActionsMenuOpen(false);
+  }, [panelMode, selectedCaseId]);
 
   const fallbackCases = useMemo<DashboardCase[]>(() => {
     return baseCases
@@ -1606,30 +1611,70 @@ export function InternalDashboard({
                           : "Advance or update this MSP case from here."}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                      {canOpenPortalAsAdmin && adminPortalOpenHref ? (
+                        <a className="w-full sm:w-auto" href={adminPortalOpenHref} rel="noreferrer" target="_blank">
+                          <Button className="w-full sm:w-auto">Open Onboarding Case</Button>
+                        </a>
+                      ) : null}
                       {selectedCase.activeTaskOwner === "kzero_se" || selectedCase.status === "waiting_on_kzero" ? (
-                        <Button onClick={handleCompleteKzeroStep}>
+                        <Button className="w-full sm:w-auto" onClick={handleCompleteKzeroStep} variant="outline">
                           <Clock3 className="mr-2 h-4 w-4" />
                           {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
                         </Button>
                       ) : null}
-                      {canOpenPortalAsAdmin && adminPortalOpenHref ? (
-                        <a href={adminPortalOpenHref} rel="noreferrer" target="_blank">
-                          <Button>Open Onboarding Case</Button>
-                        </a>
-                      ) : null}
-                      <Button onClick={() => openEdit(selectedCase)} variant="outline">
-                        <Pencil className="mr-2 h-4 w-4" />
-                        Edit MSP
-                      </Button>
-                      <Button onClick={() => openOidc(selectedCase)} variant="outline">
-                        <KeyRound className="mr-2 h-4 w-4" />
-                        Configure OIDC
-                      </Button>
-                      <Button onClick={() => openDelete(selectedCase)} variant="outline">
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete MSP
-                      </Button>
+                      <div className="relative w-full sm:w-auto">
+                        <Button
+                          aria-expanded={isCaseActionsMenuOpen}
+                          aria-haspopup="menu"
+                          className="w-full sm:w-auto"
+                          onClick={() => setIsCaseActionsMenuOpen((current) => !current)}
+                          variant="outline"
+                        >
+                          More Actions
+                          <ChevronDown className="ml-2 h-4 w-4" />
+                        </Button>
+                        {isCaseActionsMenuOpen ? (
+                          <div
+                            className="mt-2 grid gap-2 rounded-2xl border border-white/10 bg-[#0a1424] p-2 sm:absolute sm:right-0 sm:mt-2 sm:min-w-[220px] sm:shadow-xl"
+                            role="menu"
+                          >
+                            <Button
+                              className="justify-start"
+                              onClick={() => {
+                                setIsCaseActionsMenuOpen(false);
+                                openEdit(selectedCase);
+                              }}
+                              variant="outline"
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit MSP
+                            </Button>
+                            <Button
+                              className="justify-start"
+                              onClick={() => {
+                                setIsCaseActionsMenuOpen(false);
+                                openOidc(selectedCase);
+                              }}
+                              variant="outline"
+                            >
+                              <KeyRound className="mr-2 h-4 w-4" />
+                              Configure OIDC
+                            </Button>
+                            <Button
+                              className="justify-start border-red-400/30 text-red-100 hover:bg-red-400/10"
+                              onClick={() => {
+                                setIsCaseActionsMenuOpen(false);
+                                openDelete(selectedCase);
+                              }}
+                              variant="outline"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete MSP
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   {!canOpenPortalAsAdmin ? (
