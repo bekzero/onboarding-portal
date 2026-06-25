@@ -95,15 +95,22 @@ function isPlaceholderAttachment(attachment: Attachment) {
 
 export function DocumentsReviewCard({
   attachments,
+  allowBrowserDocuments = false,
   planId
 }: {
   attachments: Attachment[];
+  allowBrowserDocuments?: boolean;
   planId: string;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([]);
 
   useEffect(() => {
+    if (!allowBrowserDocuments) {
+      setStoredDocuments([]);
+      return;
+    }
+
     const rawValue = window.localStorage.getItem(getStorageKey(planId));
 
     if (!rawValue) {
@@ -117,13 +124,17 @@ export function DocumentsReviewCard({
     } catch {
       setStoredDocuments([]);
     }
-  }, [planId]);
+  }, [allowBrowserDocuments, planId]);
 
   useEffect(() => {
+    if (!allowBrowserDocuments) {
+      return;
+    }
+
     // TODO: production needs secure server-side document storage and malware scanning.
     // This demo intentionally stores only file metadata in localStorage, never file contents.
     window.localStorage.setItem(getStorageKey(planId), JSON.stringify(storedDocuments));
-  }, [planId, storedDocuments]);
+  }, [allowBrowserDocuments, planId, storedDocuments]);
 
   const documents = useMemo(() => {
     const uploaded = storedDocuments.map((item) => ({
@@ -136,20 +147,20 @@ export function DocumentsReviewCard({
       uploadedBy: item.uploadedBy
     }));
 
-    const planned = attachments
+    const savedAttachments = attachments
       .filter((attachment) => !isPlaceholderAttachment(attachment))
       .map((attachment) => ({
         id: attachment.id,
         isStored: false,
         name: attachment.name,
-        sizeLabel: "Planned",
+        sizeLabel: "Shared",
         status: "Approved" as ReviewStatus,
         typeLabel: formatTypeLabel("", attachment.name),
         uploadedBy: "KZero"
       }));
 
-    return [...uploaded, ...planned] satisfies DocumentItem[];
-  }, [attachments, storedDocuments]);
+    return [...(allowBrowserDocuments ? uploaded : []), ...savedAttachments] satisfies DocumentItem[];
+  }, [allowBrowserDocuments, attachments, storedDocuments]);
 
   function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(event.target.files ?? []);
@@ -197,29 +208,38 @@ export function DocumentsReviewCard({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <input
-          accept=".pdf,.doc,.docx,.txt,image/*"
-          className="hidden"
-          multiple
-          onChange={handleFileSelection}
-          ref={inputRef}
-          type="file"
-        />
-        <Button className="h-10 px-4" onClick={() => inputRef.current?.click()}>
-          <Upload className="mr-2 h-4 w-4" />
-          Select documents
-        </Button>
-        <p className="text-xs text-slate-400">
-          Accepted: PDF, Word, text, and image files.
-        </p>
-      </div>
+      {allowBrowserDocuments ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <input
+            accept=".pdf,.doc,.docx,.txt,image/*"
+            className="hidden"
+            multiple
+            onChange={handleFileSelection}
+            ref={inputRef}
+            type="file"
+          />
+          <Button className="h-10 px-4" onClick={() => inputRef.current?.click()}>
+            <Upload className="mr-2 h-4 w-4" />
+            Select documents
+          </Button>
+          <p className="text-xs text-slate-400">
+            Accepted: PDF, Word, text, and image files.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-[#0a1424] px-4 py-3 text-sm text-slate-300">
+          <p className="font-medium text-white">Document upload is not configured yet.</p>
+          <p className="mt-1">Documents shared by your team or KZero Passwordless will appear here.</p>
+        </div>
+      )}
 
       <div className="mt-4 grid gap-3">
         {documents.length === 0 ? (
-          <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-3.5 py-4 text-sm text-slate-400">
-            <p>No documents have been added yet.</p>
-            <p className="mt-1">Documents shared by your team or KZero will appear here.</p>
+          <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-4 py-4">
+            <p className="text-base font-semibold text-white">No Documents Added</p>
+            <p className="mt-2 text-sm text-slate-400">
+              Documents shared by your team or KZero Passwordless will appear here.
+            </p>
           </div>
         ) : null}
 

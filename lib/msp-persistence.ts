@@ -1,5 +1,6 @@
 import "server-only";
 import type { AccessMode, OidcConfig, Prisma } from "@prisma/client";
+import { createTaskCompletedAdminNotification } from "@/lib/admin-notifications";
 import { decryptStoredOidcClientSecret, encryptOidcClientSecret } from "@/lib/oidc-secret-crypto";
 import { getPlanBundle, type FirstCustomerPilot, type PlanBundle, type SaaSApp as MockSaaSApp, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
@@ -232,6 +233,7 @@ function buildBundleFromPersistedState(
   return {
     ...bundle,
     apps: persistedApps,
+    attachments: [],
     firstCustomerPilot: persistedPlan?.firstCustomerPilot ?? bundle.firstCustomerPilot ?? null,
     organization: {
       ...bundle.organization,
@@ -703,8 +705,10 @@ export async function getPortalPlanBundle(planId: string) {
 async function advanceOnboardingPlanTask({
   planId,
   requestedTaskId,
+  notifyTaskCompletion = false,
   requireOwner
 }: {
+  notifyTaskCompletion?: boolean;
   planId: string;
   requestedTaskId?: string;
   requireOwner?: "kzero_se";
@@ -830,6 +834,17 @@ async function advanceOnboardingPlanTask({
     })
   ]);
 
+  if (notifyTaskCompletion) {
+    await createTaskCompletedAdminNotification({
+      mspId: onboardingPlan.mspId,
+      mspName: onboardingPlan.msp?.name ?? onboardingPlan.title ?? "MSP",
+      planId,
+      stage: metrics.currentStage,
+      taskId: activeTemplateTask.id,
+      taskTitle: activeTask.title
+    });
+  }
+
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
     currentStage: metrics.currentStage,
     firstCustomerPilot,
@@ -841,6 +856,7 @@ async function advanceOnboardingPlanTask({
 
 export async function completePortalTask(planId: string, templateTaskId: string) {
   return advanceOnboardingPlanTask({
+    notifyTaskCompletion: true,
     planId,
     requestedTaskId: templateTaskId
   });

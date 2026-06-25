@@ -907,7 +907,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
               </Card>
             ) : null}
 
-            {activeTab === "documents" ? <DocumentsReviewCard attachments={bundle.attachments} planId={bundle.plan.id} /> : null}
+            {activeTab === "documents" ? <DocumentsReviewCard allowBrowserDocuments attachments={bundle.attachments} planId={bundle.plan.id} /> : null}
 
             {activeTab === "activity" && meaningfulComments.length > 0 ? (
               <Card className="border-white/10 bg-[#101a2d] p-4">

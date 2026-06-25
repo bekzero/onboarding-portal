@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
   ArrowUpDown,
+  Bell,
   Building2,
   ChevronDown,
   ChevronUp,
@@ -74,6 +75,26 @@ type AdminApiCase = {
 type AdminApiResponse = {
   error?: string;
   msps?: AdminApiCase[];
+};
+
+type AdminNotification = {
+  createdAt: string;
+  id: string;
+  isRead: boolean;
+  mspId: string;
+  mspName: string;
+  planId: string;
+  readAt: string | null;
+  stage: string;
+  taskId: string;
+  taskTitle: string;
+  type: "task_completed";
+};
+
+type AdminNotificationsApiResponse = {
+  error?: string;
+  notifications?: AdminNotification[];
+  unreadCount?: number;
 };
 
 type EnrollmentFormState = {
@@ -186,6 +207,22 @@ function getTodayDateInputValue() {
 
 function getAccessLabel(item: OnboardingCase) {
   return item.accessMode === "temporary" ? "Temporary Access" : "KZero OIDC";
+}
+
+function formatNotificationTimestamp(value: string) {
+  const parsed = Date.parse(value);
+
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "long",
+    year: "numeric"
+  }).format(new Date(parsed));
 }
 
 function getWaitingLabel(item: OnboardingCase) {
@@ -755,6 +792,12 @@ export function InternalDashboard({
   const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null);
   const [panelMode, setPanelMode] = useState<PanelMode>("preview");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+  const [notificationErrorMessage, setNotificationErrorMessage] = useState<string | null>(null);
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>("default");
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
@@ -765,6 +808,8 @@ export function InternalDashboard({
   const [quickFilter, setQuickFilter] = useState<DashboardQuickFilter>("all");
   const [sortColumn, setSortColumn] = useState<DashboardSortColumn | null>(null);
   const [sortDirection, setSortDirection] = useState<DashboardSortDirection | null>(null);
+  const hasInitializedNotificationFeed = useRef(false);
+  const announcedNotificationIds = useRef<Set<string>>(new Set());
 
   function getSafeApiErrorMessage(error: unknown) {
     if (error instanceof Error && error.message.trim()) {
@@ -820,14 +865,86 @@ export function InternalDashboard({
     }
   }
 
+  async function loadNotifications() {
+    try {
+      setIsLoadingNotifications(true);
+      setNotificationErrorMessage(null);
+      const response = await fetch("/api/admin/notifications", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as AdminNotificationsApiResponse | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? `Request failed with status ${response.status}.`);
+      }
+
+      setNotifications(payload?.notifications ?? []);
+      setUnreadNotificationCount(payload?.unreadCount ?? 0);
+    } catch (error) {
+      console.error("Failed to load /api/admin/notifications.", error);
+      setNotifications([]);
+      setUnreadNotificationCount(0);
+      setNotificationErrorMessage(getSafeApiErrorMessage(error) ?? "Could not load notifications.");
+    } finally {
+      setIsLoadingNotifications(false);
+    }
+  }
+
   useEffect(() => {
     setCaseOverrides(readAdminCaseOverridesFromStorage());
     void loadDashboardCases();
+    void loadNotifications();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return;
+    }
+
+    setBrowserNotificationPermission(window.Notification.permission);
   }, []);
 
   useEffect(() => {
     setIsCaseActionsMenuOpen(false);
   }, [panelMode, selectedCaseId]);
+
+  useEffect(() => {
+    if (!isNotificationDrawerOpen) {
+      return;
+    }
+
+    void loadNotifications();
+  }, [isNotificationDrawerOpen]);
+
+  useEffect(() => {
+    const unreadNotifications = notifications.filter((notification) => !notification.isRead);
+
+    if (!hasInitializedNotificationFeed.current) {
+      unreadNotifications.forEach((notification) => announcedNotificationIds.current.add(notification.id));
+      hasInitializedNotificationFeed.current = true;
+      return;
+    }
+
+    if (typeof window === "undefined" || !("Notification" in window) || browserNotificationPermission !== "granted") {
+      return;
+    }
+
+    unreadNotifications.forEach((notification) => {
+      if (announcedNotificationIds.current.has(notification.id)) {
+        return;
+      }
+
+      announcedNotificationIds.current.add(notification.id);
+      const browserNotification = new window.Notification(`${notification.mspName} completed a step`, {
+        body: `${notification.taskTitle} in ${notification.stage}`,
+        tag: notification.id
+      });
+
+      browserNotification.onclick = () => {
+        window.focus();
+        openCaseFromNotification(notification);
+        browserNotification.close();
+      };
+    });
+  }, [browserNotificationPermission, notifications]);
 
   const fallbackCases = useMemo<DashboardCase[]>(() => {
     return baseCases
@@ -854,7 +971,7 @@ export function InternalDashboard({
     [selectedCase]
   );
   const selectedCaseApps = selectedCaseBundle?.apps ?? [];
-  const selectedCaseDocuments = selectedCaseBundle?.attachments ?? [];
+  const selectedCaseDocuments = useServerData ? [] : selectedCaseBundle?.attachments ?? [];
   const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
   const adminPortalOpenHref = selectedCase?.mspId ? `/api/admin/msps/${selectedCase.mspId}/open-portal` : null;
   const canOpenPortalAsAdmin = Boolean(selectedCase?.mspId && useServerData);
@@ -927,6 +1044,79 @@ export function InternalDashboard({
   function openPreview(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
     setPanelMode("preview");
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    try {
+      const response = await fetch(`/api/admin/notifications/${notificationId}`, {
+        method: "PATCH"
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string; notification?: AdminNotification } | null;
+
+      if (!response.ok || !payload?.notification) {
+        throw new Error(payload?.error ?? "Could not mark the notification as read.");
+      }
+
+      let decrementedUnread = false;
+      setNotifications((current) =>
+        current.map((notification) => {
+          if (notification.id !== notificationId) {
+            return notification;
+          }
+
+          if (!notification.isRead) {
+            decrementedUnread = true;
+          }
+
+          return payload.notification!;
+        })
+      );
+      if (decrementedUnread) {
+        setUnreadNotificationCount((current) => Math.max(0, current - 1));
+      }
+    } catch (error) {
+      setNotificationErrorMessage(getSafeApiErrorMessage(error) ?? "Could not mark the notification as read.");
+    }
+  }
+
+  async function markAllNotificationsRead() {
+    try {
+      const response = await fetch("/api/admin/notifications/mark-all-read", {
+        method: "POST"
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Could not mark notifications as read.");
+      }
+
+      setNotifications((current) =>
+        current.map((notification) => ({
+          ...notification,
+          isRead: true,
+          readAt: notification.readAt ?? new Date().toISOString()
+        }))
+      );
+      setUnreadNotificationCount(0);
+    } catch (error) {
+      setNotificationErrorMessage(getSafeApiErrorMessage(error) ?? "Could not mark notifications as read.");
+    }
+  }
+
+  async function enableBrowserNotifications() {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotificationErrorMessage("Browser notifications are not supported in this browser.");
+      return;
+    }
+
+    const permission = await window.Notification.requestPermission();
+    setBrowserNotificationPermission(permission);
+  }
+
+  function openCaseFromNotification(notification: AdminNotification) {
+    setSelectedCaseId(notification.planId);
+    setPanelMode("preview");
+    setIsNotificationDrawerOpen(false);
   }
 
   function openEdit(item: DashboardCase) {
@@ -1360,6 +1550,15 @@ export function InternalDashboard({
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
+              <Button className="relative h-10 px-4" onClick={() => setIsNotificationDrawerOpen(true)} variant="outline">
+                <Bell className="mr-2 h-4 w-4" />
+                Notifications
+                {unreadNotificationCount > 0 ? (
+                  <span className="ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-blue-400 px-1.5 py-0.5 text-[11px] font-semibold text-slate-950">
+                    {unreadNotificationCount}
+                  </span>
+                ) : null}
+              </Button>
               <Link href="/">
                 <Button className="h-10 px-4" variant="outline">
                   Back to Main Page
@@ -1543,6 +1742,108 @@ export function InternalDashboard({
           </>
         )}
       </section>
+
+      {isNotificationDrawerOpen ? (
+        <div className="fixed inset-0 z-40 flex justify-end bg-slate-950/70 p-0 md:p-4">
+          <div className="flex h-full w-full max-w-[460px] flex-col border-l border-white/10 bg-[#101a2d] shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4 md:px-5">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Notifications</p>
+                <h3 className="mt-2 text-2xl font-semibold text-white">Notifications</h3>
+                <p className="mt-1 text-sm text-slate-300">MSP activity appears here when onboarding steps are completed.</p>
+              </div>
+              <Button aria-label="Close notifications" className="h-9 px-2.5" onClick={() => setIsNotificationDrawerOpen(false)} variant="outline">
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-5">
+              <div>
+                <p className="text-sm text-slate-300">
+                  {unreadNotificationCount > 0 ? `${unreadNotificationCount} unread` : "All caught up"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {browserNotificationPermission === "granted"
+                    ? "Browser alerts enabled"
+                    : "Enable browser alerts to see new MSP activity outside the dashboard."}
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {browserNotificationPermission !== "granted" ? (
+                  <Button onClick={enableBrowserNotifications} variant="outline">
+                    Enable Browser Alerts
+                  </Button>
+                ) : null}
+                <Button disabled={unreadNotificationCount === 0} onClick={markAllNotificationsRead} variant="outline">
+                  Mark All Read
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 md:px-5">
+              {isLoadingNotifications ? (
+                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4 text-sm text-slate-300">
+                  Loading notifications...
+                </div>
+              ) : notificationErrorMessage ? (
+                <div className="rounded-2xl border border-red-400/20 bg-red-400/[0.06] px-4 py-4 text-sm text-red-100">
+                  {notificationErrorMessage}
+                </div>
+              ) : notifications.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-[#0a1424] px-4 py-5">
+                  <p className="text-base font-semibold text-white">No Notifications Yet</p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    MSP activity will appear here when onboarding steps are completed.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`rounded-2xl border px-4 py-4 ${
+                        notification.isRead
+                          ? "border-white/10 bg-[#0a1424]"
+                          : "border-blue-400/20 bg-blue-400/[0.08]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-white">
+                              {notification.mspName} completed: {notification.taskTitle}
+                            </p>
+                            <Badge status={notification.isRead ? "in_progress" : "waiting_on_kzero"}>
+                              {notification.isRead ? "Read" : "Unread"}
+                            </Badge>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-300">Completed in {notification.stage}</p>
+                          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                            {formatNotificationTimestamp(notification.createdAt)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <Button className="sm:w-auto" onClick={() => openCaseFromNotification(notification)}>
+                          Open Case
+                        </Button>
+                        <Button
+                          className="sm:w-auto"
+                          disabled={notification.isRead}
+                          onClick={() => markNotificationRead(notification.id)}
+                          variant="outline"
+                        >
+                          Mark Read
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 p-4 md:p-6">

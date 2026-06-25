@@ -12,6 +12,10 @@ enum AccessMode {
   oidc
 }
 
+enum AdminNotificationType {
+  task_completed
+}
+
 model Msp {
   id                   String           @id @default(cuid())
   name                 String
@@ -22,6 +26,7 @@ model Msp {
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   oidcConfig           OidcConfig?
+  adminNotifications   AdminNotification[]
   onboardingPlans      OnboardingPlan[]
 
   @@map("msps")
@@ -114,4 +119,25 @@ model Document {
   onboardingPlan   OnboardingPlan  @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
 
   @@map("documents")
+}
+
+model AdminNotification {
+  id        String                @id @default(cuid())
+  mspId     String
+  planId    String
+  taskId    String
+  type      AdminNotificationType
+  mspName   String
+  taskTitle String
+  stage     String
+  isRead    Boolean               @default(false)
+  readAt    DateTime?
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  msp       Msp                   @relation(fields: [mspId], references: [id], onDelete: Cascade)
+
+  @@unique([mspId, planId, taskId, type])
+  @@index([createdAt])
+  @@index([isRead, createdAt])
+  @@map("admin_notifications")
 }
