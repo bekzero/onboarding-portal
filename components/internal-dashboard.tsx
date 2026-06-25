@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
-  Eye,
   Gauge,
   KeyRound,
   Pencil,
@@ -520,9 +519,6 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
 function DashboardTable({
   emptyLabel,
   items,
-  onConfigureOidc,
-  onDelete,
-  onEdit,
   onSortChange,
   onView,
   sortColumn,
@@ -531,9 +527,6 @@ function DashboardTable({
 }: {
   emptyLabel: string;
   items: DashboardCase[];
-  onConfigureOidc: (item: DashboardCase) => void;
-  onDelete: (item: DashboardCase) => void;
-  onEdit: (item: DashboardCase) => void;
   onSortChange?: (column: DashboardSortColumn) => void;
   onView: (item: DashboardCase) => void;
   sortColumn?: DashboardSortColumn | null;
@@ -593,9 +586,9 @@ function DashboardTable({
           {items.length === 0 ? (
             <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
           ) : (
-            <table className="min-w-[1080px] w-full table-fixed">
+            <table className="min-w-[960px] w-full table-fixed">
               <colgroup>
-                <col className="w-[20%]" />
+                <col className="w-[24%]" />
                 <col className="w-[14%]" />
                 <col className="w-[12%]" />
                 <col className="w-[16%]" />
@@ -603,12 +596,10 @@ function DashboardTable({
                 <col className="w-[14%]" />
                 <col className="w-[8%]" />
                 <col className="w-[12%]" />
-                <col className="w-[168px]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
                   {sortableColumns.map((column) => renderSortHeader(column.key, column.label))}
-                  <th className="px-4 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -617,7 +608,7 @@ function DashboardTable({
                     <td className="px-4 py-3 align-middle">
                       <div className="min-w-0">
                         <button
-                          className="truncate text-left text-sm font-medium text-white transition hover:text-blue-200"
+                          className="truncate text-left text-sm font-medium text-white underline decoration-white/20 underline-offset-4 transition hover:text-blue-200 hover:decoration-blue-200"
                           onClick={() => onView(item)}
                           type="button"
                         >
@@ -649,46 +640,6 @@ function DashboardTable({
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.lastActivity}</td>
-                    <td className="px-4 py-3 align-middle">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          aria-label={`View ${item.mspName}`}
-                          className="h-8 px-2.5"
-                          onClick={() => onView(item)}
-                          title="View case"
-                          variant="outline"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          aria-label={`Edit ${item.mspName}`}
-                          className="h-8 px-2.5"
-                          onClick={() => onEdit(item)}
-                          title="Edit MSP"
-                          variant="outline"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          aria-label={`Configure OIDC for ${item.mspName}`}
-                          className="h-8 px-2.5"
-                          onClick={() => onConfigureOidc(item)}
-                          title="Configure OIDC"
-                          variant="outline"
-                        >
-                          <KeyRound className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          aria-label={`Delete ${item.mspName}`}
-                          className="h-8 px-2.5"
-                          onClick={() => onDelete(item)}
-                          title="Delete MSP"
-                          variant="outline"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1447,9 +1398,6 @@ export function InternalDashboard({
                       : "No in-progress MSPs right now."
                   }
                   items={inProgressCases}
-                  onConfigureOidc={openOidc}
-                  onDelete={openDelete}
-                  onEdit={openEdit}
                   onSortChange={handleSortChange}
                   onView={openPreview}
                   sortColumn={sortColumn}
@@ -1464,9 +1412,6 @@ export function InternalDashboard({
                       : "No completed MSPs yet."
                   }
                   items={completedCases}
-                  onConfigureOidc={openOidc}
-                  onDelete={openDelete}
-                  onEdit={openEdit}
                   onView={openPreview}
                   title="Completed MSPs"
                 />
