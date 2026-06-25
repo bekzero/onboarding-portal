@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { GuidePreviewModal } from "@/components/guide-preview-modal";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { PortalTourModal, type PortalTourStep } from "@/components/portal-tour-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,6 +21,46 @@ import { users } from "@/lib/mock-data";
 
 const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
+const TOUR_STORAGE_KEY_PREFIX = "kzero-onboarding-tour-seen:";
+
+const PORTAL_TOUR_STEPS: PortalTourStep[] = [
+  {
+    title: "Welcome to Your KZero Passwordless Onboarding Workspace",
+    body: "This portal guides your team through NFR tenant setup, SaaS app review, SSO rollout, and your first customer pilot."
+  },
+  {
+    title: "Start With Your Status",
+    body: "The Status view shows overall progress and whether the next step belongs to your team or KZero Passwordless."
+  },
+  {
+    title: "Complete Work in Tasks",
+    body: "The Tasks view is where your team completes onboarding steps. Each phase unlocks as the previous required work is completed."
+  },
+  {
+    title: "Focus on the Current Step",
+    body: "The current step card shows what to do now, who owns it, and the next step that unlocks after completion."
+  },
+  {
+    title: "Use Built-In Guides",
+    body: "Some tasks include guide previews from the KZero Passwordless Partner Portal. Open the full guide when you need detailed instructions."
+  },
+  {
+    title: "Submit SaaS Applications",
+    body: "Use the Apps view when the plan asks your team to submit SaaS applications for KZero Passwordless review."
+  },
+  {
+    title: "Review Shared Documents",
+    body: "Use Documents to review onboarding materials, implementation plans, and rollout files shared during the engagement."
+  },
+  {
+    title: "When KZero Passwordless Is Working",
+    body: "Some steps are owned by your KZero Sales Engineer. When that happens, no action is needed from your team until the next step is ready."
+  },
+  {
+    title: "You’re Ready to Continue",
+    body: "Use Tasks to complete the current step. You can relaunch this tour anytime from the portal header."
+  }
+];
 
 type GuidePreviewState = {
   guides: TaskGuide[];
@@ -266,6 +307,8 @@ export function PlanView({
   const [pilotForm, setPilotForm] = useState<FirstCustomerPilotFormState>(() => createFirstCustomerPilotFormState(initialBundle));
   const [savingPilotDetails, setSavingPilotDetails] = useState(false);
   const [pilotError, setPilotError] = useState<string | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
   const orderedTasks = bundle.plan.taskIds
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
@@ -352,6 +395,7 @@ export function PlanView({
     { id: "documents", label: "Documents" },
     ...(meaningfulComments.length > 0 ? [{ id: "activity" as const, label: "Activity" }] : [])
   ];
+  const tourStorageKey = `${TOUR_STORAGE_KEY_PREFIX}${bundle.plan.id}`;
 
   useEffect(() => {
     setPilotForm(createFirstCustomerPilotFormState(bundle));
@@ -363,6 +407,53 @@ export function PlanView({
       return [...bundle.apps, ...localOnlyApps];
     });
   }, [bundle.apps]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const hasSeenTour = window.localStorage.getItem(tourStorageKey) === "true";
+    if (hasSeenTour) {
+      return;
+    }
+
+    setTourStepIndex(0);
+    setTourOpen(true);
+  }, [tourStorageKey]);
+
+  function markTourSeen() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(tourStorageKey, "true");
+  }
+
+  function openTour() {
+    setTourStepIndex(0);
+    setTourOpen(true);
+  }
+
+  function skipTour() {
+    markTourSeen();
+    setTourOpen(false);
+    setTourStepIndex(0);
+  }
+
+  function finishTour() {
+    markTourSeen();
+    setTourOpen(false);
+    setTourStepIndex(0);
+  }
+
+  function goToNextTourStep() {
+    setTourStepIndex((current) => Math.min(current + 1, PORTAL_TOUR_STEPS.length - 1));
+  }
+
+  function goToPreviousTourStep() {
+    setTourStepIndex((current) => Math.max(current - 1, 0));
+  }
 
   function goToTab(targetTab: PlanTab) {
     setActiveTab(targetTab);
@@ -558,6 +649,9 @@ export function PlanView({
               <p className="mt-2 text-sm text-slate-300">{completedTasks} completed steps across your current plan.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button className="h-9 px-4" onClick={openTour} variant="outline">
+                Portal Tour
+              </Button>
               <Link href="/">
                 <Button variant="outline" className="h-9 px-4">
                   Home
@@ -1232,6 +1326,16 @@ export function PlanView({
 
         </div>
       </main>
+
+      <PortalTourModal
+        currentStep={tourStepIndex}
+        onBack={goToPreviousTourStep}
+        onFinish={finishTour}
+        onNext={goToNextTourStep}
+        onSkip={skipTour}
+        open={tourOpen}
+        steps={PORTAL_TOUR_STEPS}
+      />
 
       <GuidePreviewModal guidePreview={guidePreview} onClose={() => setGuidePreview(null)} />
     </div>

@@ -130,6 +130,11 @@ const ACCESS_MODE_OPTIONS: Array<{ label: string; value: OnboardingCase["accessM
   { label: "KZero OIDC", value: "oidc" }
 ];
 
+const PLAN_TYPE_OPTIONS: Array<{ label: string; value: TenantType }> = [
+  { label: "NFR Tenant", value: "nfr" },
+  { label: "Customer Tenant", value: "customer" }
+];
+
 function formatDateLabel() {
   return new Intl.DateTimeFormat("en-US", {
     day: "numeric",
@@ -169,6 +174,14 @@ function formatDateDisplayValue(value: string) {
     year: "numeric",
     timeZone: "UTC"
   }).format(new Date(`${year}-${month}-${day}T00:00:00Z`));
+}
+
+function getTodayDateInputValue() {
+  const date = new Date();
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function getAccessLabel(item: OnboardingCase) {
@@ -533,7 +546,7 @@ function createEnrollmentState(): EnrollmentFormState {
     clientId: "",
     clientSecret: "",
     currentStage: "Kickoff",
-    lastActivity: formatDateLabel(),
+    lastActivity: getTodayDateInputValue(),
     mspName: "",
     primaryContactEmail: "",
     progress: 0,
@@ -945,6 +958,7 @@ export function InternalDashboard({
       hasFullOidcConfig || enrollmentState.accessMode === "oidc" ? "oidc" : "temporary";
     const nextOidcStatus: OnboardingCase["oidcStatus"] = hasFullOidcConfig ? "configured" : "not_configured";
     const progress = Math.max(0, Math.min(100, Number(enrollmentState.progress) || 0));
+    const nextLastActivity = formatDateDisplayValue(enrollmentState.lastActivity) || formatDateLabel();
 
     if (!trimmedMspName || !trimmedPrimaryContactEmail || !normalizedMspSlug) {
       return;
@@ -984,7 +998,7 @@ export function InternalDashboard({
               accessMode,
               assignedSalesEngineer: SALES_ENGINEER_NAME,
               currentStage: enrollmentState.currentStage,
-              lastActivity: enrollmentState.lastActivity,
+              lastActivity: nextLastActivity,
               name: trimmedMspName,
               primaryContactEmail: trimmedPrimaryContactEmail,
               progress,
@@ -1031,7 +1045,7 @@ export function InternalDashboard({
       }
     }
 
-    const nextPlanId = `${normalizedMspSlug}-nfr`;
+    const nextPlanId = `${normalizedMspSlug}-${enrollmentState.startingPlanType}`;
 
     const nextStatus: OnboardingCase["status"] = progress >= 100 ? "complete" : enrollmentState.status;
 
@@ -1040,13 +1054,14 @@ export function InternalDashboard({
       [nextPlanId]: {
         accessMode,
         currentStage: enrollmentState.currentStage,
-        lastActivity: enrollmentState.lastActivity,
+        lastActivity: nextLastActivity,
         mspName: trimmedMspName,
         oidcClientId: trimmedClientId || undefined,
         oidcClientSecretConfigured: Boolean(enrollmentState.clientSecret.trim()),
         oidcStatus: nextOidcStatus,
         primaryContactEmail: trimmedPrimaryContactEmail,
         progress,
+        startingPlanType: enrollmentState.startingPlanType,
         status: nextStatus,
         submittedSaasAppCount: enrollmentState.submittedSaasAppCount,
         tenantName: exactTenantName || undefined
@@ -1528,12 +1543,12 @@ export function InternalDashboard({
             className={`w-full overflow-hidden border-white/10 bg-[#101a2d] ${
               panelMode === "preview"
                 ? "max-h-[calc(100vh-2rem)] max-w-[1040px] md:max-h-[calc(100vh-3rem)]"
-                : panelMode === "edit"
+                : panelMode === "edit" || panelMode === "enroll"
                   ? "max-h-[calc(100vh-2rem)] max-w-[940px] md:max-h-[calc(100vh-3rem)]"
                 : "max-h-[calc(100vh-2rem)] max-w-[520px] overflow-y-auto md:max-h-[calc(100vh-3rem)]"
             }`}
           >
-            <div className={`flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "edit") ? "sticky top-0 z-20" : "mb-5"}`}>
+            <div className={`flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "edit" || panelMode === "enroll") ? "sticky top-0 z-20" : "mb-5"}`}>
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-blue-200">
                   {panelMode === "preview"
@@ -1547,11 +1562,11 @@ export function InternalDashboard({
                         : "Enroll MSP"}
                 </p>
                 <h3 className="mt-2 text-2xl font-semibold text-white">
-                  {panelMode === "enroll" ? "New onboarding case" : selectedCase?.mspName}
+                  {panelMode === "enroll" ? "Enroll MSP" : selectedCase?.mspName}
                 </h3>
                 <p className="mt-1 text-sm text-slate-300">
                   {panelMode === "enroll"
-                    ? `Sales Engineer: ${SALES_ENGINEER_NAME}`
+                    ? "Create a new MSP onboarding case with access, stage, and reporting details."
                     : panelMode === "preview"
                       ? selectedCase?.primaryContactEmail
                       : panelMode === "delete"
@@ -1921,7 +1936,7 @@ export function InternalDashboard({
 
                     <div className="grid gap-5 lg:grid-cols-2">
                       <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access & OIDC</p>
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access & Tenant</p>
                         <div className="mt-4 grid gap-4">
                           <label className="grid gap-2 text-sm text-slate-300">
                             <span>Access Mode</span>
@@ -1953,9 +1968,7 @@ export function InternalDashboard({
                               value={editState.tenantName}
                             />
                           </label>
-                          <p className="text-xs leading-5 text-slate-400">
-                            Tenant realm casing is preserved exactly for KZero OIDC configuration.
-                          </p>
+                          <p className="text-xs leading-5 text-slate-400">Use the exact KZero Passwordless tenant realm casing for OIDC.</p>
                         </div>
                       </div>
 
@@ -2108,165 +2121,201 @@ export function InternalDashboard({
             ) : null}
 
             {panelMode === "enroll" ? (
-              <div className="grid gap-4">
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>MSP name</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) => setEnrollmentState((current) => ({ ...current, mspName: event.target.value }))}
-                    value={enrollmentState.mspName}
-                  />
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Primary contact email</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEnrollmentState((current) => ({ ...current, primaryContactEmail: event.target.value }))
-                    }
-                    type="email"
-                    value={enrollmentState.primaryContactEmail}
-                  />
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Access mode</span>
-                  <select
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEnrollmentState((current) => ({
-                        ...current,
-                        accessMode: event.target.value as OnboardingCase["accessMode"]
-                      }))
-                    }
-                    value={enrollmentState.accessMode}
-                  >
-                    <option value="temporary">temporary</option>
-                    <option value="oidc">oidc</option>
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Current stage</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) => setEnrollmentState((current) => ({ ...current, currentStage: event.target.value }))}
-                    value={enrollmentState.currentStage}
-                  />
-                </label>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Progress %</span>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      max={100}
-                      min={0}
-                      onChange={(event) =>
-                        setEnrollmentState((current) => ({ ...current, progress: Number(event.target.value) || 0 }))
-                      }
-                      type="number"
-                      value={enrollmentState.progress}
-                    />
-                  </label>
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Submitted apps</span>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      min={0}
-                      onChange={(event) =>
-                        setEnrollmentState((current) => ({
-                          ...current,
-                          submittedSaasAppCount: Number(event.target.value) || 0
-                        }))
-                      }
-                      type="number"
-                      value={enrollmentState.submittedSaasAppCount}
-                    />
-                  </label>
+              <>
+                <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12rem)] md:px-6 md:py-6">
+                  <div className="grid gap-5">
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP Account</p>
+                        <div className="mt-4 grid gap-4">
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>MSP Name</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) => setEnrollmentState((current) => ({ ...current, mspName: event.target.value }))}
+                              value={enrollmentState.mspName}
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Primary Contact Email</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEnrollmentState((current) => ({ ...current, primaryContactEmail: event.target.value }))
+                              }
+                              type="email"
+                              value={enrollmentState.primaryContactEmail}
+                            />
+                          </label>
+                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Assigned Sales Engineer</p>
+                            <p className="mt-2 text-sm text-white">{SALES_ENGINEER_NAME}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access & Tenant</p>
+                        <div className="mt-4 grid gap-4">
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Access Mode</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEnrollmentState((current) => ({
+                                  ...current,
+                                  accessMode: event.target.value as OnboardingCase["accessMode"]
+                                }))
+                              }
+                              value={enrollmentState.accessMode}
+                            >
+                              {ACCESS_MODE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Tenant Name / Realm</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) => setEnrollmentState((current) => ({ ...current, tenantName: event.target.value }))}
+                              value={enrollmentState.tenantName}
+                            />
+                          </label>
+                          <p className="text-xs leading-5 text-slate-400">
+                            Use the exact KZero Passwordless tenant realm casing for OIDC.
+                          </p>
+                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">OIDC Configuration</p>
+                            <p className="mt-2 text-sm text-white">
+                              {enrollmentState.accessMode === "oidc"
+                                ? "Configure the client ID and secret from the Configure OIDC action after enrollment."
+                                : "Temporary access is selected by default. You can configure KZero OIDC later."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-5 lg:grid-cols-2">
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Onboarding Status</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                            <span>Current Stage</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) => setEnrollmentState((current) => ({ ...current, currentStage: event.target.value }))}
+                              value={enrollmentState.currentStage}
+                            >
+                              {ONBOARDING_STAGE_OPTIONS.map((stage) => (
+                                <option key={stage} value={stage}>
+                                  {stage}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Status</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEnrollmentState((current) => ({
+                                  ...current,
+                                  status: event.target.value as OnboardingCase["status"]
+                                }))
+                              }
+                              value={enrollmentState.status}
+                            >
+                              {STATUS_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Last Activity</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) => setEnrollmentState((current) => ({ ...current, lastActivity: event.target.value }))}
+                              type="date"
+                              value={enrollmentState.lastActivity}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Reporting Details</p>
+                        <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                            <span>Starting Plan Type</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEnrollmentState((current) => ({
+                                  ...current,
+                                  startingPlanType: event.target.value as TenantType
+                                }))
+                              }
+                              value={enrollmentState.startingPlanType}
+                            >
+                              {PLAN_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Progress %</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              max={100}
+                              min={0}
+                              onChange={(event) =>
+                                setEnrollmentState((current) => ({
+                                  ...current,
+                                  progress: Math.max(0, Math.min(100, Number(event.target.value) || 0))
+                                }))
+                              }
+                              type="number"
+                              value={enrollmentState.progress}
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Submitted Apps</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              min={0}
+                              onChange={(event) =>
+                                setEnrollmentState((current) => ({
+                                  ...current,
+                                  submittedSaasAppCount: Math.max(0, Number(event.target.value) || 0)
+                                }))
+                              }
+                              type="number"
+                              value={enrollmentState.submittedSaasAppCount}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Status</span>
-                    <select
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      onChange={(event) =>
-                        setEnrollmentState((current) => ({
-                          ...current,
-                          status: event.target.value as OnboardingCase["status"]
-                        }))
-                      }
-                      value={enrollmentState.status}
-                    >
-                      <option value="waiting_on_msp">waiting_on_msp</option>
-                      <option value="waiting_on_kzero">waiting_on_kzero</option>
-                      <option value="in_progress">in_progress</option>
-                      <option value="complete">complete</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-2 text-sm text-slate-300">
-                    <span>Last Activity</span>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                      onChange={(event) =>
-                        setEnrollmentState((current) => ({ ...current, lastActivity: event.target.value }))
-                      }
-                      value={enrollmentState.lastActivity}
-                    />
-                  </label>
-                </div>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Starting plan type</span>
-                  <select
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) =>
-                      setEnrollmentState((current) => ({
-                        ...current,
-                        startingPlanType: event.target.value as TenantType
-                      }))
-                    }
-                    value={enrollmentState.startingPlanType}
-                  >
-                    <option value="nfr">NFR tenant</option>
-                    <option value="customer">Customer tenant</option>
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>Tenant name / realm</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) => setEnrollmentState((current) => ({ ...current, tenantName: event.target.value }))}
-                    value={enrollmentState.tenantName}
-                  />
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>OIDC client ID</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) => setEnrollmentState((current) => ({ ...current, clientId: event.target.value }))}
-                    value={enrollmentState.clientId}
-                  />
-                </label>
-                <label className="grid gap-2 text-sm text-slate-300">
-                  <span>OIDC client secret</span>
-                  <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
-                    onChange={(event) => setEnrollmentState((current) => ({ ...current, clientSecret: event.target.value }))}
-                    placeholder="Enter secret"
-                    type="password"
-                    value={enrollmentState.clientSecret}
-                  />
-                </label>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Issuer preview</p>
-                  <p className="mt-2 text-sm text-white">{issuerPreview ?? "Optional until KZero OIDC is configured."}</p>
-                </div>
-                <div className="flex gap-3">
-                  <Button className="flex-1" onClick={handleEnroll}>
-                    Save MSP Case
+
+                <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:flex-row md:justify-end md:px-6">
+                  <Button className="md:min-w-[180px]" onClick={handleEnroll}>
+                    Save MSP Details
                   </Button>
                   <Button onClick={closePanel} variant="outline">
                     Cancel
                   </Button>
                 </div>
-              </div>
+              </>
             ) : null}
           </Card>
         </div>
