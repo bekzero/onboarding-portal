@@ -1657,9 +1657,6 @@ export function InternalDashboard({
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
-              <Button className="h-10 px-4" onClick={openFlowReference} variant="outline">
-                View Flow
-              </Button>
               <Button className="relative h-10 px-4" onClick={() => setIsNotificationDrawerOpen(true)} variant="outline">
                 <Bell className="mr-2 h-4 w-4" />
                 Notifications
