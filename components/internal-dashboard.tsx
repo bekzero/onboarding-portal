@@ -1679,8 +1679,8 @@ export function InternalDashboard({
             ) : (
               <>
                 <Card className="border-white/10 bg-[#101a2d]">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="w-full max-w-xl">
+                  <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end xl:gap-6">
+                    <div className="min-w-0 xl:max-w-xl">
                       <label className="block text-xs uppercase tracking-[0.22em] text-slate-400" htmlFor="msp-search">
                         Search MSPs
                       </label>
@@ -1696,17 +1696,19 @@ export function InternalDashboard({
                         />
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {quickFilters.map((filterOption) => (
-                        <Button
-                          className="h-10"
-                          key={filterOption.value}
-                          onClick={() => setQuickFilter(filterOption.value)}
-                          variant={quickFilter === filterOption.value ? "default" : "outline"}
-                        >
-                          {filterOption.label}
-                        </Button>
-                      ))}
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                        {quickFilters.map((filterOption) => (
+                          <Button
+                            className="h-10 whitespace-nowrap px-3 sm:px-4"
+                            key={filterOption.value}
+                            onClick={() => setQuickFilter(filterOption.value)}
+                            variant={quickFilter === filterOption.value ? "default" : "outline"}
+                          >
+                            {filterOption.label}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </Card>
