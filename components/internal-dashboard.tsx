@@ -23,7 +23,7 @@ import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getPlanBundle, type FirstCustomerPilot, type OnboardingCase, type TenantType, type User } from "@/lib/mock-data";
+import { getPlanBundle, phases, type FirstCustomerPilot, type OnboardingCase, type TenantType, type User } from "@/lib/mock-data";
 import {
   readAdminCaseOverridesFromStorage,
   saveAdminCaseOverridesToStorage,
@@ -97,6 +97,16 @@ type AdminNotificationsApiResponse = {
   unreadCount?: number;
 };
 
+type FlowReferenceStage = {
+  id: string;
+  kzeroActionRequired?: string;
+  movesForwardWhen: string;
+  ownerLabels: string[];
+  purpose: string;
+  tasks: string[];
+  title: string;
+};
+
 type EnrollmentFormState = {
   accessMode: OnboardingCase["accessMode"];
   clientId: string;
@@ -155,6 +165,8 @@ const PLAN_TYPE_OPTIONS: Array<{ label: string; value: TenantType }> = [
   { label: "NFR Tenant", value: "nfr" },
   { label: "Customer Tenant", value: "customer" }
 ];
+
+const REFERENCE_PLAN_ID = "abcmsp-nfr";
 
 function formatDateLabel() {
   return new Intl.DateTimeFormat("en-US", {
@@ -223,6 +235,18 @@ function formatNotificationTimestamp(value: string) {
     month: "long",
     year: "numeric"
   }).format(new Date(parsed));
+}
+
+function getOwnerBadgeTone(ownerLabel: string) {
+  if (ownerLabel === "KZero Passwordless") {
+    return "waiting_on_kzero" as const;
+  }
+
+  if (ownerLabel === "Joint Step") {
+    return "in_progress" as const;
+  }
+
+  return "waiting_on_msp" as const;
 }
 
 function getWaitingLabel(item: OnboardingCase) {
@@ -798,6 +822,7 @@ export function InternalDashboard({
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [notificationErrorMessage, setNotificationErrorMessage] = useState<string | null>(null);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>("default");
+  const [isFlowReferenceOpen, setIsFlowReferenceOpen] = useState(false);
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
@@ -975,6 +1000,74 @@ export function InternalDashboard({
   const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
   const adminPortalOpenHref = selectedCase?.mspId ? `/api/admin/msps/${selectedCase.mspId}/open-portal` : null;
   const canOpenPortalAsAdmin = Boolean(selectedCase?.mspId && useServerData);
+  const referenceBundle = useMemo(() => getPlanBundle(REFERENCE_PLAN_ID), []);
+  const flowReferenceStages = useMemo<FlowReferenceStage[]>(() => {
+    const tasksByPhase = new Map<string, string[]>();
+
+    referenceBundle?.tasks.forEach((task) => {
+      const currentTasks = tasksByPhase.get(task.phaseId) ?? [];
+      currentTasks.push(task.title);
+      tasksByPhase.set(task.phaseId, currentTasks);
+    });
+
+    return phases.map((phase) => {
+      if (phase.id === "phase-kickoff") {
+        return {
+          id: phase.id,
+          movesForwardWhen: "The kickoff call is booked and marked complete.",
+          ownerLabels: ["MSP"],
+          purpose: "Start the NFR onboarding engagement and confirm the initial tenant setup.",
+          tasks: tasksByPhase.get(phase.id) ?? [],
+          title: phase.title
+        };
+      }
+
+      if (phase.id === "phase-tenant-setup") {
+        return {
+          id: phase.id,
+          movesForwardWhen: "The MSP team has invited users and distributed the required guidance.",
+          ownerLabels: ["MSP"],
+          purpose: "Prepare the MSP team for the NFR rollout.",
+          tasks: tasksByPhase.get(phase.id) ?? [],
+          title: phase.title
+        };
+      }
+
+      if (phase.id === "phase-app-review") {
+        return {
+          id: phase.id,
+          kzeroActionRequired: "App compatibility review and rollout planning.",
+          movesForwardWhen: "Priority SaaS applications are submitted and KZero Passwordless completes the compatibility review.",
+          ownerLabels: ["MSP", "KZero Passwordless"],
+          purpose: "Collect SaaS applications and let KZero Passwordless review SSO readiness.",
+          tasks: tasksByPhase.get(phase.id) ?? [],
+          title: phase.title
+        };
+      }
+
+      if (phase.id === "phase-sso-rollout") {
+        return {
+          id: phase.id,
+          kzeroActionRequired: "KZero Passwordless uploads the onboarding plan and supports the first implementation wave.",
+          movesForwardWhen: "The onboarding plan is reviewed and the first SSO implementation session is completed.",
+          ownerLabels: ["KZero Passwordless", "Joint Step"],
+          purpose: "Review the onboarding plan and complete the first SSO implementation wave.",
+          tasks: tasksByPhase.get(phase.id) ?? [],
+          title: phase.title
+        };
+      }
+
+      return {
+        id: phase.id,
+        kzeroActionRequired: "KZero Passwordless reviews the pilot approach before the rollout session.",
+        movesForwardWhen: "Pilot customer details are confirmed, the rollout session is completed, and the first customer rollout is marked complete.",
+        ownerLabels: ["MSP", "KZero Passwordless", "Joint Step"],
+        purpose: "Apply the validated onboarding process to the first customer tenant.",
+        tasks: tasksByPhase.get(phase.id) ?? [],
+        title: phase.title
+      };
+    });
+  }, [referenceBundle]);
 
   const filteredCases = useMemo(() => {
     return onboardingCases.filter((item) => matchesSearchQuery(item, searchQuery) && matchesQuickFilter(item, quickFilter));
@@ -1111,6 +1204,20 @@ export function InternalDashboard({
 
     const permission = await window.Notification.requestPermission();
     setBrowserNotificationPermission(permission);
+  }
+
+  function openFlowReference() {
+    setIsFlowReferenceOpen(true);
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const section = document.getElementById("onboarding-flow-reference");
+        section?.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      });
+    });
   }
 
   function openCaseFromNotification(notification: AdminNotification) {
@@ -1550,6 +1657,9 @@ export function InternalDashboard({
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
+              <Button className="h-10 px-4" onClick={openFlowReference} variant="outline">
+                View Flow
+              </Button>
               <Button className="relative h-10 px-4" onClick={() => setIsNotificationDrawerOpen(true)} variant="outline">
                 <Bell className="mr-2 h-4 w-4" />
                 Notifications
@@ -1737,6 +1847,72 @@ export function InternalDashboard({
                   onView={openPreview}
                   title="Completed MSPs"
                 />
+
+                <Card className="border-white/10 bg-[#101a2d]" id="onboarding-flow-reference">
+                  <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Onboarding Flow Reference</p>
+                      <h3 className="mt-2 text-2xl font-semibold text-white">Onboarding Flow Reference</h3>
+                      <p className="mt-1 text-sm text-slate-300">
+                        Review the full KZero Passwordless MSP onboarding flow without opening an individual case.
+                      </p>
+                    </div>
+                    <Button onClick={() => setIsFlowReferenceOpen((current) => !current)} variant="outline">
+                      {isFlowReferenceOpen ? "Hide Onboarding Flow" : "View Onboarding Flow"}
+                    </Button>
+                  </div>
+
+                  {isFlowReferenceOpen ? (
+                    <div className="grid gap-4 px-4 py-4 md:px-5 md:py-5">
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        {flowReferenceStages.map((stage, index) => (
+                          <div key={stage.id} className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-5">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
+                                Stage {index + 1}
+                              </span>
+                              <h4 className="text-xl font-semibold text-white">{stage.title}</h4>
+                            </div>
+                            <p className="mt-3 text-sm leading-6 text-slate-300">{stage.purpose}</p>
+
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {stage.ownerLabels.map((ownerLabel) => (
+                                <Badge key={ownerLabel} status={getOwnerBadgeTone(ownerLabel)}>
+                                  {ownerLabel}
+                                </Badge>
+                              ))}
+                            </div>
+
+                            <div className="mt-5 grid gap-4">
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Key Tasks</p>
+                                <div className="mt-2 grid gap-2">
+                                  {stage.tasks.map((taskTitle) => (
+                                    <div key={taskTitle} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5 text-sm text-slate-200">
+                                      {taskTitle}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">What Moves The MSP Forward</p>
+                                <p className="mt-2 text-sm leading-6 text-slate-300">{stage.movesForwardWhen}</p>
+                              </div>
+
+                              {stage.kzeroActionRequired ? (
+                                <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
+                                  <p className="text-xs uppercase tracking-[0.18em] text-amber-200">KZero Action Required</p>
+                                  <p className="mt-2 text-sm leading-6 text-amber-50/90">{stage.kzeroActionRequired}</p>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </Card>
               </>
                 )}
               </>
