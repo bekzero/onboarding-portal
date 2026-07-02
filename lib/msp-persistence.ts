@@ -157,8 +157,8 @@ function buildPortalTaskRecords(
   const orderedTemplateTasks = getOrderedTemplateTasks(bundle);
 
   return orderedTemplateTasks.map((task, index) => {
-    const persistedTask = persistedTasks.find((item) => item.order === index) ??
-      persistedTasks.find((item) => item.title === task.title);
+    const persistedTask = persistedTasks.find((item) => item.title === task.title) ??
+      persistedTasks.find((item) => item.order === index);
 
     return {
       description: persistedTask?.description ?? task.description,
@@ -527,10 +527,6 @@ async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string)
     }
   });
 
-  if (existingTasks.length > 0) {
-    return existingTasks;
-  }
-
   const templateBundle = getTemplateBundle(planId);
   if (!templateBundle) {
     return [];
@@ -545,11 +541,14 @@ async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string)
   if (existingTasks.length > 0) {
     const updateOperations = [];
     const createOperations = [];
+    const unmatchedExistingTaskIds = new Set(existingTasks.map((task) => task.id));
 
     for (const [index, templateTask] of orderedTemplateTasks.entries()) {
-      const existingTask = existingTasks.find((task) => task.title === templateTask.title);
+      const existingTask = existingTasks.find((task) => unmatchedExistingTaskIds.has(task.id) && task.title === templateTask.title) ??
+        existingTasks.find((task) => unmatchedExistingTaskIds.has(task.id) && task.order === index);
 
       if (existingTask) {
+        unmatchedExistingTaskIds.delete(existingTask.id);
         updateOperations.push(
           prisma.onboardingTask.update({
             where: { id: existingTask.id },
@@ -868,7 +867,7 @@ async function advanceOnboardingPlanTask({
     throw new Error("The current active onboarding step is not owned by KZero.");
   }
 
-  if (activeTask.title === "Select first customer pilot" && !hasSavedFirstCustomerPilotDetails(firstCustomerPilot)) {
+  if (activeTemplateTask.title === "Select First Customer Pilot" && !hasSavedFirstCustomerPilotDetails(firstCustomerPilot)) {
     throw new Error("Save the first customer pilot details before completing this step.");
   }
 
@@ -914,14 +913,18 @@ async function advanceOnboardingPlanTask({
   ]);
 
   if (notifyTaskCompletion) {
-    await createTaskCompletedAdminNotification({
-      mspId: onboardingPlan.mspId,
-      mspName: onboardingPlan.msp?.name ?? onboardingPlan.title ?? "MSP",
-      planId,
-      stage: metrics.currentStage,
-      taskId: activeTemplateTask.id,
-      taskTitle: activeTask.title
-    });
+    try {
+      await createTaskCompletedAdminNotification({
+        mspId: onboardingPlan.mspId,
+        mspName: onboardingPlan.msp?.name ?? onboardingPlan.title ?? "MSP",
+        planId,
+        stage: metrics.currentStage,
+        taskId: activeTemplateTask.id,
+        taskTitle: activeTask.title
+      });
+    } catch (error) {
+      console.error("Could not create admin task completion notification.", error);
+    }
   }
 
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
