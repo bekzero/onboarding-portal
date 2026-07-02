@@ -100,6 +100,7 @@ type AdminNotificationsApiResponse = {
 type FlowReferenceStage = {
   id: string;
   kzeroActionRequired?: string;
+  movesForwardWhenShort: string;
   movesForwardWhen: string;
   ownerLabels: string[];
   ownerSummary: string;
@@ -827,7 +828,7 @@ export function InternalDashboard({
   const [notificationErrorMessage, setNotificationErrorMessage] = useState<string | null>(null);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>("default");
   const [isFlowReferenceOpen, setIsFlowReferenceOpen] = useState(false);
-  const [expandedFlowStageIds, setExpandedFlowStageIds] = useState<string[]>([]);
+  const [expandedFlowStageId, setExpandedFlowStageId] = useState<string | null>("phase-tenant-setup");
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
@@ -1019,6 +1020,7 @@ export function InternalDashboard({
       if (phase.id === "phase-kickoff") {
         return {
           id: phase.id,
+          movesForwardWhenShort: "Kickoff call is booked and marked complete.",
           movesForwardWhen: "The kickoff call is booked and marked complete.",
           ownerLabels: ["MSP"],
           ownerSummary: "MSP-owned setup",
@@ -1031,6 +1033,7 @@ export function InternalDashboard({
       if (phase.id === "phase-tenant-setup") {
         return {
           id: phase.id,
+          movesForwardWhenShort: "Passwords are imported, backup admins are invited, users are added, and guidance is shared.",
           movesForwardWhen: "The onboarding owner has imported passwords, backup administrators are invited, users are added, and Vault/browser extension guidance has been shared.",
           ownerLabels: ["MSP"],
           ownerSummary: "MSP-owned setup",
@@ -1061,6 +1064,7 @@ export function InternalDashboard({
         return {
           id: phase.id,
           kzeroActionRequired: "KZero Passwordless reviews app compatibility and prepares rollout guidance.",
+          movesForwardWhenShort: "Priority SaaS apps are submitted and KZero Passwordless completes compatibility review.",
           movesForwardWhen: "Priority SaaS applications are submitted and KZero Passwordless completes the compatibility review.",
           ownerLabels: ["MSP", "KZero Passwordless"],
           ownerSummary: "MSP submission plus KZero Passwordless review",
@@ -1074,6 +1078,7 @@ export function InternalDashboard({
         return {
           id: phase.id,
           kzeroActionRequired: "KZero Passwordless uploads the onboarding plan and supports implementation.",
+          movesForwardWhenShort: "The onboarding plan is reviewed and the SSO implementation session is completed.",
           movesForwardWhen: "The onboarding plan is reviewed and the first SSO implementation session is completed.",
           ownerLabels: ["KZero Passwordless", "Joint Step"],
           ownerSummary: "KZero Passwordless guidance plus joint implementation",
@@ -1086,6 +1091,7 @@ export function InternalDashboard({
       return {
         id: phase.id,
         kzeroActionRequired: "KZero Passwordless reviews the pilot approach before the rollout session.",
+        movesForwardWhenShort: "The first customer pilot is selected, reviewed, scheduled, and completed.",
         movesForwardWhen: "The first customer pilot is selected, reviewed, scheduled, and completed.",
         ownerLabels: ["MSP", "KZero Passwordless", "Joint Step"],
         ownerSummary: "MSP preparation, KZero Passwordless review, and joint rollout",
@@ -1248,9 +1254,7 @@ export function InternalDashboard({
   }
 
   function toggleFlowStageDetails(stageId: string) {
-    setExpandedFlowStageIds((current) =>
-      current.includes(stageId) ? current.filter((id) => id !== stageId) : [...current, stageId]
-    );
+    setExpandedFlowStageId((current) => (current === stageId ? null : stageId));
   }
 
   function openCaseFromNotification(notification: AdminNotification) {
@@ -1917,67 +1921,95 @@ export function InternalDashboard({
                         </div>
                       </div>
 
-                      <div className="grid gap-4 xl:grid-cols-5">
+                      <div className="grid gap-3">
                         {flowReferenceStages.map((stage, index) => (
-                          <div key={stage.id} className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stage {index + 1}</p>
-                                <h4 className="mt-2 text-lg font-semibold text-white">{stage.title}</h4>
-                              </div>
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-slate-200">
-                                {index + 1}
-                              </span>
-                            </div>
-                            <p className="mt-3 text-sm leading-6 text-slate-300">{stage.purpose}</p>
-
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {stage.ownerLabels.map((ownerLabel) => (
-                                <Badge key={ownerLabel} status={getOwnerBadgeTone(ownerLabel)}>
-                                  {ownerLabel}
-                                </Badge>
-                              ))}
-                            </div>
-                            <p className="mt-3 text-sm text-slate-300">{stage.ownerSummary}</p>
-
-                            <div className="mt-5 grid gap-4">
-                              <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Key Tasks</p>
-                                <ol className="mt-2 grid gap-2">
-                                  {stage.tasks.map((task, taskIndex) => (
-                                    <li key={task.title} className="flex items-start gap-3 rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
-                                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/5 text-xs font-semibold text-slate-300">
-                                        {taskIndex + 1}
-                                      </span>
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-medium text-slate-100">{task.title}</p>
-                                        {expandedFlowStageIds.includes(stage.id) && task.description ? (
-                                          <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
-                                        ) : null}
-                                      </div>
-                                    </li>
-                                  ))}
-                                </ol>
-                              </div>
-
-                              <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">What Moves The MSP Forward</p>
-                                <p className="mt-2 text-sm leading-6 text-slate-300">{stage.movesForwardWhen}</p>
-                              </div>
-
-                              {stage.kzeroActionRequired ? (
-                                <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
-                                  <p className="text-xs uppercase tracking-[0.18em] text-amber-200">KZero Action Required</p>
-                                  <p className="mt-2 text-sm leading-6 text-amber-50/90">{stage.kzeroActionRequired}</p>
+                          <div key={stage.id} className="rounded-2xl border border-white/10 bg-[#0a1424]">
+                            <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+                              <div className="flex min-w-0 items-start gap-4">
+                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-slate-200">
+                                  {index + 1}
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stage {index + 1}</p>
+                                  <h4 className="mt-1 text-xl font-semibold text-white">{stage.title}</h4>
+                                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{stage.purpose}</p>
                                 </div>
-                              ) : null}
+                              </div>
 
-                              <div className="pt-1">
-                                <Button onClick={() => toggleFlowStageDetails(stage.id)} variant="outline">
-                                  {expandedFlowStageIds.includes(stage.id) ? "Hide Details" : "Show Details"}
-                                </Button>
+                              <div className="grid flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
+                                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Owners</p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {stage.ownerLabels.map((ownerLabel) => (
+                                        <Badge key={ownerLabel} status={getOwnerBadgeTone(ownerLabel)}>
+                                          {ownerLabel}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                    <p className="mt-2 text-sm text-slate-300">{stage.ownerSummary}</p>
+                                  </div>
+                                  <div className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
+                                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tasks</p>
+                                    <p className="mt-2 text-2xl font-semibold text-white">{stage.tasks.length}</p>
+                                    <p className="mt-1 text-sm text-slate-300">
+                                      {stage.tasks.map((task) => task.title).slice(0, 2).join(", ")}
+                                      {stage.tasks.length > 2 ? "..." : ""}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
+                                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Moves Forward When</p>
+                                  <p className="mt-2 text-sm leading-6 text-slate-300">{stage.movesForwardWhenShort}</p>
+                                </div>
+
+                                <div className="lg:justify-self-end">
+                                  <Button onClick={() => toggleFlowStageDetails(stage.id)} variant="outline">
+                                    {expandedFlowStageId === stage.id ? "Hide Details" : "Show Details"}
+                                  </Button>
+                                </div>
                               </div>
                             </div>
+
+                            {expandedFlowStageId === stage.id ? (
+                              <div className="border-t border-white/10 px-4 py-4">
+                                <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                                  <div>
+                                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Key Tasks</p>
+                                    <ol className="mt-3 grid gap-2">
+                                      {stage.tasks.map((task, taskIndex) => (
+                                        <li key={task.title} className="flex items-start gap-3 rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
+                                          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/5 text-xs font-semibold text-slate-300">
+                                            {taskIndex + 1}
+                                          </span>
+                                          <div className="min-w-0">
+                                            <p className="text-sm font-medium text-slate-100">{task.title}</p>
+                                            {task.description ? (
+                                              <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
+                                            ) : null}
+                                          </div>
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  </div>
+
+                                  <div className="grid gap-4">
+                                    <div className="rounded-xl border border-white/10 bg-[#08111f] px-4 py-4">
+                                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Moves Forward When</p>
+                                      <p className="mt-2 text-sm leading-6 text-slate-300">{stage.movesForwardWhen}</p>
+                                    </div>
+
+                                    {stage.kzeroActionRequired ? (
+                                      <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-4">
+                                        <p className="text-xs uppercase tracking-[0.18em] text-amber-200">KZero Passwordless Action</p>
+                                        <p className="mt-2 text-sm leading-6 text-amber-50/90">{stage.kzeroActionRequired}</p>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         ))}
                       </div>
