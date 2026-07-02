@@ -1924,7 +1924,7 @@ export function InternalDashboard({
                       <div className="grid gap-3">
                         {flowReferenceStages.map((stage, index) => (
                           <div key={stage.id} className="rounded-2xl border border-white/10 bg-[#0a1424]">
-                            <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+                            <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
                               <div className="flex min-w-0 items-start gap-4">
                                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-slate-200">
                                   {index + 1}
@@ -1936,35 +1936,19 @@ export function InternalDashboard({
                                 </div>
                               </div>
 
-                              <div className="grid flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start">
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <div className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
-                                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Owners</p>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                      {stage.ownerLabels.map((ownerLabel) => (
-                                        <Badge key={ownerLabel} status={getOwnerBadgeTone(ownerLabel)}>
-                                          {ownerLabel}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                    <p className="mt-2 text-sm text-slate-300">{stage.ownerSummary}</p>
-                                  </div>
-                                  <div className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
-                                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tasks</p>
-                                    <p className="mt-2 text-2xl font-semibold text-white">{stage.tasks.length}</p>
-                                    <p className="mt-1 text-sm text-slate-300">
-                                      {stage.tasks.map((task) => task.title).slice(0, 2).join(", ")}
-                                      {stage.tasks.length > 2 ? "..." : ""}
-                                    </p>
-                                  </div>
+                              <div className="flex flex-col gap-3 lg:min-w-[340px] lg:max-w-[420px] lg:items-end">
+                                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                                  <span className="rounded-full border border-white/10 bg-[#08111f] px-3 py-1.5 text-xs font-medium text-slate-200">
+                                    {stage.tasks.length} {stage.tasks.length === 1 ? "Task" : "Tasks"}
+                                  </span>
+                                  {stage.ownerLabels.map((ownerLabel) => (
+                                    <Badge key={ownerLabel} status={getOwnerBadgeTone(ownerLabel)}>
+                                      {ownerLabel}
+                                    </Badge>
+                                  ))}
                                 </div>
-
-                                <div className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
-                                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Moves Forward When</p>
-                                  <p className="mt-2 text-sm leading-6 text-slate-300">{stage.movesForwardWhenShort}</p>
-                                </div>
-
-                                <div className="lg:justify-self-end">
+                                <p className="text-sm text-slate-300 lg:text-right">{stage.ownerSummary}</p>
+                                <div className="lg:self-end">
                                   <Button onClick={() => toggleFlowStageDetails(stage.id)} variant="outline">
                                     {expandedFlowStageId === stage.id ? "Hide Details" : "Show Details"}
                                   </Button>
@@ -1974,7 +1958,7 @@ export function InternalDashboard({
 
                             {expandedFlowStageId === stage.id ? (
                               <div className="border-t border-white/10 px-4 py-4">
-                                <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+                                <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
                                   <div>
                                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Key Tasks</p>
                                     <ol className="mt-3 grid gap-2">
