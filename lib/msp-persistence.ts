@@ -102,6 +102,35 @@ function getOrderedTemplateTasks(bundle: PlanBundle) {
     .filter((task): task is MockTask => Boolean(task));
 }
 
+function deriveInsertedTaskStatus(
+  title: string,
+  existingTasks: Array<{
+    status: string;
+    title: string;
+  }>,
+  templateStatus: TaskStatus
+) {
+  if (title !== "Import Your Passwords") {
+    return templateStatus;
+  }
+
+  const nextExistingTask = existingTasks.find((task) => task.status !== "complete");
+
+  if (!nextExistingTask) {
+    return "complete" as const;
+  }
+
+  if (nextExistingTask.title === "Book Setup Call with Your KZero Sales Engineer") {
+    return "not_started" as const;
+  }
+
+  if (nextExistingTask.title === "Add Backup Administrators") {
+    return "waiting_on_msp" as const;
+  }
+
+  return "complete" as const;
+}
+
 function getTaskStatusForOwner(owner: string): TaskStatus {
   return owner === "kzero_se" ? "waiting_on_kzero" : "waiting_on_msp";
 }
@@ -511,6 +540,56 @@ async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string)
 
   if (orderedTemplateTasks.length === 0) {
     return [];
+  }
+
+  if (existingTasks.length > 0) {
+    const updateOperations = [];
+    const createOperations = [];
+
+    for (const [index, templateTask] of orderedTemplateTasks.entries()) {
+      const existingTask = existingTasks.find((task) => task.title === templateTask.title);
+
+      if (existingTask) {
+        updateOperations.push(
+          prisma.onboardingTask.update({
+            where: { id: existingTask.id },
+            data: {
+              description: templateTask.description,
+              dueLabel: templateTask.dueLabel,
+              order: index,
+              owner: templateTask.owner,
+              title: templateTask.title
+            }
+          })
+        );
+        continue;
+      }
+
+      createOperations.push(
+        prisma.onboardingTask.create({
+          data: {
+            description: templateTask.description,
+            dueLabel: templateTask.dueLabel,
+            onboardingPlanId,
+            order: index,
+            owner: templateTask.owner,
+            status: deriveInsertedTaskStatus(templateTask.title, existingTasks, templateTask.status),
+            title: templateTask.title
+          }
+        })
+      );
+    }
+
+    if (updateOperations.length > 0 || createOperations.length > 0) {
+      await prisma.$transaction([...updateOperations, ...createOperations]);
+    }
+
+    return prisma.onboardingTask.findMany({
+      where: { onboardingPlanId },
+      orderBy: {
+        order: "asc"
+      }
+    });
   }
 
   await prisma.onboardingTask.createMany({

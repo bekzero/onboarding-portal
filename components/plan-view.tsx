@@ -231,6 +231,10 @@ function getTaskDisplayTitle(task: Pick<PlanBundle["tasks"][number], "title">) {
 }
 
 function getTaskDisplayDescription(task: Pick<PlanBundle["tasks"][number], "title" | "description">) {
+  if (task.title === "Import Your Passwords") {
+    return "Import your saved passwords into KZero Passwordless Vault first so you can validate the user experience before guiding the rest of your team.";
+  }
+
   if (task.title === "Add Backup Administrators") {
     return "Open the KZero Passwordless Dashboard, select the correct organization, use Add Admin, send the invite, and confirm backup administrators and break-glass coverage are in place.";
   }

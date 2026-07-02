@@ -35,6 +35,15 @@ export function getTaskGuides(title: string): TaskGuide[] {
     ];
   }
 
+  if (normalizedTitle.includes("import your passwords")) {
+    return [
+      {
+        title: "Vault Password Import Guides",
+        href: "https://partners.kzero.com/library/kzero-passwordless-biometric-vault/importing-passwords"
+      }
+    ];
+  }
+
   if (normalizedTitle.includes("share vault") || normalizedTitle.includes("browser extension guidance")) {
     return [
       {

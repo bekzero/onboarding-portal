@@ -290,7 +290,7 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
     : "Complete";
   const afterThisLabel = followingTask
     ? currentTask && isBookingTask(currentTask)
-      ? "Add Backup Administrators"
+      ? "Import Your Passwords"
       : followingTask.title
     : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [

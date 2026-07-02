@@ -103,7 +103,10 @@ type FlowReferenceStage = {
   movesForwardWhen: string;
   ownerLabels: string[];
   purpose: string;
-  tasks: string[];
+  tasks: Array<{
+    description?: string;
+    title: string;
+  }>;
   title: string;
 };
 
@@ -1002,11 +1005,11 @@ export function InternalDashboard({
   const canOpenPortalAsAdmin = Boolean(selectedCase?.mspId && useServerData);
   const referenceBundle = useMemo(() => getPlanBundle(REFERENCE_PLAN_ID), []);
   const flowReferenceStages = useMemo<FlowReferenceStage[]>(() => {
-    const tasksByPhase = new Map<string, string[]>();
+    const tasksByPhase = new Map<string, Array<{ title: string }>>();
 
     referenceBundle?.tasks.forEach((task) => {
       const currentTasks = tasksByPhase.get(task.phaseId) ?? [];
-      currentTasks.push(task.title);
+      currentTasks.push({ title: task.title });
       tasksByPhase.set(task.phaseId, currentTasks);
     });
 
@@ -1025,10 +1028,27 @@ export function InternalDashboard({
       if (phase.id === "phase-tenant-setup") {
         return {
           id: phase.id,
-          movesForwardWhen: "The MSP team has invited users and distributed the required guidance.",
+          movesForwardWhen: "The onboarding owner has imported passwords, backup administrators are invited, users are added, and Vault/browser extension guidance has been shared with the team.",
           ownerLabels: ["MSP"],
-          purpose: "Prepare the MSP team for the NFR rollout.",
-          tasks: tasksByPhase.get(phase.id) ?? [],
+          purpose: "Prepare the MSP owner and team for the NFR rollout.",
+          tasks: [
+            {
+              title: "Import Your Passwords",
+              description: "The onboarding owner imports their saved passwords into KZero Passwordless Vault first so they can validate the user experience before guiding the rest of the team."
+            },
+            {
+              title: "Add Backup Administrators",
+              description: "Invite backup administrators in the KZero Passwordless Dashboard so the tenant is not dependent on a single admin account."
+            },
+            {
+              title: "Add Employees and Contractors",
+              description: "Invite the members of the MSP team who will participate in the NFR rollout using their company email addresses."
+            },
+            {
+              title: "Share Vault and Browser Extension Guidance",
+              description: "Share the KZero Passwordless Vault and browser extension guides with the users who were added to the tenant."
+            }
+          ],
           title: phase.title
         };
       }
@@ -1884,9 +1904,12 @@ export function InternalDashboard({
                               <div>
                                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Key Tasks</p>
                                 <div className="mt-2 grid gap-2">
-                                  {stage.tasks.map((taskTitle) => (
-                                    <div key={taskTitle} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5 text-sm text-slate-200">
-                                      {taskTitle}
+                                  {stage.tasks.map((task) => (
+                                    <div key={task.title} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
+                                      <p className="text-sm font-medium text-slate-100">{task.title}</p>
+                                      {task.description ? (
+                                        <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
+                                      ) : null}
                                     </div>
                                   ))}
                                 </div>
