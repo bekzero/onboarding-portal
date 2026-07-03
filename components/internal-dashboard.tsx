@@ -53,6 +53,14 @@ type DashboardCase = OnboardingCase & {
   enrollmentDateRaw?: string;
   lastActivityRaw?: string;
   mspId?: string;
+  submittedApps?: Array<{
+    id: string;
+    loginUrl?: string;
+    name: string;
+    notes?: string;
+    priority?: string;
+    status: "submitted" | "under_review" | "approved_for_sso";
+  }>;
 };
 type AdminApiCase = {
   accessMode: OnboardingCase["accessMode"];
@@ -74,6 +82,14 @@ type AdminApiCase = {
   primaryContactEmail: string;
   progress: number;
   status: OnboardingCase["status"];
+  submittedApps?: Array<{
+    id: string;
+    loginUrl?: string;
+    name: string;
+    notes?: string;
+    priority?: string;
+    status: "submitted" | "under_review" | "approved_for_sso";
+  }>;
   submittedSaasAppCount: number;
   tenantRealm?: string;
   firstCustomerPilot?: FirstCustomerPilot | null;
@@ -1002,6 +1018,7 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     progress: item.progress,
     status: item.status,
     startingPlanType: "nfr",
+    submittedApps: item.submittedApps ?? [],
     submittedSaasAppCount: item.submittedSaasAppCount,
     tenantName: item.tenantRealm
   };
@@ -1526,7 +1543,7 @@ export function InternalDashboard({
     () => (selectedCase ? getPlanBundle(selectedCase.onboardingPlanId) : null),
     [selectedCase]
   );
-  const selectedCaseApps = selectedCaseBundle?.apps ?? [];
+  const selectedCaseApps = selectedCase?.submittedApps ?? selectedCaseBundle?.apps ?? [];
   const selectedCaseDocuments = useServerData ? [] : selectedCaseBundle?.attachments ?? [];
   const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
   const adminPortalOpenHref = selectedCase?.mspId ? `/api/admin/msps/${selectedCase.mspId}/open-portal` : null;
@@ -3102,6 +3119,12 @@ export function InternalDashboard({
                               <div key={app.id} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
                                 <p className="text-sm text-white">{app.name}</p>
                                 <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{app.status.replaceAll("_", " ")}</p>
+                                {"priority" in app && app.priority ? (
+                                  <p className="mt-1 text-xs text-slate-400">Priority: {app.priority}</p>
+                                ) : null}
+                                {"loginUrl" in app && app.loginUrl ? (
+                                  <p className="mt-1 break-all text-xs text-slate-400">{app.loginUrl}</p>
+                                ) : null}
                               </div>
                             ))
                           ) : (

@@ -80,11 +80,7 @@ type AppSubmissionFormState = {
   loginUrl: string;
   name: string;
   notes: string;
-};
-
-type SubmittedPortalApp = PlanBundle["apps"][number] & {
-  loginUrl?: string;
-  notes?: string;
+  priority: string;
 };
 
 function formatLabel(value: string) {
@@ -285,7 +281,8 @@ function createAppSubmissionFormState(): AppSubmissionFormState {
   return {
     loginUrl: "",
     name: "",
-    notes: ""
+    notes: "",
+    priority: ""
   };
 }
 
@@ -306,8 +303,10 @@ export function PlanView({
   const [bundle, setBundle] = useState<PlanBundle>(initialBundle);
   const [guidePreview, setGuidePreview] = useState<GuidePreviewState>(null);
   const [savingTaskId, setSavingTaskId] = useState<string | null>(null);
-  const [submittedApps, setSubmittedApps] = useState<SubmittedPortalApp[]>(initialBundle.apps);
+  const [submittedApps, setSubmittedApps] = useState<PlanBundle["apps"]>(initialBundle.apps);
   const [appForm, setAppForm] = useState<AppSubmissionFormState>(createAppSubmissionFormState);
+  const [appError, setAppError] = useState<string | null>(null);
+  const [savingAppSubmission, setSavingAppSubmission] = useState(false);
   const [pilotForm, setPilotForm] = useState<FirstCustomerPilotFormState>(() => createFirstCustomerPilotFormState(initialBundle));
   const [savingPilotDetails, setSavingPilotDetails] = useState(false);
   const [pilotError, setPilotError] = useState<string | null>(null);
@@ -406,10 +405,7 @@ export function PlanView({
   }, [bundle]);
 
   useEffect(() => {
-    setSubmittedApps((current) => {
-      const localOnlyApps = current.filter((app) => !bundle.apps.some((serverApp) => serverApp.id === app.id));
-      return [...bundle.apps, ...localOnlyApps];
-    });
+    setSubmittedApps(bundle.apps);
   }, [bundle.apps]);
 
   useEffect(() => {
@@ -540,24 +536,43 @@ export function PlanView({
     goToTabSection("tasks", "first-customer-pilot-form");
   }
 
-  function submitPortalApp() {
+  async function submitPortalApp() {
     const trimmedName = appForm.name.trim();
     if (!trimmedName) {
+      setAppError("App name is required.");
       return;
     }
 
-    setSubmittedApps((current) => [
-      {
-        id: `local-app-${Date.now()}`,
-        loginUrl: appForm.loginUrl.trim() || undefined,
-        name: trimmedName,
-        notes: appForm.notes.trim() || undefined,
-        organizationId: bundle.organization.id,
-        status: "submitted"
-      },
-      ...current
-    ]);
-    setAppForm(createAppSubmissionFormState());
+    setSavingAppSubmission(true);
+    setAppError(null);
+
+    try {
+      const response = await fetch(`/api/portal/plans/${bundle.plan.id}/apps`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          loginUrl: appForm.loginUrl,
+          name: trimmedName,
+          notes: appForm.notes,
+          priority: appForm.priority
+        })
+      });
+
+      const payload = (await response.json()) as { bundle?: PlanBundle; error?: string };
+
+      if (!response.ok || !payload.bundle) {
+        throw new Error(payload.error ?? "Could not save the SaaS application.");
+      }
+
+      setBundle(payload.bundle);
+      setAppForm(createAppSubmissionFormState());
+    } catch (error) {
+      setAppError(error instanceof Error ? error.message : "Could not save the SaaS application.");
+    } finally {
+      setSavingAppSubmission(false);
+    }
   }
 
   async function markTaskComplete(taskId: string) {
@@ -1270,6 +1285,15 @@ export function PlanView({
                           value={appForm.loginUrl}
                         />
                       </label>
+                      <label className="grid gap-2 text-sm text-slate-300">
+                        <span>Priority</span>
+                        <input
+                          className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                          onChange={(event) => setAppForm((current) => ({ ...current, priority: event.target.value }))}
+                          placeholder="High"
+                          value={appForm.priority}
+                        />
+                      </label>
                       <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
                         <span>Notes</span>
                         <textarea
@@ -1280,9 +1304,14 @@ export function PlanView({
                         />
                       </label>
                     </div>
+                    {appError ? <p className="text-sm text-red-300">{appError}</p> : null}
                     <div className="flex flex-wrap gap-3">
-                      <Button className="h-10 px-4" disabled={!appForm.name.trim()} onClick={submitPortalApp}>
-                        Add SaaS Application
+                      <Button
+                        className="h-10 px-4"
+                        disabled={!appForm.name.trim() || savingAppSubmission}
+                        onClick={submitPortalApp}
+                      >
+                        {savingAppSubmission ? "Saving..." : "Add SaaS Application"}
                       </Button>
                     </div>
                   </div>
@@ -1297,6 +1326,7 @@ export function PlanView({
                             {formatLabel(app.status)}
                           </span>
                         </div>
+                        {app.priority ? <p className="mt-2 text-sm text-slate-300">Priority: {app.priority}</p> : null}
                         {app.loginUrl ? <p className="mt-2 text-sm text-slate-300">{app.loginUrl}</p> : null}
                         {app.notes ? <p className="mt-2 text-sm text-slate-400">{app.notes}</p> : null}
                       </div>

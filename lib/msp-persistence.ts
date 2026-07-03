@@ -29,6 +29,19 @@ const onboardingPlanSelection = {
       title: true
     }
   },
+  saasAppSubmissions: {
+    orderBy: {
+      createdAt: "asc" as const
+    },
+    select: {
+      appName: true,
+      id: true,
+      loginUrl: true,
+      notes: true,
+      priority: true,
+      status: true
+    }
+  },
   planId: true,
   progress: true,
   status: true,
@@ -311,12 +324,18 @@ function getPortalPlanDisplayTitle(mspName: string, tenantType: PlanBundle["plan
 function mapPersistedAppsToBundleApps(planBundle: PlanBundle, statuses: Array<{
   appName: string;
   id: string;
+  loginUrl: string | null;
+  notes: string | null;
+  priority: string | null;
   status: string;
 }>) {
   return statuses.map((submission) => ({
     id: submission.id,
+    loginUrl: submission.loginUrl ?? undefined,
     name: submission.appName,
+    notes: submission.notes ?? undefined,
     organizationId: planBundle.organization.id,
+    priority: submission.priority ?? undefined,
     status:
       submission.status === "approved_for_sso" || submission.status === "under_review"
         ? submission.status
@@ -393,6 +412,14 @@ export type AdminDashboardCase = {
   primaryContactEmail: string;
   progress: number;
   status: string;
+  submittedApps: Array<{
+    id: string;
+    loginUrl?: string;
+    name: string;
+    notes?: string;
+    priority?: string;
+    status: "submitted" | "under_review" | "approved_for_sso";
+  }>;
   submittedSaasAppCount: number;
   tenantRealm?: string;
   firstCustomerPilot?: FirstCustomerPilot | null;
@@ -445,6 +472,13 @@ type SubmitFirstCustomerPilotInput = {
   estimatedUserCount?: number;
   notes?: string;
   targetRolloutTiming: string;
+};
+
+type SubmitPortalSaasAppInput = {
+  loginUrl?: string;
+  name: string;
+  notes?: string;
+  priority?: string;
 };
 
 function hasDatabaseUrl() {
@@ -544,6 +578,17 @@ function toAdminDashboardCase(
     primaryContactEmail: msp.primaryContactEmail,
     progress: derivedMetrics?.progress ?? plan?.progress ?? 0,
     status: derivedMetrics?.status ?? plan?.status ?? "waiting_on_msp",
+    submittedApps: (plan?.saasAppSubmissions ?? []).map((submission) => ({
+      id: submission.id,
+      loginUrl: submission.loginUrl ?? undefined,
+      name: submission.appName,
+      notes: submission.notes ?? undefined,
+      priority: submission.priority ?? undefined,
+      status:
+        submission.status === "approved_for_sso" || submission.status === "under_review"
+          ? submission.status
+          : "submitted"
+    })),
     submittedSaasAppCount: plan?.submittedAppCount ?? 0,
     tenantRealm: msp.oidcConfig?.tenantRealm
   };
@@ -808,6 +853,96 @@ export async function getPortalPlanBundle(planId: string) {
       organizationName: onboardingPlan.msp?.name,
       progress: onboardingPlan.progress,
       title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
+    }
+  );
+}
+
+export async function submitPortalSaasApp(planId: string, input: SubmitPortalSaasAppInput) {
+  ensureDatabaseConfigured();
+
+  const appName = input.name.trim();
+  if (!appName) {
+    throw new Error("App name is required.");
+  }
+
+  const onboardingPlan = await prisma.onboardingPlan.findUnique({
+    where: { planId },
+    include: {
+      msp: {
+        select: {
+          name: true
+        }
+      },
+      saasAppSubmissions: {
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
+      onboardingTasks: {
+        orderBy: {
+          order: "asc"
+        }
+      }
+    }
+  });
+
+  if (!onboardingPlan) {
+    return null;
+  }
+
+  const templateBundle = getTemplateBundle(planId);
+  if (!templateBundle) {
+    return null;
+  }
+
+  await prisma.saaSAppSubmission.create({
+    data: {
+      appName,
+      loginUrl: input.loginUrl?.trim() || null,
+      notes: input.notes?.trim() || null,
+      onboardingPlanId: onboardingPlan.id,
+      priority: input.priority?.trim() || null
+    }
+  });
+
+  const refreshedPlan = await prisma.onboardingPlan.update({
+    where: { id: onboardingPlan.id },
+    data: {
+      lastActivityAt: new Date(),
+      submittedAppCount: onboardingPlan.saasAppSubmissions.length + 1
+    },
+    include: {
+      msp: {
+        select: {
+          name: true
+        }
+      },
+      saasAppSubmissions: {
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
+      onboardingTasks: {
+        orderBy: {
+          order: "asc"
+        }
+      }
+    }
+  });
+
+  return buildBundleFromPersistedState(
+    templateBundle,
+    buildPortalTaskRecords(templateBundle, refreshedPlan.onboardingTasks),
+    mapPersistedAppsToBundleApps(templateBundle, refreshedPlan.saasAppSubmissions),
+    {
+      currentStage: refreshedPlan.currentStage,
+      firstCustomerPilot: mapFirstCustomerPilotFromPlan(refreshedPlan),
+      organizationName: refreshedPlan.msp?.name,
+      progress: refreshedPlan.progress,
+      title: getPortalPlanDisplayTitle(
+        refreshedPlan.msp?.name ?? refreshedPlan.title,
+        refreshedPlan.tenantType as PlanBundle["plan"]["tenantType"]
+      )
     }
   );
 }

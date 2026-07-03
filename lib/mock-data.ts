@@ -48,7 +48,10 @@ export type Task = {
 
 export type SaaSApp = {
   id: string;
+  loginUrl?: string;
   name: string;
+  notes?: string;
+  priority?: string;
   status: "submitted" | "under_review" | "approved_for_sso";
   organizationId: string;
 };
