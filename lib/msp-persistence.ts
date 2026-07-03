@@ -967,6 +967,123 @@ export async function completeCurrentKzeroTaskForMsp(mspId: string) {
   });
 }
 
+export async function rollbackPortalTaskForMsp(mspId: string, templateTaskId: string) {
+  ensureDatabaseConfigured();
+
+  const onboardingPlan = await prisma.onboardingPlan.findFirst({
+    where: { mspId },
+    include: {
+      msp: {
+        select: {
+          name: true
+        }
+      },
+      saasAppSubmissions: {
+        orderBy: {
+          createdAt: "asc"
+        }
+      },
+      onboardingTasks: {
+        orderBy: {
+          order: "asc"
+        }
+      }
+    },
+    orderBy: {
+      createdAt: "asc"
+    }
+  });
+
+  if (!onboardingPlan) {
+    return null;
+  }
+
+  const templateBundle = getTemplateBundle(onboardingPlan.planId);
+  if (!templateBundle) {
+    return null;
+  }
+
+  const orderedTemplateTasks = getOrderedTemplateTasks(templateBundle);
+  const targetTaskIndex = orderedTemplateTasks.findIndex((task) => task.id === templateTaskId);
+
+  if (targetTaskIndex === -1) {
+    throw new Error("The selected onboarding step could not be found.");
+  }
+
+  const persistedTasks = await ensurePortalTasksSeeded(onboardingPlan.id, onboardingPlan.planId);
+  const persistedApps = mapPersistedAppsToBundleApps(templateBundle, onboardingPlan.saasAppSubmissions);
+  const firstCustomerPilot = mapFirstCustomerPilotFromPlan(onboardingPlan);
+
+  const nextPortalTasks = orderedTemplateTasks.map((task, index) => {
+    if (index < targetTaskIndex) {
+      return {
+        description: task.description,
+        dueLabel: task.dueLabel,
+        order: index,
+        owner: task.owner,
+        status: "complete" as const,
+        title: task.title
+      } satisfies PortalTaskRecord;
+    }
+
+    if (index === targetTaskIndex) {
+      return {
+        description: task.description,
+        dueLabel: task.dueLabel,
+        order: index,
+        owner: task.owner,
+        status: getTaskStatusForOwner(task.owner),
+        title: task.title
+      } satisfies PortalTaskRecord;
+    }
+
+    return {
+      description: task.description,
+      dueLabel: task.dueLabel,
+      order: index,
+      owner: task.owner,
+      status: "not_started" as const,
+      title: task.title
+    } satisfies PortalTaskRecord;
+  });
+
+  const metrics = getPlanMetrics(templateBundle, nextPortalTasks);
+  const lastActivityAt = new Date();
+
+  await prisma.$transaction([
+    ...persistedTasks.map((task, index) =>
+      prisma.onboardingTask.update({
+        where: { id: task.id },
+        data: {
+          description: nextPortalTasks[index]?.description ?? task.description,
+          dueLabel: nextPortalTasks[index]?.dueLabel ?? task.dueLabel,
+          order: nextPortalTasks[index]?.order ?? task.order,
+          owner: nextPortalTasks[index]?.owner ?? task.owner,
+          status: nextPortalTasks[index]?.status ?? task.status,
+          title: nextPortalTasks[index]?.title ?? task.title
+        }
+      })
+    ),
+    prisma.onboardingPlan.update({
+      where: { id: onboardingPlan.id },
+      data: {
+        currentStage: metrics.currentStage,
+        lastActivityAt,
+        progress: metrics.progress,
+        status: metrics.status
+      }
+    })
+  ]);
+
+  return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
+    currentStage: metrics.currentStage,
+    firstCustomerPilot,
+    organizationName: onboardingPlan.msp?.name,
+    progress: metrics.progress,
+    title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
+  });
+}
+
 export async function submitFirstCustomerPilot(planId: string, input: SubmitFirstCustomerPilotInput) {
   ensureDatabaseConfigured();
 

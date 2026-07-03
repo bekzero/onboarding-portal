@@ -39,7 +39,7 @@ const PRODUCTION_REDIRECT_URI = "https://onboarding-portal20.vercel.app/api/oidc
 const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
 const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database migration and environment variables.";
 
-type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete";
+type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
 type DashboardSortColumn = "msp" | "access" | "tenant" | "stage" | "progress" | "waiting_on" | "apps" | "last_activity";
 type DashboardSortDirection = "asc" | "desc";
@@ -107,6 +107,16 @@ type FlowReferenceStage = {
   purpose: string;
   tasks: Array<{
     description?: string;
+    title: string;
+  }>;
+  title: string;
+};
+
+type RollbackStageOption = {
+  id: string;
+  tasks: Array<{
+    description: string;
+    id: string;
     title: string;
   }>;
   title: string;
@@ -832,6 +842,9 @@ export function InternalDashboard({
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
+  const [rollbackTaskId, setRollbackTaskId] = useState("");
+  const [rollbackErrorMessage, setRollbackErrorMessage] = useState<string | null>(null);
+  const [isApplyingRollback, setIsApplyingRollback] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCompletingKzeroStep, setIsCompletingKzeroStep] = useState(false);
   const [isCaseActionsMenuOpen, setIsCaseActionsMenuOpen] = useState(false);
@@ -1006,6 +1019,38 @@ export function InternalDashboard({
   const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
   const adminPortalOpenHref = selectedCase?.mspId ? `/api/admin/msps/${selectedCase.mspId}/open-portal` : null;
   const canOpenPortalAsAdmin = Boolean(selectedCase?.mspId && useServerData);
+  const rollbackStageOptions = useMemo<RollbackStageOption[]>(() => {
+    if (!selectedCaseBundle) {
+      return [];
+    }
+
+    const orderedTasks = selectedCaseBundle.plan.taskIds
+      .map((taskId) => selectedCaseBundle.tasks.find((task) => task.id === taskId))
+      .filter((task): task is NonNullable<typeof selectedCaseBundle.tasks[number]> => Boolean(task));
+    const orderedPhases = [...selectedCaseBundle.phases].sort((left, right) => left.order - right.order);
+
+    return orderedPhases
+      .map((phase) => ({
+        id: phase.id,
+        tasks: orderedTasks
+          .filter((task) => task.phaseId === phase.id)
+          .map((task) => ({
+            description: task.description,
+            id: task.id,
+            title: task.title
+          })),
+        title: phase.title
+      }))
+      .filter((phase) => phase.tasks.length > 0);
+  }, [selectedCaseBundle]);
+  const currentRollbackTaskId = useMemo(() => {
+    if (!selectedCase || !selectedCaseBundle) {
+      return "";
+    }
+
+    return selectedCaseBundle.tasks.find((task) => task.title === selectedCase.activeTaskTitle)?.id ?? "";
+  }, [selectedCase, selectedCaseBundle]);
+  const canRollbackCase = Boolean(selectedCase?.mspId && useServerData && rollbackStageOptions.length > 0);
   const referenceBundle = useMemo(() => getPlanBundle(REFERENCE_PLAN_ID), []);
   const flowReferenceStages = useMemo<FlowReferenceStage[]>(() => {
     const tasksByPhase = new Map<string, Array<{ title: string }>>();
@@ -1165,6 +1210,8 @@ export function InternalDashboard({
     setSelectedCaseId(null);
     setEditState(null);
     setOidcState(null);
+    setRollbackTaskId("");
+    setRollbackErrorMessage(null);
   }
 
   function openPreview(item: DashboardCase) {
@@ -1278,6 +1325,13 @@ export function InternalDashboard({
   function openDelete(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
     setPanelMode("delete");
+  }
+
+  function openRollback(item: DashboardCase) {
+    setSelectedCaseId(item.onboardingPlanId);
+    setRollbackTaskId(getPlanBundle(item.onboardingPlanId)?.tasks.find((task) => task.title === item.activeTaskTitle)?.id ?? "");
+    setRollbackErrorMessage(null);
+    setPanelMode("rollback");
   }
 
   function openEnroll() {
@@ -1667,8 +1721,53 @@ export function InternalDashboard({
     }
   }
 
+  async function handleApplyRollback() {
+    if (!selectedCase?.mspId || !rollbackTaskId) {
+      setRollbackErrorMessage("Select a step to reopen before applying rollback.");
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        "This will reopen the selected step, lock later steps, and recalculate the onboarding case status."
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setIsApplyingRollback(true);
+    setRollbackErrorMessage(null);
+
+    try {
+      const response = await fetch(`/api/admin/msps/${selectedCase.mspId}/rollback`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          taskId: rollbackTaskId
+        })
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Could not reopen the selected onboarding step.");
+      }
+
+      await loadDashboardCases();
+      setPanelMode("preview");
+      setRollbackTaskId("");
+    } catch (error) {
+      setRollbackErrorMessage(getSafeApiErrorMessage(error) ?? "Could not reopen the selected onboarding step.");
+    } finally {
+      setIsApplyingRollback(false);
+    }
+  }
+
   const isModalOpen =
-    panelMode === "enroll" || ((panelMode === "preview" || panelMode === "edit" || panelMode === "oidc" || panelMode === "delete") && !!selectedCase);
+    panelMode === "enroll" || ((panelMode === "preview" || panelMode === "edit" || panelMode === "oidc" || panelMode === "delete" || panelMode === "rollback") && !!selectedCase);
 
   return (
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
@@ -2118,16 +2217,20 @@ export function InternalDashboard({
                 ? "max-h-[calc(100vh-2rem)] max-w-[1040px] md:max-h-[calc(100vh-3rem)]"
                 : panelMode === "edit" || panelMode === "enroll"
                   ? "max-h-[calc(100vh-2rem)] max-w-[940px] md:max-h-[calc(100vh-3rem)]"
+                  : panelMode === "rollback"
+                    ? "max-h-[calc(100vh-2rem)] max-w-[920px] md:max-h-[calc(100vh-3rem)]"
                 : "max-h-[calc(100vh-2rem)] max-w-[520px] overflow-y-auto md:max-h-[calc(100vh-3rem)]"
             }`}
           >
-            <div className={`flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "edit" || panelMode === "enroll") ? "sticky top-0 z-20" : "mb-5"}`}>
+            <div className={`flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "edit" || panelMode === "enroll" || panelMode === "rollback") ? "sticky top-0 z-20" : "mb-5"}`}>
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-blue-200">
                   {panelMode === "preview"
                     ? "Case preview"
                     : panelMode === "edit"
                       ? "Edit MSP"
+                      : panelMode === "rollback"
+                        ? "Reopen Step"
                       : panelMode === "delete"
                         ? "Delete MSP"
                       : panelMode === "oidc"
@@ -2142,6 +2245,8 @@ export function InternalDashboard({
                     ? "Create a new MSP onboarding case with access, stage, and reporting details."
                     : panelMode === "preview"
                       ? selectedCase?.primaryContactEmail
+                      : panelMode === "rollback"
+                        ? "Select the onboarding step to reopen and make current again."
                       : panelMode === "delete"
                         ? "This action permanently removes the MSP and related onboarding records."
                       : panelMode === "edit"
@@ -2205,6 +2310,18 @@ export function InternalDashboard({
                             className="mt-2 grid gap-2 rounded-2xl border border-white/10 bg-[#0a1424] p-2 sm:absolute sm:right-0 sm:mt-2 sm:min-w-[220px] sm:shadow-xl"
                             role="menu"
                           >
+                            <Button
+                              className="justify-start"
+                              disabled={!canRollbackCase}
+                              onClick={() => {
+                                setIsCaseActionsMenuOpen(false);
+                                openRollback(selectedCase);
+                              }}
+                              variant="outline"
+                            >
+                              <TimerReset className="mr-2 h-4 w-4" />
+                              Reopen Step
+                            </Button>
                             <Button
                               className="justify-start"
                               onClick={() => {
@@ -2456,6 +2573,114 @@ export function InternalDashboard({
                   </Button>
                 </div>
               </div>
+            ) : null}
+
+            {panelMode === "rollback" && selectedCase ? (
+              <>
+                <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12rem)] md:px-6 md:py-6">
+                  <div className="grid gap-5">
+                    <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.08] px-5 py-4">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
+                        <div>
+                          <p className="text-sm font-semibold text-white">Rollback will reopen the selected step.</p>
+                          <p className="mt-2 text-sm leading-6 text-amber-50/90">
+                            This will reopen the selected step, lock later steps, and recalculate the onboarding case status.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Select Step To Reopen</p>
+                          <h4 className="mt-2 text-lg font-semibold text-white">Choose the exact onboarding step to make current again.</h4>
+                        </div>
+                        {currentRollbackTaskId ? (
+                          <Button className="h-10 px-4" onClick={() => setRollbackTaskId(currentRollbackTaskId)} variant="outline">
+                            Use Current Active Step
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-5 grid gap-4">
+                        {rollbackStageOptions.map((stage, stageIndex) => (
+                          <div key={stage.id} className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-4">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
+                                Stage {stageIndex + 1}
+                              </span>
+                              <h5 className="text-base font-semibold text-white">{stage.title}</h5>
+                            </div>
+                            <div className="mt-4 grid gap-3">
+                              {stage.tasks.map((task) => {
+                                const isSelected = rollbackTaskId === task.id;
+                                const isCurrentTask = currentRollbackTaskId === task.id;
+
+                                return (
+                                  <button
+                                    key={task.id}
+                                    className={`rounded-2xl border px-4 py-4 text-left transition ${
+                                      isSelected
+                                        ? "border-blue-400/60 bg-blue-400/10"
+                                        : "border-white/10 bg-[#0a1424] hover:border-white/20"
+                                    }`}
+                                    onClick={() => setRollbackTaskId(task.id)}
+                                    type="button"
+                                  >
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                      <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <p className="text-sm font-semibold text-white">{task.title}</p>
+                                          {isCurrentTask ? (
+                                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
+                                              Current Active Step
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        <p className="mt-2 text-sm leading-6 text-slate-300">{task.description}</p>
+                                      </div>
+                                      <span
+                                        className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
+                                          isSelected
+                                            ? "border-blue-300 bg-blue-300 text-slate-950"
+                                            : "border-white/15 text-slate-400"
+                                        }`}
+                                      >
+                                        {isSelected ? "•" : ""}
+                                      </span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {rollbackErrorMessage ? (
+                        <div className="mt-4 rounded-2xl border border-red-400/25 bg-red-400/[0.08] px-4 py-3 text-sm text-red-100">
+                          {rollbackErrorMessage}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:flex-row md:justify-end md:px-6">
+                  <Button
+                    className="md:min-w-[180px]"
+                    disabled={!rollbackTaskId || isApplyingRollback || !canRollbackCase}
+                    onClick={handleApplyRollback}
+                  >
+                    {isApplyingRollback ? "Applying..." : "Apply Rollback"}
+                  </Button>
+                  <Button disabled={isApplyingRollback} onClick={() => setPanelMode("preview")} variant="outline">
+                    Cancel
+                  </Button>
+                </div>
+              </>
             ) : null}
 
             {panelMode === "edit" && selectedCase && editState ? (
