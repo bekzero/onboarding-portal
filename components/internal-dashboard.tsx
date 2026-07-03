@@ -10,10 +10,12 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  FileText,
   Gauge,
   KeyRound,
   Pencil,
   PlusCircle,
+  Printer,
   Search,
   TimerReset,
   Trash2,
@@ -48,6 +50,8 @@ type DashboardCase = OnboardingCase & {
   activeTaskStatus?: string;
   activeTaskTitle?: string;
   firstCustomerPilot?: FirstCustomerPilot | null;
+  enrollmentDateRaw?: string;
+  lastActivityRaw?: string;
   mspId?: string;
 };
 type AdminApiCase = {
@@ -58,8 +62,10 @@ type AdminApiCase = {
   assignedSalesEngineer: string;
   currentStage: string;
   enrollmentDate: string;
+  enrollmentDateRaw: string;
   id: string;
   lastActivity: string;
+  lastActivityRaw: string;
   mspName: string;
   mspSlug: string;
   oidcClientId?: string;
@@ -96,6 +102,32 @@ type AdminNotificationsApiResponse = {
   error?: string;
   notifications?: AdminNotification[];
   unreadCount?: number;
+};
+
+type ReportSummaryMetric = {
+  label: string;
+  tone?: "neutral" | "primary";
+  value: string;
+};
+
+type ReportDistributionItem = {
+  label: string;
+  value: number;
+};
+
+type ExecutiveSummaryReportData = {
+  accessReadiness: ReportDistributionItem[];
+  averageProgress: number;
+  detailedPipeline: DashboardCase[];
+  generatedAt: string;
+  kzeroActionRequiredCases: DashboardCase[];
+  managementNotes: string[];
+  oldestWaitingCases: DashboardCase[];
+  oidcNotConfiguredCases: DashboardCase[];
+  stageDistribution: ReportDistributionItem[];
+  summaryMetrics: ReportSummaryMetric[];
+  totalCases: number;
+  waitingStatusDistribution: ReportDistributionItem[];
 };
 
 type FlowReferenceStage = {
@@ -268,6 +300,16 @@ function formatNotificationTimestamp(value: string) {
     month: "long",
     year: "numeric"
   }).format(new Date(parsed));
+}
+
+function formatReportDate(value: Date) {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "long",
+    year: "numeric"
+  }).format(value);
 }
 
 function getOwnerBadgeTone(ownerLabel: string) {
@@ -487,12 +529,12 @@ function isOidcNotConfiguredCase(item: DashboardCase) {
 }
 
 function getCaseLastActivityTimestamp(item: DashboardCase) {
-  const timestamp = parseDisplayDateTimestamp(item.lastActivity);
+  const timestamp = item.lastActivityRaw ? Date.parse(item.lastActivityRaw) : parseDisplayDateTimestamp(item.lastActivity);
   return timestamp;
 }
 
 function getCaseEnrollmentTimestamp(item: DashboardCase) {
-  const timestamp = parseDisplayDateTimestamp(item.enrollmentDate);
+  const timestamp = item.enrollmentDateRaw ? Date.parse(item.enrollmentDateRaw) : parseDisplayDateTimestamp(item.enrollmentDate);
   return timestamp;
 }
 
@@ -515,6 +557,153 @@ function parseDisplayDateTimestamp(value?: string) {
 
   const parsedTimestamp = Date.parse(trimmedValue);
   return Number.isNaN(parsedTimestamp) ? null : parsedTimestamp;
+}
+
+function toIsoFromDisplayDate(value?: string) {
+  const timestamp = parseDisplayDateTimestamp(value);
+  return timestamp === null ? undefined : new Date(timestamp).toISOString();
+}
+
+function formatReportDateValue(value?: string) {
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+
+  if (Number.isNaN(timestamp)) {
+    return "Not available";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).format(new Date(timestamp));
+}
+
+function formatCompactTableDate(value?: string) {
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+
+  if (Number.isNaN(timestamp)) {
+    return "Not available";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(timestamp));
+}
+
+function calculateDaysSince(value?: string) {
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+
+  if (Number.isNaN(timestamp)) {
+    return null;
+  }
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / msPerDay));
+}
+
+function calculateAverageProgress(items: DashboardCase[]) {
+  if (items.length === 0) {
+    return 0;
+  }
+
+  const total = items.reduce((sum, item) => sum + item.progress, 0);
+  return Math.round(total / items.length);
+}
+
+function groupByStage(items: DashboardCase[]) {
+  const counts = new Map<string, number>();
+
+  items.forEach((item) => {
+    counts.set(item.currentStage, (counts.get(item.currentStage) ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label));
+}
+
+function groupByWaitingStatus(items: DashboardCase[]) {
+  const counts = new Map<string, number>();
+
+  items.forEach((item) => {
+    const label = getWaitingLabel(item);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label));
+}
+
+function groupByAccessMode(items: DashboardCase[]) {
+  const counts = new Map<string, number>([
+    ["KZero OIDC Configured", 0],
+    ["KZero OIDC Not Configured", 0],
+    ["Temporary Access", 0]
+  ]);
+
+  items.forEach((item) => {
+    if (item.accessMode === "temporary") {
+      counts.set("Temporary Access", (counts.get("Temporary Access") ?? 0) + 1);
+      return;
+    }
+
+    if (item.oidcClientSecretConfigured) {
+      counts.set("KZero OIDC Configured", (counts.get("KZero OIDC Configured") ?? 0) + 1);
+      return;
+    }
+
+    counts.set("KZero OIDC Not Configured", (counts.get("KZero OIDC Not Configured") ?? 0) + 1);
+  });
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .filter((item) => item.value > 0);
+}
+
+function getKZeroActionRequiredCases(items: DashboardCase[]) {
+  return items.filter((item) => isKzeroActionRequiredCase(item));
+}
+
+function getOldestWaitingCases(items: DashboardCase[]) {
+  return items
+    .filter((item) => isWaitingOnMspCase(item))
+    .sort((left, right) => {
+      const comparison = compareNullableValues(getCaseEnrollmentTimestamp(left), getCaseEnrollmentTimestamp(right), "asc");
+
+      if (comparison !== 0) {
+        return comparison;
+      }
+
+      return compareByMspName(left, right, "asc");
+    });
+}
+
+function buildManagementNotes(items: DashboardCase[]) {
+  const kzeroActionCount = getKZeroActionRequiredCases(items).length;
+  const waitingOnMspCount = items.filter((item) => isWaitingOnMspCase(item)).length;
+  const stageDistribution = groupByStage(items);
+  const topStage = stageDistribution[0];
+  const missingOidcCount = items.filter((item) => item.accessMode === "oidc" && !item.oidcClientSecretConfigured).length;
+  const oldestWaitingCase = getOldestWaitingCases(items)[0];
+  const oldestWaitingDays = oldestWaitingCase ? calculateDaysSince(getReportCaseEnrollmentValue(oldestWaitingCase)) : null;
+
+  return [
+    `${kzeroActionCount} ${kzeroActionCount === 1 ? "case requires" : "cases require"} KZero Passwordless action right now.`,
+    `${waitingOnMspCount} ${waitingOnMspCount === 1 ? "case is" : "cases are"} currently waiting on MSP follow-through.`,
+    topStage
+      ? `${topStage.label} currently has the largest concentration of MSPs with ${topStage.value} ${topStage.value === 1 ? "case" : "cases"}.`
+      : "Not enough data to identify a dominant onboarding stage.",
+    missingOidcCount > 0
+      ? `${missingOidcCount} ${missingOidcCount === 1 ? "case is" : "cases are"} using KZero OIDC without a completed configuration.`
+      : "OIDC configuration coverage looks healthy across the current pipeline.",
+    oldestWaitingDays !== null
+      ? `The oldest MSP waiting case has been open for ${oldestWaitingDays} ${oldestWaitingDays === 1 ? "day" : "days"} since enrollment.`
+      : "Not enough data to identify the oldest MSP waiting case.",
+    "Not enough data to forecast completion."
+  ];
 }
 
 function matchesQuickFilter(item: DashboardCase, filter: DashboardQuickFilter) {
@@ -767,7 +956,9 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     firstCustomerPilot: item.firstCustomerPilot ?? null,
     currentStage: item.currentStage,
     enrollmentDate: item.enrollmentDate,
+    enrollmentDateRaw: item.enrollmentDateRaw,
     lastActivity: item.lastActivity,
+    lastActivityRaw: item.lastActivityRaw,
     mspId: item.id,
     mspName: item.mspName,
     mspSlug: item.mspSlug,
@@ -782,6 +973,177 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     submittedSaasAppCount: item.submittedSaasAppCount,
     tenantName: item.tenantRealm
   };
+}
+
+function getReportCaseEnrollmentValue(item: DashboardCase) {
+  return item.enrollmentDateRaw ?? item.enrollmentDate;
+}
+
+function getReportCaseUpdatedValue(item: DashboardCase) {
+  return item.lastActivityRaw ?? item.lastActivity;
+}
+
+function ReportSummaryCards({ metrics }: { metrics: ReportSummaryMetric[] }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {metrics.map((metric) => (
+        <div
+          key={metric.label}
+          className={`rounded-2xl border px-4 py-4 report-avoid-break ${
+            metric.tone === "primary" ? "border-blue-200 bg-blue-50" : "border-slate-200 bg-white"
+          }`}
+        >
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">{metric.label}</p>
+          <p className="mt-3 text-3xl font-semibold text-slate-950">{metric.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ReportDistributionBar({ items, title }: { items: ReportDistributionItem[]; title: string }) {
+  const maxValue = Math.max(...items.map((item) => item.value), 1);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 report-avoid-break">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-base font-semibold text-slate-950">{title}</h4>
+        <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{items.reduce((sum, item) => sum + item.value, 0)} total</span>
+      </div>
+      <div className="mt-4 grid gap-3">
+        {items.map((item) => (
+          <div key={item.label} className="grid gap-1.5">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-medium text-slate-700">{item.label}</span>
+              <span className="text-slate-500">{item.value}</span>
+            </div>
+            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-600 to-cyan-500"
+                style={{ width: `${Math.max(8, (item.value / maxValue) * 100)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReportTable({ items, title }: { items: DashboardCase[]; title: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 report-avoid-break">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-base font-semibold text-slate-950">{title}</h4>
+        <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{items.length} MSPs</span>
+      </div>
+      <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+        <table className="w-full table-fixed text-sm">
+          <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-[0.18em] text-slate-500">
+            <tr>
+              <th className="px-3 py-3 font-medium">MSP</th>
+              <th className="px-3 py-3 font-medium">Stage</th>
+              <th className="px-3 py-3 font-medium">Waiting On</th>
+              <th className="px-3 py-3 font-medium">Progress</th>
+              <th className="px-3 py-3 font-medium">Enrolled</th>
+              <th className="px-3 py-3 font-medium">Updated</th>
+              <th className="px-3 py-3 font-medium">Apps</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length === 0 ? (
+              <tr>
+                <td className="px-3 py-5 text-slate-500" colSpan={7}>No MSP records available.</td>
+              </tr>
+            ) : (
+              items.map((item) => (
+                <tr key={`${title}-${item.onboardingPlanId}`} className="border-t border-slate-200 align-top text-slate-700">
+                  <td className="px-3 py-3 font-medium text-slate-900">{item.mspName}</td>
+                  <td className="px-3 py-3">{item.currentStage}</td>
+                  <td className="px-3 py-3">{getWaitingLabel(item)}</td>
+                  <td className="px-3 py-3">{item.progress}%</td>
+                  <td className="px-3 py-3">{formatReportDateValue(getReportCaseEnrollmentValue(item))}</td>
+                  <td className="px-3 py-3">{formatReportDateValue(getReportCaseUpdatedValue(item))}</td>
+                  <td className="px-3 py-3">{item.submittedSaasAppCount}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ExecutiveSummaryReport({ data }: { data: ExecutiveSummaryReportData }) {
+  return (
+    <div className="report-print-root bg-white text-slate-900">
+      <div className="mx-auto w-full max-w-[1120px] px-6 py-8 md:px-10">
+        <div className="flex flex-col gap-5 border-b border-slate-200 pb-6 md:flex-row md:items-start md:justify-between">
+          <div>
+            <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" surface="light" />
+            <h1 className="mt-5 text-3xl font-semibold text-slate-950">MSP Onboarding Executive Summary</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Current onboarding pipeline, ownership, and progress overview.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 report-avoid-break">
+            <p><span className="font-semibold text-slate-900">Generated:</span> {data.generatedAt}</p>
+            <p className="mt-2 max-w-xs leading-6">This report reflects the onboarding dashboard data at the time of export.</p>
+          </div>
+        </div>
+
+        <section className="mt-8">
+          <h2 className="text-xl font-semibold text-slate-950">Executive Snapshot</h2>
+          <p className="mt-2 text-sm text-slate-600">High-level view of the current KZero Passwordless onboarding pipeline.</p>
+          <div className="mt-5">
+            <ReportSummaryCards metrics={data.summaryMetrics} />
+          </div>
+        </section>
+
+        <section className="report-page-break mt-8">
+          <h2 className="text-xl font-semibold text-slate-950">Pipeline Health</h2>
+          <p className="mt-2 text-sm text-slate-600">Distribution views highlight where MSPs are concentrated and where attention is needed.</p>
+          <div className="mt-5 grid gap-4 xl:grid-cols-3">
+            <ReportDistributionBar items={data.stageDistribution} title="MSPs by Stage" />
+            <ReportDistributionBar items={data.waitingStatusDistribution} title="Waiting Status Breakdown" />
+            <ReportDistributionBar items={data.accessReadiness} title="Access / OIDC Readiness" />
+          </div>
+        </section>
+
+        <section className="report-page-break mt-8">
+          <h2 className="text-xl font-semibold text-slate-950">Priority Attention</h2>
+          <p className="mt-2 text-sm text-slate-600">Focused views for the cases that typically need Sales Engineer or leadership follow-up.</p>
+          <div className="mt-5 grid gap-4">
+            <ReportTable items={data.kzeroActionRequiredCases} title="KZero Action Required Cases" />
+            <ReportTable items={data.oldestWaitingCases} title="Oldest MSP Waiting Cases" />
+            <ReportTable items={data.oidcNotConfiguredCases} title="OIDC Not Configured Cases" />
+          </div>
+        </section>
+
+        <section className="report-page-break mt-8">
+          <h2 className="text-xl font-semibold text-slate-950">Detailed MSP Pipeline</h2>
+          <p className="mt-2 text-sm text-slate-600">Full pipeline detail for every MSP currently visible to the admin dashboard.</p>
+          <div className="mt-5">
+            <ReportTable items={data.detailedPipeline} title="Detailed MSP Pipeline" />
+          </div>
+        </section>
+
+        <section className="report-page-break mt-8">
+          <h2 className="text-xl font-semibold text-slate-950">Management Notes</h2>
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5 report-avoid-break">
+            <ul className="grid gap-3 text-sm leading-6 text-slate-700">
+              {data.managementNotes.map((note) => (
+                <li key={note} className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  {note}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 }
 
 function DashboardTable({
@@ -860,8 +1222,8 @@ function DashboardTable({
                 <col className="w-[16%]" />
                 <col className="w-[15%]" />
                 <col className="w-[7%]" />
-                <col className="w-[9%]" />
-                <col className="w-[9%]" />
+                <col className="w-[9.5%]" />
+                <col className="w-[8.5%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
@@ -899,8 +1261,12 @@ function DashboardTable({
                       <Badge status={getStatusTone(item)}>{getWaitingLabel(item)}</Badge>
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.enrollmentDate ?? item.lastActivity}</td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.lastActivity}</td>
+                    <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-300">
+                      {formatCompactTableDate(item.enrollmentDateRaw ?? item.enrollmentDate ?? item.lastActivityRaw ?? item.lastActivity)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-300">
+                      {formatCompactTableDate(item.lastActivityRaw ?? item.lastActivity)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -932,6 +1298,7 @@ export function InternalDashboard({
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
   const [notificationErrorMessage, setNotificationErrorMessage] = useState<string | null>(null);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>("default");
+  const [isReportOpen, setIsReportOpen] = useState(false);
   const [isFlowReferenceOpen, setIsFlowReferenceOpen] = useState(false);
   const [expandedFlowStageId, setExpandedFlowStageId] = useState<string | null>(null);
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
@@ -1089,13 +1456,14 @@ export function InternalDashboard({
     return baseCases
       .filter((item) => !caseOverrides[item.onboardingPlanId]?.deleted)
       .map((item) => ({
-      ...item,
-      ...caseOverrides[item.onboardingPlanId],
-      actionHref: `/portal/${item.onboardingPlanId}`,
-      assignedSalesEngineer: SALES_ENGINEER_NAME
-      ,
-      enrollmentDate: caseOverrides[item.onboardingPlanId]?.enrollmentDate ?? item.enrollmentDate ?? item.lastActivity
-    }));
+        ...item,
+        ...caseOverrides[item.onboardingPlanId],
+        actionHref: `/portal/${item.onboardingPlanId}`,
+        assignedSalesEngineer: SALES_ENGINEER_NAME,
+        enrollmentDate: caseOverrides[item.onboardingPlanId]?.enrollmentDate ?? item.enrollmentDate ?? item.lastActivity,
+        enrollmentDateRaw: toIsoFromDisplayDate(item.enrollmentDate ?? item.lastActivity),
+        lastActivityRaw: toIsoFromDisplayDate(item.lastActivity)
+      }));
   }, [baseCases, caseOverrides]);
 
   const isLoading = serverLoadState === "loading";
@@ -1260,6 +1628,42 @@ export function InternalDashboard({
 
   const waitingOnMsp = inProgressCases.filter((item) => item.status === "waiting_on_msp").length;
   const waitingOnKZero = inProgressCases.filter((item) => item.status === "waiting_on_kzero").length;
+  const executiveSummaryReportData = useMemo<ExecutiveSummaryReportData>(() => {
+    const detailedPipeline = sortDashboardCases([...onboardingCases]);
+    const kzeroActionRequiredAll = getKZeroActionRequiredCases(detailedPipeline);
+    const kzeroActionRequiredCases = kzeroActionRequiredAll.slice(0, 8);
+    const oldestWaitingCases = getOldestWaitingCases(detailedPipeline).slice(0, 8);
+    const oidcNotConfiguredCases = detailedPipeline.filter((item) => !item.oidcClientSecretConfigured).slice(0, 8);
+    const inProgressCount = detailedPipeline.filter((item) => !isCompletedCase(item)).length;
+    const completedCount = detailedPipeline.filter((item) => isCompletedCase(item)).length;
+    const averageProgress = calculateAverageProgress(detailedPipeline);
+    const oidcConfiguredCount = detailedPipeline.filter((item) => item.oidcClientSecretConfigured).length;
+    const temporaryAccessCount = detailedPipeline.filter((item) => item.accessMode === "temporary").length;
+
+    return {
+      accessReadiness: groupByAccessMode(detailedPipeline),
+      averageProgress,
+      detailedPipeline,
+      generatedAt: formatReportDate(new Date()),
+      kzeroActionRequiredCases,
+      managementNotes: buildManagementNotes(detailedPipeline),
+      oldestWaitingCases,
+      oidcNotConfiguredCases,
+      stageDistribution: groupByStage(detailedPipeline),
+      summaryMetrics: [
+        { label: "Total MSPs", value: String(detailedPipeline.length) },
+        { label: "In Progress", value: String(inProgressCount) },
+        { label: "Completed", value: String(completedCount) },
+        { label: "Waiting on MSP", value: String(detailedPipeline.filter((item) => isWaitingOnMspCase(item)).length) },
+        { label: "KZero Action Required", tone: "primary", value: String(kzeroActionRequiredAll.length) },
+        { label: "Average Progress", value: `${averageProgress}%` },
+        { label: "OIDC Configured", value: String(oidcConfiguredCount) },
+        { label: "Temporary Access", value: String(temporaryAccessCount) }
+      ],
+      totalCases: detailedPipeline.length,
+      waitingStatusDistribution: groupByWaitingStatus(detailedPipeline)
+    };
+  }, [onboardingCases]);
   const quickFilters: Array<{ label: string; value: DashboardQuickFilter }> = [
     { label: "All", value: "all" },
     { label: "Waiting on MSP", value: "waiting_on_msp" },
@@ -1911,6 +2315,10 @@ export function InternalDashboard({
                   </span>
                 ) : null}
               </Button>
+              <Button className="h-10 px-4" onClick={() => setIsReportOpen(true)} variant="outline">
+                <FileText className="mr-2 h-4 w-4" />
+                Reports
+              </Button>
               <Link href="/">
                 <Button className="h-10 px-4" variant="outline">
                   Back to Main Page
@@ -2315,6 +2723,32 @@ export function InternalDashboard({
               )}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {isReportOpen ? (
+        <div className="report-modal-shell fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 p-4 md:p-6">
+          <Card className="report-modal-card w-full max-w-[1180px] overflow-hidden border-slate-200 bg-white text-slate-900 shadow-2xl max-h-[95vh] md:max-h-[90vh]">
+            <div className="report-screen-controls sticky top-0 z-20 flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Reports</p>
+                <h3 className="mt-2 text-2xl font-semibold text-slate-950">MSP Onboarding Executive Summary</h3>
+                <p className="mt-1 text-sm text-slate-600">Leadership-ready pipeline reporting for KZero Passwordless onboarding.</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button className="bg-slate-950 text-white hover:bg-slate-800" onClick={() => window.print()}>
+                  <Printer className="mr-2 h-4 w-4" />
+                  Export PDF
+                </Button>
+                <Button onClick={() => setIsReportOpen(false)} variant="outline">
+                  Close
+                </Button>
+              </div>
+            </div>
+            <div className="max-h-[calc(95vh-5.5rem)] overflow-y-auto md:max-h-[calc(90vh-5.5rem)]">
+              <ExecutiveSummaryReport data={executiveSummaryReportData} />
+            </div>
+          </Card>
         </div>
       ) : null}
 
@@ -3305,6 +3739,62 @@ export function InternalDashboard({
           </Card>
         </div>
       ) : null}
+
+      <style jsx global>{`
+        @media print {
+          body {
+            background: #ffffff !important;
+          }
+
+          body * {
+            visibility: hidden;
+          }
+
+          .report-modal-shell,
+          .report-modal-shell * {
+            visibility: visible;
+          }
+
+          .report-modal-shell {
+            position: static !important;
+            inset: auto !important;
+            display: block !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+          }
+
+          .report-modal-card {
+            max-height: none !important;
+            max-width: none !important;
+            overflow: visible !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+
+          .report-screen-controls {
+            display: none !important;
+          }
+
+          .report-print-root {
+            background: #ffffff !important;
+            color: #0f172a !important;
+          }
+
+          .report-page-break {
+            break-before: page;
+            page-break-before: always;
+          }
+
+          .report-avoid-break,
+          .report-avoid-break table,
+          .report-avoid-break tr,
+          .report-avoid-break td,
+          .report-avoid-break th {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+        }
+      `}</style>
     </main>
   );
 }

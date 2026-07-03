@@ -381,8 +381,10 @@ export type AdminDashboardCase = {
   assignedSalesEngineer: string;
   currentStage: string;
   enrollmentDate: string;
+  enrollmentDateRaw: string;
   id: string;
   lastActivity: string;
+  lastActivityRaw: string;
   mspName: string;
   mspSlug: string;
   oidcClientId?: string;
@@ -530,8 +532,10 @@ function toAdminDashboardCase(
     assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
     currentStage: derivedMetrics?.currentStage ?? plan?.currentStage ?? "Kickoff",
     enrollmentDate: formatDateLabelFromValue(msp.enrollmentDate ?? msp.createdAt),
+    enrollmentDateRaw: (msp.enrollmentDate ?? msp.createdAt).toISOString(),
     id: msp.id,
     lastActivity: formatDateLabelFromValue(plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt),
+    lastActivityRaw: (plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt).toISOString(),
     mspName: msp.name,
     mspSlug: msp.slug,
     oidcClientId: msp.oidcConfig?.clientId,
