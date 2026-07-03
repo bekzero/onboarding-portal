@@ -116,15 +116,15 @@ type ReportDistributionItem = {
 };
 
 type ExecutiveSummaryReportData = {
-  accessReadiness: ReportDistributionItem[];
   averageProgress: number;
   detailedPipeline: DashboardCase[];
   generatedAt: string;
   kzeroActionRequiredCases: DashboardCase[];
   managementNotes: string[];
   oldestWaitingCases: DashboardCase[];
-  oidcNotConfiguredCases: DashboardCase[];
+  progressDistribution: ReportDistributionItem[];
   stageDistribution: ReportDistributionItem[];
+  stalledCases: DashboardCase[];
   summaryMetrics: ReportSummaryMetric[];
   totalCases: number;
   waitingStatusDistribution: ReportDistributionItem[];
@@ -637,25 +637,37 @@ function groupByWaitingStatus(items: DashboardCase[]) {
     .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label));
 }
 
-function groupByAccessMode(items: DashboardCase[]) {
+function groupByProgress(items: DashboardCase[]) {
   const counts = new Map<string, number>([
-    ["KZero OIDC Configured", 0],
-    ["KZero OIDC Not Configured", 0],
-    ["Temporary Access", 0]
+    ["0-24%", 0],
+    ["25-49%", 0],
+    ["50-74%", 0],
+    ["75-99%", 0],
+    ["100%", 0]
   ]);
 
   items.forEach((item) => {
-    if (item.accessMode === "temporary") {
-      counts.set("Temporary Access", (counts.get("Temporary Access") ?? 0) + 1);
+    if (item.progress >= 100) {
+      counts.set("100%", (counts.get("100%") ?? 0) + 1);
       return;
     }
 
-    if (item.oidcClientSecretConfigured) {
-      counts.set("KZero OIDC Configured", (counts.get("KZero OIDC Configured") ?? 0) + 1);
+    if (item.progress >= 75) {
+      counts.set("75-99%", (counts.get("75-99%") ?? 0) + 1);
       return;
     }
 
-    counts.set("KZero OIDC Not Configured", (counts.get("KZero OIDC Not Configured") ?? 0) + 1);
+    if (item.progress >= 50) {
+      counts.set("50-74%", (counts.get("50-74%") ?? 0) + 1);
+      return;
+    }
+
+    if (item.progress >= 25) {
+      counts.set("25-49%", (counts.get("25-49%") ?? 0) + 1);
+      return;
+    }
+
+    counts.set("0-24%", (counts.get("0-24%") ?? 0) + 1);
   });
 
   return Array.from(counts.entries())
@@ -681,14 +693,34 @@ function getOldestWaitingCases(items: DashboardCase[]) {
     });
 }
 
+function getStalledCases(items: DashboardCase[]) {
+  return items
+    .filter((item) => !isCompletedCase(item))
+    .sort((left, right) => {
+      const updatedComparison = compareNullableValues(getCaseLastActivityTimestamp(left), getCaseLastActivityTimestamp(right), "asc");
+
+      if (updatedComparison !== 0) {
+        return updatedComparison;
+      }
+
+      const enrollmentComparison = compareNullableValues(getCaseEnrollmentTimestamp(left), getCaseEnrollmentTimestamp(right), "asc");
+
+      if (enrollmentComparison !== 0) {
+        return enrollmentComparison;
+      }
+
+      return compareByMspName(left, right, "asc");
+    });
+}
+
 function buildManagementNotes(items: DashboardCase[]) {
   const kzeroActionCount = getKZeroActionRequiredCases(items).length;
   const waitingOnMspCount = items.filter((item) => isWaitingOnMspCase(item)).length;
   const stageDistribution = groupByStage(items);
   const topStage = stageDistribution[0];
-  const missingOidcCount = items.filter((item) => item.accessMode === "oidc" && !item.oidcClientSecretConfigured).length;
   const oldestWaitingCase = getOldestWaitingCases(items)[0];
   const oldestWaitingDays = oldestWaitingCase ? calculateDaysSince(getReportCaseEnrollmentValue(oldestWaitingCase)) : null;
+  const stalledCaseCount = getStalledCases(items).slice(0, 8).length;
 
   return [
     `${kzeroActionCount} ${kzeroActionCount === 1 ? "case requires" : "cases require"} KZero Passwordless action right now.`,
@@ -696,9 +728,9 @@ function buildManagementNotes(items: DashboardCase[]) {
     topStage
       ? `${topStage.label} currently has the largest concentration of MSPs with ${topStage.value} ${topStage.value === 1 ? "case" : "cases"}.`
       : "Not enough data to identify a dominant onboarding stage.",
-    missingOidcCount > 0
-      ? `${missingOidcCount} ${missingOidcCount === 1 ? "case is" : "cases are"} using KZero OIDC without a completed configuration.`
-      : "OIDC configuration coverage looks healthy across the current pipeline.",
+    stalledCaseCount > 0
+      ? `${stalledCaseCount} ${stalledCaseCount === 1 ? "case appears" : "cases appear"} inactive based on the oldest last activity dates in the pipeline.`
+      : "No stalled MSP cases stand out in the current pipeline.",
     oldestWaitingDays !== null
       ? `The oldest MSP waiting case has been open for ${oldestWaitingDays} ${oldestWaitingDays === 1 ? "day" : "days"} since enrollment.`
       : "Not enough data to identify the oldest MSP waiting case.",
@@ -1107,7 +1139,7 @@ function ExecutiveSummaryReport({ data }: { data: ExecutiveSummaryReportData }) 
           <div className="mt-5 grid gap-4 xl:grid-cols-3">
             <ReportDistributionBar items={data.stageDistribution} title="MSPs by Stage" />
             <ReportDistributionBar items={data.waitingStatusDistribution} title="Waiting Status Breakdown" />
-            <ReportDistributionBar items={data.accessReadiness} title="Access / OIDC Readiness" />
+            <ReportDistributionBar items={data.progressDistribution} title="Progress Distribution" />
           </div>
         </section>
 
@@ -1117,7 +1149,7 @@ function ExecutiveSummaryReport({ data }: { data: ExecutiveSummaryReportData }) 
           <div className="mt-5 grid gap-4">
             <ReportTable items={data.kzeroActionRequiredCases} title="KZero Action Required Cases" />
             <ReportTable items={data.oldestWaitingCases} title="Oldest MSP Waiting Cases" />
-            <ReportTable items={data.oidcNotConfiguredCases} title="OIDC Not Configured Cases" />
+            <ReportTable items={data.stalledCases} title="Stalled or Inactive MSPs" />
           </div>
         </section>
 
@@ -1421,6 +1453,21 @@ export function InternalDashboard({
   }, [isNotificationDrawerOpen]);
 
   useEffect(() => {
+    if (!isReportOpen || typeof window === "undefined") {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsReportOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isReportOpen]);
+
+  useEffect(() => {
     const unreadNotifications = notifications.filter((notification) => !notification.isRead);
 
     if (!hasInitializedNotificationFeed.current) {
@@ -1633,32 +1680,28 @@ export function InternalDashboard({
     const kzeroActionRequiredAll = getKZeroActionRequiredCases(detailedPipeline);
     const kzeroActionRequiredCases = kzeroActionRequiredAll.slice(0, 8);
     const oldestWaitingCases = getOldestWaitingCases(detailedPipeline).slice(0, 8);
-    const oidcNotConfiguredCases = detailedPipeline.filter((item) => !item.oidcClientSecretConfigured).slice(0, 8);
+    const stalledCases = getStalledCases(detailedPipeline).slice(0, 8);
     const inProgressCount = detailedPipeline.filter((item) => !isCompletedCase(item)).length;
     const completedCount = detailedPipeline.filter((item) => isCompletedCase(item)).length;
     const averageProgress = calculateAverageProgress(detailedPipeline);
-    const oidcConfiguredCount = detailedPipeline.filter((item) => item.oidcClientSecretConfigured).length;
-    const temporaryAccessCount = detailedPipeline.filter((item) => item.accessMode === "temporary").length;
 
     return {
-      accessReadiness: groupByAccessMode(detailedPipeline),
       averageProgress,
       detailedPipeline,
       generatedAt: formatReportDate(new Date()),
       kzeroActionRequiredCases,
       managementNotes: buildManagementNotes(detailedPipeline),
       oldestWaitingCases,
-      oidcNotConfiguredCases,
+      progressDistribution: groupByProgress(detailedPipeline),
       stageDistribution: groupByStage(detailedPipeline),
+      stalledCases,
       summaryMetrics: [
         { label: "Total MSPs", value: String(detailedPipeline.length) },
         { label: "In Progress", value: String(inProgressCount) },
         { label: "Completed", value: String(completedCount) },
         { label: "Waiting on MSP", value: String(detailedPipeline.filter((item) => isWaitingOnMspCase(item)).length) },
         { label: "KZero Action Required", tone: "primary", value: String(kzeroActionRequiredAll.length) },
-        { label: "Average Progress", value: `${averageProgress}%` },
-        { label: "OIDC Configured", value: String(oidcConfiguredCount) },
-        { label: "Temporary Access", value: String(temporaryAccessCount) }
+        { label: "Average Progress", value: `${averageProgress}%` }
       ],
       totalCases: detailedPipeline.length,
       waitingStatusDistribution: groupByWaitingStatus(detailedPipeline)
@@ -2286,8 +2329,8 @@ export function InternalDashboard({
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
       <section className="min-w-0 grid gap-4">
         <Card className="border-white/10 bg-[#101a2d] px-4 py-4 md:px-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-center">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center">
               <KzeroLogo
                 className="w-fit shrink-0"
                 imageClassName="h-auto w-[190px] md:w-[200px]"
@@ -2300,12 +2343,10 @@ export function InternalDashboard({
                     Admin
                   </span>
                 </div>
-                <p className="mt-1 text-sm text-slate-300">
-                  Manage MSP onboarding, OIDC readiness, and rollout progress.
-                </p>
+                <p className="mt-1 text-sm text-slate-300">Manage MSP Onboarding</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <Button className="relative h-10 px-4" onClick={() => setIsNotificationDrawerOpen(true)} variant="outline">
                 <Bell className="mr-2 h-4 w-4" />
                 Notifications
@@ -2729,18 +2770,33 @@ export function InternalDashboard({
       {isReportOpen ? (
         <div className="report-modal-shell fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 p-4 md:p-6">
           <Card className="report-modal-card w-full max-w-[1180px] overflow-hidden border-slate-200 bg-white text-slate-900 shadow-2xl max-h-[95vh] md:max-h-[90vh]">
-            <div className="report-screen-controls sticky top-0 z-20 flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
-              <div>
+            <div className="report-screen-controls sticky top-0 z-20 border-b border-slate-200 bg-white px-5 py-4 md:px-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Reports</p>
                 <h3 className="mt-2 text-2xl font-semibold text-slate-950">MSP Onboarding Executive Summary</h3>
                 <p className="mt-1 text-sm text-slate-600">Leadership-ready pipeline reporting for KZero Passwordless onboarding.</p>
+                </div>
+                <Button
+                  aria-label="Close report"
+                  className="h-10 shrink-0 border-slate-300 bg-white px-3 text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                  onClick={() => setIsReportOpen(false)}
+                  title="Close"
+                  variant="outline"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button className="bg-slate-950 text-white hover:bg-slate-800" onClick={() => window.print()}>
                   <Printer className="mr-2 h-4 w-4" />
                   Export PDF
                 </Button>
-                <Button onClick={() => setIsReportOpen(false)} variant="outline">
+                <Button
+                  className="border-slate-300 bg-white text-slate-900 hover:bg-slate-100"
+                  onClick={() => setIsReportOpen(false)}
+                  variant="outline"
+                >
                   Close
                 </Button>
               </div>
