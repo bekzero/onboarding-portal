@@ -2329,11 +2329,11 @@ export function InternalDashboard({
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
       <section className="min-w-0 grid gap-4">
         <Card className="border-white/10 bg-[#101a2d] px-4 py-4 md:px-5">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
+            <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:gap-4">
               <KzeroLogo
                 className="w-fit shrink-0"
-                imageClassName="h-auto w-[190px] md:w-[200px]"
+                imageClassName="h-auto w-[176px] md:w-[188px]"
                 surface="dark"
               />
               <div className="min-w-0">
@@ -2346,29 +2346,37 @@ export function InternalDashboard({
                 <p className="mt-1 text-sm text-slate-300">Manage MSP Onboarding</p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <Button className="relative h-10 px-4" onClick={() => setIsNotificationDrawerOpen(true)} variant="outline">
-                <Bell className="mr-2 h-4 w-4" />
-                Notifications
-                {unreadNotificationCount > 0 ? (
-                  <span className="ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-blue-400 px-1.5 py-0.5 text-[11px] font-semibold text-slate-950">
-                    {unreadNotificationCount}
-                  </span>
-                ) : null}
-              </Button>
-              <Button className="h-10 px-4" onClick={() => setIsReportOpen(true)} variant="outline">
-                <FileText className="mr-2 h-4 w-4" />
-                Reports
-              </Button>
-              <Link href="/">
-                <Button className="h-10 px-4" variant="outline">
-                  Back to Main Page
+            <div className="flex flex-col items-stretch gap-3 xl:min-w-[520px] xl:max-w-[620px] xl:items-end">
+              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#0a1424] p-1.5">
+                  <Button
+                    className="relative h-10 px-4"
+                    onClick={() => setIsNotificationDrawerOpen(true)}
+                    variant="outline"
+                  >
+                    <Bell className="mr-2 h-4 w-4" />
+                    Notifications
+                    {unreadNotificationCount > 0 ? (
+                      <span className="ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-blue-400 px-1.5 py-0.5 text-[11px] font-semibold text-slate-950">
+                        {unreadNotificationCount}
+                      </span>
+                    ) : null}
+                  </Button>
+                  <Button className="h-10 px-4" onClick={() => setIsReportOpen(true)} variant="outline">
+                    <FileText className="mr-2 h-4 w-4" />
+                    Reports
+                  </Button>
+                  <Link href="/">
+                    <Button className="h-10 px-4" variant="outline">
+                      Back to Main Page
+                    </Button>
+                  </Link>
+                </div>
+                <Button className="h-10 whitespace-nowrap px-4" onClick={openEnroll}>
+                  <PlusCircle className="mr-2 h-4 w-4" />
+                  Enroll MSP
                 </Button>
-              </Link>
-              <Button className="h-10 px-4" onClick={openEnroll}>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Enroll MSP
-              </Button>
+              </div>
             </div>
           </div>
         </Card>
