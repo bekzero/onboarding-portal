@@ -41,7 +41,7 @@ const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database m
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
-type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "enrollment_date" | "last_activity";
+type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "timeline";
 type DashboardSortDirection = "asc" | "desc";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
@@ -476,11 +476,6 @@ function getCaseLastActivityTimestamp(item: DashboardCase) {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
-function getCaseEnrollmentTimestamp(item: DashboardCase) {
-  const timestamp = Date.parse(item.enrollmentDate ?? "");
-  return Number.isNaN(timestamp) ? 0 : timestamp;
-}
-
 function matchesQuickFilter(item: DashboardCase, filter: DashboardQuickFilter) {
   if (filter === "all") {
     return true;
@@ -573,10 +568,6 @@ function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
 
   if (column === "apps") {
     return item.submittedSaasAppCount;
-  }
-
-  if (column === "enrollment_date") {
-    return getCaseEnrollmentTimestamp(item);
   }
 
   return getCaseLastActivityTimestamp(item);
@@ -712,8 +703,7 @@ function DashboardTable({
     { key: "progress", label: "Progress" },
     { key: "waiting_on", label: "Waiting On" },
     { key: "apps", label: "Apps" },
-    { key: "enrollment_date", label: "Enrolled" },
-    { key: "last_activity", label: "Last Activity" }
+    { key: "timeline", label: "Timeline" }
   ];
 
   function renderSortHeader(column: DashboardSortColumn, label: string) {
@@ -758,16 +748,14 @@ function DashboardTable({
           {items.length === 0 ? (
             <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
           ) : (
-            <table className="min-w-[1080px] w-full table-fixed">
+            <table className="min-w-[980px] w-full table-fixed">
               <colgroup>
-                <col className="w-[29%]" />
+                <col className="w-[31%]" />
                 <col className="w-[15%]" />
                 <col className="w-[16%]" />
                 <col className="w-[15%]" />
-                <col className="w-[8%]" />
-                <col className="w-[9%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
+                <col className="w-[7%]" />
+                <col className="w-[16%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
@@ -805,8 +793,12 @@ function DashboardTable({
                       <Badge status={getStatusTone(item)}>{getWaitingLabel(item)}</Badge>
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.enrollmentDate ?? item.lastActivity}</td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.lastActivity}</td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">
+                      <div className="space-y-1">
+                        <p className="leading-5 text-slate-200">Enrolled: {item.enrollmentDate ?? item.lastActivity}</p>
+                        <p className="leading-5 text-slate-400">Updated: {item.lastActivity}</p>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2784,15 +2776,6 @@ export function InternalDashboard({
                               }
                               type="date"
                               value={editState.enrollmentDate}
-                            />
-                          </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
-                            <span>Enrollment Date</span>
-                            <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
-                              onChange={(event) => setEnrollmentState((current) => ({ ...current, enrollmentDate: event.target.value }))}
-                              type="date"
-                              value={enrollmentState.enrollmentDate}
                             />
                           </label>
                           <label className="grid gap-2 text-sm text-slate-300">
