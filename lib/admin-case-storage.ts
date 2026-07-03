@@ -7,6 +7,7 @@ export type AdminCaseOverride = Partial<
     OnboardingCase,
     | "accessMode"
     | "currentStage"
+    | "enrollmentDate"
     | "lastActivity"
     | "mspName"
     | "oidcClientId"

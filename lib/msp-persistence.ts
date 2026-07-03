@@ -40,6 +40,7 @@ const mspWithDashboardSelection = {
   accessMode: true,
   assignedSalesEngineer: true,
   createdAt: true,
+  enrollmentDate: true,
   id: true,
   name: true,
   primaryContactEmail: true,
@@ -72,7 +73,8 @@ function formatDateLabelFromValue(value: Date) {
   return new Intl.DateTimeFormat("en-US", {
     day: "numeric",
     month: "long",
-    year: "numeric"
+    year: "numeric",
+    timeZone: "UTC"
   }).format(value);
 }
 
@@ -90,6 +92,23 @@ function parseLastActivityInput(value?: string) {
   }
 
   return parsedValue;
+}
+
+function parseCalendarDateInput(value?: string) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  const isoMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!isoMatch) {
+    const parsedValue = new Date(trimmedValue);
+    return Number.isNaN(parsedValue.getTime()) ? undefined : parsedValue;
+  }
+
+  const [, year, month, day] = isoMatch;
+  return new Date(`${year}-${month}-${day}T12:00:00Z`);
 }
 
 function getTemplateBundle(planId: string) {
@@ -335,6 +354,7 @@ export type PublicMspRecord = {
   accessMode: AccessMode;
   assignedSalesEngineer: string;
   createdAt: Date;
+  enrollmentDate: Date;
   id: string;
   name: string;
   primaryContactEmail: string;
@@ -360,6 +380,7 @@ export type AdminDashboardCase = {
   activeTaskTitle?: string;
   assignedSalesEngineer: string;
   currentStage: string;
+  enrollmentDate: string;
   id: string;
   lastActivity: string;
   mspName: string;
@@ -387,6 +408,7 @@ type PortalTaskRecord = {
 type CreateMspInput = {
   accessMode: AccessMode;
   assignedSalesEngineer?: string;
+  enrollmentDate?: string;
   name: string;
   primaryContactEmail: string;
   slug?: string;
@@ -396,6 +418,7 @@ type UpdateMspInput = {
   accessMode?: AccessMode;
   assignedSalesEngineer?: string;
   currentStage?: string;
+  enrollmentDate?: string;
   lastActivity?: string;
   name?: string;
   primaryContactEmail?: string;
@@ -438,6 +461,7 @@ function toPublicMspRecord(
       accessMode: true;
       assignedSalesEngineer: true;
       createdAt: true;
+      enrollmentDate: true;
       id: true;
       name: true;
       primaryContactEmail: true;
@@ -455,6 +479,7 @@ function toPublicMspRecord(
     accessMode: msp.accessMode,
     assignedSalesEngineer: msp.assignedSalesEngineer,
     createdAt: msp.createdAt,
+    enrollmentDate: msp.enrollmentDate,
     id: msp.id,
     name: msp.name,
     primaryContactEmail: msp.primaryContactEmail,
@@ -504,6 +529,7 @@ function toAdminDashboardCase(
     activeTaskTitle: activeTask?.title,
     assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
     currentStage: derivedMetrics?.currentStage ?? plan?.currentStage ?? "Kickoff",
+    enrollmentDate: formatDateLabelFromValue(msp.enrollmentDate ?? msp.createdAt),
     id: msp.id,
     lastActivity: formatDateLabelFromValue(plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt),
     mspName: msp.name,
@@ -627,6 +653,7 @@ export async function createMsp(input: CreateMspInput) {
     data: {
       accessMode: input.accessMode,
       assignedSalesEngineer: input.assignedSalesEngineer?.trim() || DEFAULT_SALES_ENGINEER,
+      enrollmentDate: parseCalendarDateInput(input.enrollmentDate) ?? new Date(),
       name: input.name.trim(),
       onboardingPlans: {
         create: {
@@ -680,6 +707,7 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
     data: {
       accessMode: input.accessMode,
       assignedSalesEngineer: input.assignedSalesEngineer?.trim(),
+      enrollmentDate: input.enrollmentDate !== undefined ? parseCalendarDateInput(input.enrollmentDate) : undefined,
       name: trimmedName,
       oidcConfig:
         input.tenantRealm !== undefined

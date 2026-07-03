@@ -23,6 +23,7 @@ model Msp {
   primaryContactEmail  String
   assignedSalesEngineer String          @default("Ben Eakin")
   accessMode           AccessMode
+  enrollmentDate       DateTime         @default(now())
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   oidcConfig           OidcConfig?

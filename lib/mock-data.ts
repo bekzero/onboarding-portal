@@ -112,6 +112,7 @@ export type OnboardingCase = {
   actionHref: string;
   assignedSalesEngineer: string;
   currentStage: string;
+  enrollmentDate?: string;
   lastActivity: string;
   mspName: string;
   mspSlug: string;

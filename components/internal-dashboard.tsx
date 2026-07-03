@@ -41,7 +41,7 @@ const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database m
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
-type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "last_activity";
+type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "enrollment_date" | "last_activity";
 type DashboardSortDirection = "asc" | "desc";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
@@ -57,6 +57,7 @@ type AdminApiCase = {
   activeTaskTitle?: string;
   assignedSalesEngineer: string;
   currentStage: string;
+  enrollmentDate: string;
   id: string;
   lastActivity: string;
   mspName: string;
@@ -127,6 +128,7 @@ type EnrollmentFormState = {
   clientId: string;
   clientSecret: string;
   currentStage: string;
+  enrollmentDate: string;
   lastActivity: string;
   mspName: string;
   primaryContactEmail: string;
@@ -140,6 +142,7 @@ type EnrollmentFormState = {
 type EditFormState = {
   accessMode: OnboardingCase["accessMode"];
   currentStage: string;
+  enrollmentDate: string;
   lastActivity: string;
   mspName: string;
   primaryContactEmail: string;
@@ -473,6 +476,11 @@ function getCaseLastActivityTimestamp(item: DashboardCase) {
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
+function getCaseEnrollmentTimestamp(item: DashboardCase) {
+  const timestamp = Date.parse(item.enrollmentDate ?? "");
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 function matchesQuickFilter(item: DashboardCase, filter: DashboardQuickFilter) {
   if (filter === "all") {
     return true;
@@ -567,6 +575,10 @@ function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
     return item.submittedSaasAppCount;
   }
 
+  if (column === "enrollment_date") {
+    return getCaseEnrollmentTimestamp(item);
+  }
+
   return getCaseLastActivityTimestamp(item);
 }
 
@@ -614,6 +626,7 @@ function createEnrollmentState(): EnrollmentFormState {
     clientId: "",
     clientSecret: "",
     currentStage: "Kickoff",
+    enrollmentDate: getTodayDateInputValue(),
     lastActivity: getTodayDateInputValue(),
     mspName: "",
     primaryContactEmail: "",
@@ -629,6 +642,7 @@ function createEditState(item: OnboardingCase): EditFormState {
   return {
     accessMode: item.accessMode,
     currentStage: item.currentStage,
+    enrollmentDate: formatDateInputValue(item.enrollmentDate ?? item.lastActivity),
     lastActivity: formatDateInputValue(item.lastActivity),
     mspName: item.mspName,
     primaryContactEmail: item.primaryContactEmail,
@@ -657,6 +671,7 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     assignedSalesEngineer: SALES_ENGINEER_NAME,
     firstCustomerPilot: item.firstCustomerPilot ?? null,
     currentStage: item.currentStage,
+    enrollmentDate: item.enrollmentDate,
     lastActivity: item.lastActivity,
     mspId: item.id,
     mspName: item.mspName,
@@ -697,6 +712,7 @@ function DashboardTable({
     { key: "progress", label: "Progress" },
     { key: "waiting_on", label: "Waiting On" },
     { key: "apps", label: "Apps" },
+    { key: "enrollment_date", label: "Enrolled" },
     { key: "last_activity", label: "Last Activity" }
   ];
 
@@ -742,13 +758,15 @@ function DashboardTable({
           {items.length === 0 ? (
             <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
           ) : (
-            <table className="min-w-[960px] w-full table-fixed">
+            <table className="min-w-[1080px] w-full table-fixed">
               <colgroup>
-                <col className="w-[31%]" />
+                <col className="w-[29%]" />
+                <col className="w-[15%]" />
                 <col className="w-[16%]" />
-                <col className="w-[17%]" />
-                <col className="w-[16%]" />
+                <col className="w-[15%]" />
                 <col className="w-[8%]" />
+                <col className="w-[9%]" />
+                <col className="w-[12%]" />
                 <col className="w-[12%]" />
               </colgroup>
               <thead>
@@ -787,6 +805,7 @@ function DashboardTable({
                       <Badge status={getStatusTone(item)}>{getWaitingLabel(item)}</Badge>
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.enrollmentDate ?? item.lastActivity}</td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.lastActivity}</td>
                   </tr>
                 ))}
@@ -980,6 +999,8 @@ export function InternalDashboard({
       ...caseOverrides[item.onboardingPlanId],
       actionHref: `/portal/${item.onboardingPlanId}`,
       assignedSalesEngineer: SALES_ENGINEER_NAME
+      ,
+      enrollmentDate: caseOverrides[item.onboardingPlanId]?.enrollmentDate ?? item.enrollmentDate ?? item.lastActivity
     }));
   }, [baseCases, caseOverrides]);
 
@@ -1341,6 +1362,7 @@ export function InternalDashboard({
       hasFullOidcConfig || enrollmentState.accessMode === "oidc" ? "oidc" : "temporary";
     const nextOidcStatus: OnboardingCase["oidcStatus"] = hasFullOidcConfig ? "configured" : "not_configured";
     const progress = Math.max(0, Math.min(100, Number(enrollmentState.progress) || 0));
+    const nextEnrollmentDate = enrollmentState.enrollmentDate || getTodayDateInputValue();
     const nextLastActivity = formatDateDisplayValue(enrollmentState.lastActivity) || formatDateLabel();
 
     if (!trimmedMspName || !trimmedPrimaryContactEmail || !normalizedMspSlug) {
@@ -1357,6 +1379,7 @@ export function InternalDashboard({
           body: JSON.stringify({
             accessMode,
             assignedSalesEngineer: SALES_ENGINEER_NAME,
+            enrollmentDate: nextEnrollmentDate,
             name: trimmedMspName,
             primaryContactEmail: trimmedPrimaryContactEmail,
             slug: normalizedMspSlug
@@ -1437,6 +1460,7 @@ export function InternalDashboard({
       [nextPlanId]: {
         accessMode,
         currentStage: enrollmentState.currentStage,
+        enrollmentDate: formatDateDisplayValue(nextEnrollmentDate),
         lastActivity: nextLastActivity,
         mspName: trimmedMspName,
         oidcClientId: trimmedClientId || undefined,
@@ -1462,6 +1486,7 @@ export function InternalDashboard({
 
     const nextProgress = Math.max(0, Math.min(100, Number(editState.progress) || 0));
     const exactTenantName = editState.tenantName.trim();
+    const nextEnrollmentDate = editState.enrollmentDate || formatDateInputValue(selectedCase.enrollmentDate ?? selectedCase.lastActivity);
     const nextLastActivity = formatDateDisplayValue(editState.lastActivity) || selectedCase.lastActivity;
     const hasExistingOidcConfig = Boolean(
       selectedCase.oidcClientId && selectedCase.oidcClientSecretConfigured && (selectedCase.tenantName ?? exactTenantName)
@@ -1483,6 +1508,7 @@ export function InternalDashboard({
             accessMode: nextAccessMode,
             assignedSalesEngineer: SALES_ENGINEER_NAME,
             currentStage: editState.currentStage,
+            enrollmentDate: nextEnrollmentDate,
             lastActivity: nextLastActivity,
             name: editState.mspName,
             primaryContactEmail: editState.primaryContactEmail,
@@ -1515,6 +1541,7 @@ export function InternalDashboard({
         ...caseOverrides[selectedCase.onboardingPlanId],
         accessMode: nextAccessMode,
         currentStage: editState.currentStage.trim() || selectedCase.currentStage,
+        enrollmentDate: formatDateDisplayValue(nextEnrollmentDate) || selectedCase.enrollmentDate,
         lastActivity: nextLastActivity,
         mspName: editState.mspName.trim() || selectedCase.mspName,
         oidcStatus: nextOidcStatus,
@@ -2459,6 +2486,10 @@ export function InternalDashboard({
                               <p className="mt-1 text-sm text-slate-200">{SALES_ENGINEER_NAME}</p>
                             </div>
                             <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Enrollment Date</p>
+                              <p className="mt-1 text-sm text-slate-200">{selectedCase.enrollmentDate ?? selectedCase.lastActivity}</p>
+                            </div>
+                            <div>
                               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Last Activity</p>
                               <p className="mt-1 text-sm text-slate-200">{selectedCase.lastActivity}</p>
                             </div>
@@ -2743,6 +2774,26 @@ export function InternalDashboard({
                                 </option>
                               ))}
                             </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Enrollment Date</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) => (current ? { ...current, enrollmentDate: event.target.value } : current))
+                              }
+                              type="date"
+                              value={editState.enrollmentDate}
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Enrollment Date</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) => setEnrollmentState((current) => ({ ...current, enrollmentDate: event.target.value }))}
+                              type="date"
+                              value={enrollmentState.enrollmentDate}
+                            />
                           </label>
                           <label className="grid gap-2 text-sm text-slate-300">
                             <span>Last Activity</span>

@@ -26,6 +26,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       accessMode: "temporary" | "oidc";
       assignedSalesEngineer?: string;
+      enrollmentDate?: string;
       name: string;
       primaryContactEmail: string;
       slug?: string;

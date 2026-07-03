@@ -13,6 +13,7 @@ export async function PATCH(
       accessMode?: "temporary" | "oidc";
       assignedSalesEngineer?: string;
       currentStage?: string;
+      enrollmentDate?: string;
       lastActivity?: string;
       name?: string;
       primaryContactEmail?: string;
