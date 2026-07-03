@@ -820,7 +820,7 @@ export function InternalDashboard({
   const [notificationErrorMessage, setNotificationErrorMessage] = useState<string | null>(null);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission>("default");
   const [isFlowReferenceOpen, setIsFlowReferenceOpen] = useState(false);
-  const [expandedFlowStageId, setExpandedFlowStageId] = useState<string | null>("phase-tenant-setup");
+  const [expandedFlowStageId, setExpandedFlowStageId] = useState<string | null>(null);
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
@@ -1270,6 +1270,7 @@ export function InternalDashboard({
 
   function openFlowReference() {
     setIsFlowReferenceOpen(true);
+    setExpandedFlowStageId(null);
 
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -1284,6 +1285,11 @@ export function InternalDashboard({
 
   function toggleFlowStageDetails(stageId: string) {
     setExpandedFlowStageId((current) => (current === stageId ? null : stageId));
+  }
+
+  function toggleFlowReferenceVisibility() {
+    setIsFlowReferenceOpen((current) => !current);
+    setExpandedFlowStageId(null);
   }
 
   function openCaseFromNotification(notification: AdminNotification) {
@@ -1972,7 +1978,7 @@ export function InternalDashboard({
                         Review the full KZero Passwordless MSP onboarding flow without opening an individual case.
                       </p>
                     </div>
-                    <Button onClick={() => setIsFlowReferenceOpen((current) => !current)} variant="outline">
+                    <Button onClick={toggleFlowReferenceVisibility} variant="outline">
                       {isFlowReferenceOpen ? "Hide Onboarding Flow" : "View Onboarding Flow"}
                     </Button>
                   </div>
