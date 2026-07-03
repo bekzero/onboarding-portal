@@ -41,7 +41,7 @@ const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database m
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
-type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "timeline";
+type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
 type DashboardSortDirection = "asc" | "desc";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
@@ -641,7 +641,11 @@ function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
     return item.submittedSaasAppCount;
   }
 
-  // Timeline sorts by last activity / updated date rather than enrollment date.
+  if (column === "enrolled") {
+    return getCaseEnrollmentTimestamp(item);
+  }
+
+  // Updated sorts by the visible Last Activity date shown in the table.
   return getCaseLastActivityTimestamp(item);
 }
 
@@ -680,31 +684,6 @@ function compareByMspName(left: DashboardCase, right: DashboardCase, direction: 
     : right.mspName.localeCompare(left.mspName, undefined, { sensitivity: "base" });
 }
 
-function compareTimelineValues(left: DashboardCase, right: DashboardCase, direction: DashboardSortDirection) {
-  // Timeline sorting must follow the visible column values: Updated first, then Enrolled, then MSP name.
-  const updatedComparison = compareNullableValues(
-    getCaseLastActivityTimestamp(left),
-    getCaseLastActivityTimestamp(right),
-    direction
-  );
-
-  if (updatedComparison !== 0) {
-    return updatedComparison;
-  }
-
-  const enrollmentComparison = compareNullableValues(
-    getCaseEnrollmentTimestamp(left),
-    getCaseEnrollmentTimestamp(right),
-    direction
-  );
-
-  if (enrollmentComparison !== 0) {
-    return enrollmentComparison;
-  }
-
-  return compareByMspName(left, right, direction);
-}
-
 function sortDashboardCasesByColumn(
   items: DashboardCase[],
   column: DashboardSortColumn | null,
@@ -717,10 +696,6 @@ function sortDashboardCasesByColumn(
   }
 
   return [...defaultSorted].sort((left, right) => {
-    if (column === "timeline") {
-      return compareTimelineValues(left, right, direction);
-    }
-
     const leftValue = getSortableValue(left, column);
     const rightValue = getSortableValue(right, column);
     const comparison = compareNullableValues(leftValue, rightValue, direction);
@@ -832,7 +807,8 @@ function DashboardTable({
     { key: "progress", label: "Progress" },
     { key: "waiting_on", label: "Waiting On" },
     { key: "apps", label: "Apps" },
-    { key: "timeline", label: "Timeline" }
+    { key: "enrolled", label: "Enrolled" },
+    { key: "updated", label: "Updated" }
   ];
 
   function renderSortHeader(column: DashboardSortColumn, label: string) {
@@ -877,14 +853,15 @@ function DashboardTable({
           {items.length === 0 ? (
             <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
           ) : (
-            <table className="min-w-[980px] w-full table-fixed">
+            <table className="min-w-[1080px] w-full table-fixed">
               <colgroup>
-                <col className="w-[31%]" />
+                <col className="w-[29%]" />
                 <col className="w-[15%]" />
                 <col className="w-[16%]" />
                 <col className="w-[15%]" />
                 <col className="w-[7%]" />
-                <col className="w-[16%]" />
+                <col className="w-[9%]" />
+                <col className="w-[9%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
@@ -922,12 +899,8 @@ function DashboardTable({
                       <Badge status={getStatusTone(item)}>{getWaitingLabel(item)}</Badge>
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">
-                      <div className="space-y-1">
-                        <p className="leading-5 text-slate-200">Enrolled: {item.enrollmentDate ?? item.lastActivity}</p>
-                        <p className="leading-5 text-slate-400">Updated: {item.lastActivity}</p>
-                      </div>
-                    </td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.enrollmentDate ?? item.lastActivity}</td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.lastActivity}</td>
                   </tr>
                 ))}
               </tbody>
