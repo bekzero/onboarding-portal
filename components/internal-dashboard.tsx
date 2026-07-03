@@ -194,6 +194,21 @@ function formatDateLabel() {
   }).format(new Date());
 }
 
+const DISPLAY_DATE_MONTHS = new Map([
+  ["january", 0],
+  ["february", 1],
+  ["march", 2],
+  ["april", 3],
+  ["may", 4],
+  ["june", 5],
+  ["july", 6],
+  ["august", 7],
+  ["september", 8],
+  ["october", 9],
+  ["november", 10],
+  ["december", 11]
+]);
+
 function formatDateInputValue(value: string) {
   const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoMatch) {
@@ -472,8 +487,29 @@ function isOidcNotConfiguredCase(item: DashboardCase) {
 }
 
 function getCaseLastActivityTimestamp(item: DashboardCase) {
-  const timestamp = Date.parse(item.lastActivity);
-  return Number.isNaN(timestamp) ? 0 : timestamp;
+  const timestamp = parseDisplayDateTimestamp(item.lastActivity);
+  return timestamp;
+}
+
+function parseDisplayDateTimestamp(value?: string) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const structuredMatch = trimmedValue.match(/^([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})$/);
+  if (structuredMatch) {
+    const [, monthLabel, dayValue, yearValue] = structuredMatch;
+    const monthIndex = DISPLAY_DATE_MONTHS.get(monthLabel.toLowerCase());
+
+    if (monthIndex !== undefined) {
+      return Date.UTC(Number(yearValue), monthIndex, Number(dayValue), 12);
+    }
+  }
+
+  const parsedTimestamp = Date.parse(trimmedValue);
+  return Number.isNaN(parsedTimestamp) ? null : parsedTimestamp;
 }
 
 function matchesQuickFilter(item: DashboardCase, filter: DashboardQuickFilter) {
@@ -522,7 +558,22 @@ function sortDashboardCases(items: DashboardCase[]) {
       return leftPriority - rightPriority;
     }
 
-    return getCaseLastActivityTimestamp(right) - getCaseLastActivityTimestamp(left);
+    const leftTimestamp = getCaseLastActivityTimestamp(left);
+    const rightTimestamp = getCaseLastActivityTimestamp(right);
+
+    if (leftTimestamp === null && rightTimestamp === null) {
+      return 0;
+    }
+
+    if (leftTimestamp === null) {
+      return 1;
+    }
+
+    if (rightTimestamp === null) {
+      return -1;
+    }
+
+    return rightTimestamp - leftTimestamp;
   });
 }
 
@@ -546,7 +597,22 @@ function compareDashboardCasesByDefault(left: DashboardCase, right: DashboardCas
     return leftPriority - rightPriority;
   }
 
-  return getCaseLastActivityTimestamp(right) - getCaseLastActivityTimestamp(left);
+  const leftTimestamp = getCaseLastActivityTimestamp(left);
+  const rightTimestamp = getCaseLastActivityTimestamp(right);
+
+  if (leftTimestamp === null && rightTimestamp === null) {
+    return 0;
+  }
+
+  if (leftTimestamp === null) {
+    return 1;
+  }
+
+  if (rightTimestamp === null) {
+    return -1;
+  }
+
+  return rightTimestamp - leftTimestamp;
 }
 
 function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
@@ -570,6 +636,7 @@ function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
     return item.submittedSaasAppCount;
   }
 
+  // Timeline sorts by last activity / updated date rather than enrollment date.
   return getCaseLastActivityTimestamp(item);
 }
 
@@ -590,7 +657,13 @@ function sortDashboardCasesByColumn(
 
     let comparison = 0;
 
-    if (typeof leftValue === "number" && typeof rightValue === "number") {
+    if (leftValue === null && rightValue === null) {
+      comparison = 0;
+    } else if (leftValue === null) {
+      comparison = 1;
+    } else if (rightValue === null) {
+      comparison = -1;
+    } else if (typeof leftValue === "number" && typeof rightValue === "number") {
       comparison = leftValue - rightValue;
     } else {
       comparison = String(leftValue).localeCompare(String(rightValue), undefined, { sensitivity: "base" });
@@ -1151,8 +1224,8 @@ export function InternalDashboard({
   }, [filteredCases, sortColumn, sortDirection]);
 
   const completedCases = useMemo(() => {
-    return [...filteredCases.filter((item) => isCompletedCase(item))].sort(
-      (left, right) => getCaseLastActivityTimestamp(right) - getCaseLastActivityTimestamp(left)
+    return [...filteredCases.filter((item) => isCompletedCase(item))].sort((left, right) =>
+      compareDashboardCasesByDefault(left, right)
     );
   }, [filteredCases]);
 
