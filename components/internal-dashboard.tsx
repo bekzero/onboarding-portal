@@ -491,6 +491,11 @@ function getCaseLastActivityTimestamp(item: DashboardCase) {
   return timestamp;
 }
 
+function getCaseEnrollmentTimestamp(item: DashboardCase) {
+  const timestamp = parseDisplayDateTimestamp(item.enrollmentDate);
+  return timestamp;
+}
+
 function parseDisplayDateTimestamp(value?: string) {
   const trimmedValue = value?.trim();
 
@@ -640,6 +645,66 @@ function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
   return getCaseLastActivityTimestamp(item);
 }
 
+function compareNullableValues(
+  leftValue: number | string | null,
+  rightValue: number | string | null,
+  direction: DashboardSortDirection
+) {
+  if (leftValue === null && rightValue === null) {
+    return 0;
+  }
+
+  // Missing values always sort last, regardless of direction.
+  if (leftValue === null) {
+    return 1;
+  }
+
+  if (rightValue === null) {
+    return -1;
+  }
+
+  let comparison = 0;
+
+  if (typeof leftValue === "number" && typeof rightValue === "number") {
+    comparison = leftValue - rightValue;
+  } else {
+    comparison = String(leftValue).localeCompare(String(rightValue), undefined, { sensitivity: "base" });
+  }
+
+  return direction === "asc" ? comparison : -comparison;
+}
+
+function compareByMspName(left: DashboardCase, right: DashboardCase, direction: DashboardSortDirection) {
+  return direction === "asc"
+    ? left.mspName.localeCompare(right.mspName, undefined, { sensitivity: "base" })
+    : right.mspName.localeCompare(left.mspName, undefined, { sensitivity: "base" });
+}
+
+function compareTimelineValues(left: DashboardCase, right: DashboardCase, direction: DashboardSortDirection) {
+  // Timeline sorting must follow the visible column values: Updated first, then Enrolled, then MSP name.
+  const updatedComparison = compareNullableValues(
+    getCaseLastActivityTimestamp(left),
+    getCaseLastActivityTimestamp(right),
+    direction
+  );
+
+  if (updatedComparison !== 0) {
+    return updatedComparison;
+  }
+
+  const enrollmentComparison = compareNullableValues(
+    getCaseEnrollmentTimestamp(left),
+    getCaseEnrollmentTimestamp(right),
+    direction
+  );
+
+  if (enrollmentComparison !== 0) {
+    return enrollmentComparison;
+  }
+
+  return compareByMspName(left, right, direction);
+}
+
 function sortDashboardCasesByColumn(
   items: DashboardCase[],
   column: DashboardSortColumn | null,
@@ -652,28 +717,19 @@ function sortDashboardCasesByColumn(
   }
 
   return [...defaultSorted].sort((left, right) => {
+    if (column === "timeline") {
+      return compareTimelineValues(left, right, direction);
+    }
+
     const leftValue = getSortableValue(left, column);
     const rightValue = getSortableValue(right, column);
-
-    let comparison = 0;
-
-    if (leftValue === null && rightValue === null) {
-      comparison = 0;
-    } else if (leftValue === null) {
-      comparison = 1;
-    } else if (rightValue === null) {
-      comparison = -1;
-    } else if (typeof leftValue === "number" && typeof rightValue === "number") {
-      comparison = leftValue - rightValue;
-    } else {
-      comparison = String(leftValue).localeCompare(String(rightValue), undefined, { sensitivity: "base" });
-    }
+    const comparison = compareNullableValues(leftValue, rightValue, direction);
 
     if (comparison !== 0) {
-      return direction === "asc" ? comparison : -comparison;
+      return comparison;
     }
 
-    return compareDashboardCasesByDefault(left, right);
+    return compareByMspName(left, right, direction);
   });
 }
 
