@@ -2221,12 +2221,12 @@ export function InternalDashboard({
           <Card
             className={`w-full overflow-hidden border-white/10 bg-[#101a2d] ${
               panelMode === "preview"
-                ? "max-h-[calc(100vh-2rem)] max-w-[1040px] md:max-h-[calc(100vh-3rem)]"
+                ? "max-h-[95vh] max-w-[1040px] md:max-h-[90vh]"
                 : panelMode === "edit" || panelMode === "enroll"
-                  ? "max-h-[calc(100vh-2rem)] max-w-[940px] md:max-h-[calc(100vh-3rem)]"
+                  ? "max-h-[95vh] max-w-[940px] md:max-h-[90vh]"
                   : panelMode === "rollback"
-                    ? "max-h-[calc(100vh-2rem)] max-w-[920px] md:max-h-[calc(100vh-3rem)]"
-                : "max-h-[calc(100vh-2rem)] max-w-[520px] overflow-y-auto md:max-h-[calc(100vh-3rem)]"
+                    ? "max-h-[95vh] max-w-[920px] md:max-h-[90vh]"
+                : "max-h-[95vh] max-w-[520px] overflow-y-auto md:max-h-[90vh]"
             }`}
           >
             <div className={`flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "edit" || panelMode === "enroll" || panelMode === "rollback") ? "sticky top-0 z-20" : "mb-5"}`}>
@@ -2588,7 +2588,7 @@ export function InternalDashboard({
 
             {panelMode === "rollback" && selectedCase ? (
               <>
-                <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12rem)] md:px-6 md:py-6">
+                <div className="max-h-[calc(95vh-11rem)] overflow-y-auto px-4 py-4 pb-28 md:max-h-[calc(90vh-12rem)] md:px-6 md:py-6 md:pb-32">
                   <div className="grid gap-5">
                     <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.08] px-5 py-4">
                       <div className="flex items-start gap-3">
@@ -2996,7 +2996,7 @@ export function InternalDashboard({
 
             {panelMode === "enroll" ? (
               <>
-                <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12rem)] md:px-6 md:py-6">
+                <div className="max-h-[calc(95vh-11rem)] overflow-y-auto px-4 py-4 pb-28 md:max-h-[calc(90vh-12rem)] md:px-6 md:py-6 md:pb-32">
                   <div className="grid gap-5">
                     <div className="grid gap-5 lg:grid-cols-2">
                       <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
@@ -3109,6 +3109,15 @@ export function InternalDashboard({
                                 </option>
                               ))}
                             </select>
+                          </label>
+                          <label className="grid gap-2 text-sm text-slate-300">
+                            <span>Enrollment Date</span>
+                            <input
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) => setEnrollmentState((current) => ({ ...current, enrollmentDate: event.target.value }))}
+                              type="date"
+                              value={enrollmentState.enrollmentDate}
+                            />
                           </label>
                           <label className="grid gap-2 text-sm text-slate-300">
                             <span>Last Activity</span>
