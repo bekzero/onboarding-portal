@@ -41,7 +41,7 @@ const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database m
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
-type DashboardSortColumn = "msp" | "access" | "tenant" | "stage" | "progress" | "waiting_on" | "apps" | "last_activity";
+type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "last_activity";
 type DashboardSortDirection = "asc" | "desc";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
@@ -551,14 +551,6 @@ function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
     return item.mspName.toLowerCase();
   }
 
-  if (column === "access") {
-    return getAccessLabel(item).toLowerCase();
-  }
-
-  if (column === "tenant") {
-    return (item.tenantName ?? "").toLowerCase();
-  }
-
   if (column === "stage") {
     return item.currentStage.toLowerCase();
   }
@@ -701,8 +693,6 @@ function DashboardTable({
 }) {
   const sortableColumns: Array<{ key: DashboardSortColumn; label: string }> = [
     { key: "msp", label: "MSP" },
-    { key: "access", label: "Access" },
-    { key: "tenant", label: "Tenant" },
     { key: "stage", label: "Stage" },
     { key: "progress", label: "Progress" },
     { key: "waiting_on", label: "Waiting On" },
@@ -754,12 +744,10 @@ function DashboardTable({
           ) : (
             <table className="min-w-[960px] w-full table-fixed">
               <colgroup>
-                <col className="w-[24%]" />
-                <col className="w-[14%]" />
-                <col className="w-[12%]" />
+                <col className="w-[31%]" />
                 <col className="w-[16%]" />
-                <col className="w-[14%]" />
-                <col className="w-[14%]" />
+                <col className="w-[17%]" />
+                <col className="w-[16%]" />
                 <col className="w-[8%]" />
                 <col className="w-[12%]" />
               </colgroup>
@@ -782,12 +770,6 @@ function DashboardTable({
                         </button>
                         <p className="mt-1 truncate text-xs text-slate-400">{item.primaryContactEmail}</p>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      <Badge status={getStatusTone(item)}>{getAccessLabel(item)}</Badge>
-                    </td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">
-                      {item.tenantName ? item.tenantName : <span className="text-slate-500">Not configured</span>}
                     </td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.currentStage}</td>
                     <td className="px-4 py-3 align-middle">
