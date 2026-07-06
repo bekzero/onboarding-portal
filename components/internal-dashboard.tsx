@@ -2838,7 +2838,7 @@ export function InternalDashboard({
           <Card
             className={`w-full overflow-hidden border-white/10 bg-[#101a2d] ${
               panelMode === "preview"
-                ? "max-h-[95vh] max-w-[1040px] md:max-h-[90vh]"
+                ? "flex max-h-[95vh] max-w-[1040px] flex-col md:max-h-[90vh]"
                 : panelMode === "edit" || panelMode === "enroll"
                   ? "max-h-[95vh] max-w-[940px] md:max-h-[90vh]"
                   : panelMode === "rollback"
@@ -2991,8 +2991,8 @@ export function InternalDashboard({
                   ) : null}
                 </div>
 
-                <div className="max-h-[calc(100vh-11.5rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12.5rem)] md:px-6 md:py-6">
-                  <div className="grid gap-6">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                  <div className="grid gap-6 px-4 py-4 pb-10 md:px-6 md:py-6 md:pb-12">
                     <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
                       <div className="grid gap-4">
                         <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
