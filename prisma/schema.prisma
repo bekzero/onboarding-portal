@@ -20,6 +20,7 @@ model Msp {
   id                   String           @id @default(cuid())
   name                 String
   slug                 String           @unique
+  isGmmPartner         Boolean          @default(false)
   primaryContactEmail  String
   assignedSalesEngineer String          @default("Ben Eakin")
   accessMode           AccessMode

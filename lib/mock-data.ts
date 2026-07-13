@@ -116,6 +116,7 @@ export type OnboardingCase = {
   assignedSalesEngineer: string;
   currentStage: string;
   enrollmentDate?: string;
+  isGmmPartner: boolean;
   lastActivity: string;
   mspName: string;
   mspSlug: string;
@@ -134,6 +135,7 @@ export type OnboardingCase = {
 type DemoCaseConfig = {
   accessMode: AccessMode;
   currentStage: string;
+  isGmmPartner?: boolean;
   lastActivity: string;
   name: string;
   planId: string;
@@ -601,6 +603,7 @@ export const onboardingCases: OnboardingCase[] = demoCaseConfigs.map((config) =>
   assignedSalesEngineer:
     users.find((user) => user.id === config.salesEngineerId)?.name ?? "Unassigned",
   currentStage: config.currentStage,
+  isGmmPartner: config.isGmmPartner ?? false,
   lastActivity: config.lastActivity,
   mspName: config.name,
   mspSlug: config.tenantSlug,

@@ -14,6 +14,7 @@ export async function PATCH(
       assignedSalesEngineer?: string;
       currentStage?: string;
       enrollmentDate?: string;
+      isGmmPartner?: boolean;
       lastActivity?: string;
       name?: string;
       primaryContactEmail?: string;

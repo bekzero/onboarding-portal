@@ -8,6 +8,7 @@ export type AdminCaseOverride = Partial<
     | "accessMode"
     | "currentStage"
     | "enrollmentDate"
+    | "isGmmPartner"
     | "lastActivity"
     | "mspName"
     | "oidcClientId"

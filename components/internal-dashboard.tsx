@@ -43,7 +43,7 @@ const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database m
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
-type DashboardSortColumn = "msp" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
+type DashboardSortColumn = "msp" | "gmm" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
 type DashboardSortDirection = "asc" | "desc";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
@@ -72,6 +72,7 @@ type AdminApiCase = {
   enrollmentDate: string;
   enrollmentDateRaw: string;
   id: string;
+  isGmmPartner: boolean;
   lastActivity: string;
   lastActivityRaw: string;
   mspName: string;
@@ -177,6 +178,7 @@ type EnrollmentFormState = {
   clientSecret: string;
   currentStage: string;
   enrollmentDate: string;
+  isGmmPartner: boolean;
   lastActivity: string;
   mspName: string;
   primaryContactEmail: string;
@@ -191,6 +193,7 @@ type EditFormState = {
   accessMode: OnboardingCase["accessMode"];
   currentStage: string;
   enrollmentDate: string;
+  isGmmPartner: boolean;
   lastActivity: string;
   mspName: string;
   primaryContactEmail: string;
@@ -300,6 +303,10 @@ function getTodayDateInputValue() {
 
 function getAccessLabel(item: OnboardingCase) {
   return item.accessMode === "temporary" ? "Temporary Access" : "KZero OIDC";
+}
+
+function getGmmLabel(isGmmPartner: boolean) {
+  return isGmmPartner ? "Yes" : "No";
 }
 
 function formatNotificationTimestamp(value: string) {
@@ -785,7 +792,8 @@ function matchesSearchQuery(item: DashboardCase, searchQuery: string) {
     item.mspName,
     item.primaryContactEmail,
     item.tenantName ?? "",
-    item.currentStage
+    item.currentStage,
+    item.isGmmPartner ? "gmm yes" : "gmm no"
   ];
 
   return searchableFields.some((field) => field.toLowerCase().includes(normalizedQuery));
@@ -860,6 +868,10 @@ function compareDashboardCasesByDefault(left: DashboardCase, right: DashboardCas
 function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
   if (column === "msp") {
     return item.mspName.toLowerCase();
+  }
+
+  if (column === "gmm") {
+    return item.isGmmPartner ? 1 : 0;
   }
 
   if (column === "stage") {
@@ -959,6 +971,7 @@ function createEnrollmentState(): EnrollmentFormState {
     clientSecret: "",
     currentStage: "Kickoff",
     enrollmentDate: getTodayDateInputValue(),
+    isGmmPartner: false,
     lastActivity: getTodayDateInputValue(),
     mspName: "",
     primaryContactEmail: "",
@@ -975,6 +988,7 @@ function createEditState(item: OnboardingCase): EditFormState {
     accessMode: item.accessMode,
     currentStage: item.currentStage,
     enrollmentDate: formatDateInputValue(item.enrollmentDate ?? item.lastActivity),
+    isGmmPartner: item.isGmmPartner,
     lastActivity: formatDateInputValue(item.lastActivity),
     mspName: item.mspName,
     primaryContactEmail: item.primaryContactEmail,
@@ -1005,6 +1019,7 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     currentStage: item.currentStage,
     enrollmentDate: item.enrollmentDate,
     enrollmentDateRaw: item.enrollmentDateRaw,
+    isGmmPartner: item.isGmmPartner,
     lastActivity: item.lastActivity,
     lastActivityRaw: item.lastActivityRaw,
     mspId: item.id,
@@ -1091,6 +1106,7 @@ function ReportTable({ items, title }: { items: DashboardCase[]; title: string }
           <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th className="px-3 py-3 font-medium">MSP</th>
+              <th className="px-3 py-3 font-medium">GMM</th>
               <th className="px-3 py-3 font-medium">Stage</th>
               <th className="px-3 py-3 font-medium">Waiting On</th>
               <th className="px-3 py-3 font-medium">Progress</th>
@@ -1102,12 +1118,13 @@ function ReportTable({ items, title }: { items: DashboardCase[]; title: string }
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td className="px-3 py-5 text-slate-500" colSpan={7}>No MSP records available.</td>
+                <td className="px-3 py-5 text-slate-500" colSpan={8}>No MSP records available.</td>
               </tr>
             ) : (
               items.map((item) => (
                 <tr key={`${title}-${item.onboardingPlanId}`} className="border-t border-slate-200 align-top text-slate-700">
                   <td className="px-3 py-3 font-medium text-slate-900">{item.mspName}</td>
+                  <td className="px-3 py-3">{getGmmLabel(item.isGmmPartner)}</td>
                   <td className="px-3 py-3">{item.currentStage}</td>
                   <td className="px-3 py-3">{getWaitingLabel(item)}</td>
                   <td className="px-3 py-3">{item.progress}%</td>
@@ -1214,6 +1231,7 @@ function DashboardTable({
 }) {
   const sortableColumns: Array<{ key: DashboardSortColumn; label: string }> = [
     { key: "msp", label: "MSP" },
+    { key: "gmm", label: "GMM" },
     { key: "stage", label: "Stage" },
     { key: "progress", label: "Progress" },
     { key: "waiting_on", label: "Waiting On" },
@@ -1266,13 +1284,14 @@ function DashboardTable({
           ) : (
             <table className="min-w-[1080px] w-full table-fixed">
               <colgroup>
-                <col className="w-[29%]" />
+                <col className="w-[25%]" />
+                <col className="w-[8%]" />
+                <col className="w-[14%]" />
                 <col className="w-[15%]" />
-                <col className="w-[16%]" />
-                <col className="w-[15%]" />
+                <col className="w-[14%]" />
                 <col className="w-[7%]" />
-                <col className="w-[9.5%]" />
-                <col className="w-[8.5%]" />
+                <col className="w-[9%]" />
+                <col className="w-[8%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
@@ -1294,6 +1313,7 @@ function DashboardTable({
                         <p className="mt-1 truncate text-xs text-slate-400">{item.primaryContactEmail}</p>
                       </div>
                     </td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{getGmmLabel(item.isGmmPartner)}</td>
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.currentStage}</td>
                     <td className="px-4 py-3 align-middle">
                       <div className="min-w-[110px]">
@@ -1938,6 +1958,7 @@ export function InternalDashboard({
             accessMode,
             assignedSalesEngineer: SALES_ENGINEER_NAME,
             enrollmentDate: nextEnrollmentDate,
+            isGmmPartner: enrollmentState.isGmmPartner,
             name: trimmedMspName,
             primaryContactEmail: trimmedPrimaryContactEmail,
             slug: normalizedMspSlug
@@ -1962,6 +1983,7 @@ export function InternalDashboard({
               accessMode,
               assignedSalesEngineer: SALES_ENGINEER_NAME,
               currentStage: enrollmentState.currentStage,
+              isGmmPartner: enrollmentState.isGmmPartner,
               lastActivity: nextLastActivity,
               name: trimmedMspName,
               primaryContactEmail: trimmedPrimaryContactEmail,
@@ -2019,6 +2041,7 @@ export function InternalDashboard({
         accessMode,
         currentStage: enrollmentState.currentStage,
         enrollmentDate: formatDateDisplayValue(nextEnrollmentDate),
+        isGmmPartner: enrollmentState.isGmmPartner,
         lastActivity: nextLastActivity,
         mspName: trimmedMspName,
         oidcClientId: trimmedClientId || undefined,
@@ -2067,6 +2090,7 @@ export function InternalDashboard({
             assignedSalesEngineer: SALES_ENGINEER_NAME,
             currentStage: editState.currentStage,
             enrollmentDate: nextEnrollmentDate,
+            isGmmPartner: editState.isGmmPartner,
             lastActivity: nextLastActivity,
             name: editState.mspName,
             primaryContactEmail: editState.primaryContactEmail,
@@ -2100,6 +2124,7 @@ export function InternalDashboard({
         accessMode: nextAccessMode,
         currentStage: editState.currentStage.trim() || selectedCase.currentStage,
         enrollmentDate: formatDateDisplayValue(nextEnrollmentDate) || selectedCase.enrollmentDate,
+        isGmmPartner: editState.isGmmPartner,
         lastActivity: nextLastActivity,
         mspName: editState.mspName.trim() || selectedCase.mspName,
         oidcStatus: nextOidcStatus,
@@ -3083,6 +3108,10 @@ export function InternalDashboard({
                               <p className="mt-1 text-sm text-slate-200">{getAccessLabel(selectedCase)}</p>
                             </div>
                             <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">GMM Partner</p>
+                              <p className="mt-1 text-sm text-slate-200">{getGmmLabel(selectedCase.isGmmPartner)}</p>
+                            </div>
+                            <div>
                               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">OIDC Status</p>
                               <p className="mt-1 text-sm text-slate-200">{getOidcStatusLabel(selectedCase)}</p>
                             </div>
@@ -3348,6 +3377,17 @@ export function InternalDashboard({
                             <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Assigned Sales Engineer</p>
                             <p className="mt-2 text-sm text-white">{SALES_ENGINEER_NAME}</p>
                           </div>
+                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-sm text-slate-300">
+                            <input
+                              checked={editState.isGmmPartner}
+                              className="h-4 w-4 rounded border-white/10 bg-[#08111f]"
+                              onChange={(event) =>
+                                setEditState((current) => (current ? { ...current, isGmmPartner: event.target.checked } : current))
+                              }
+                              type="checkbox"
+                            />
+                            <span>GMM Partner</span>
+                          </label>
                         </div>
                       </div>
 
@@ -3648,6 +3688,17 @@ export function InternalDashboard({
                             <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Assigned Sales Engineer</p>
                             <p className="mt-2 text-sm text-white">{SALES_ENGINEER_NAME}</p>
                           </div>
+                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-sm text-slate-300">
+                            <input
+                              checked={enrollmentState.isGmmPartner}
+                              className="h-4 w-4 rounded border-white/10 bg-[#08111f]"
+                              onChange={(event) =>
+                                setEnrollmentState((current) => ({ ...current, isGmmPartner: event.target.checked }))
+                              }
+                              type="checkbox"
+                            />
+                            <span>GMM Partner</span>
+                          </label>
                         </div>
                       </div>
 

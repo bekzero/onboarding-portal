@@ -1,0 +1,2 @@
+ALTER TABLE "msps"
+ADD COLUMN "isGmmPartner" BOOLEAN NOT NULL DEFAULT false;

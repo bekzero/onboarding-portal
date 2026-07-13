@@ -55,6 +55,7 @@ const mspWithDashboardSelection = {
   createdAt: true,
   enrollmentDate: true,
   id: true,
+  isGmmPartner: true,
   name: true,
   primaryContactEmail: true,
   slug: true,
@@ -375,6 +376,7 @@ export type PublicMspRecord = {
   createdAt: Date;
   enrollmentDate: Date;
   id: string;
+  isGmmPartner: boolean;
   name: string;
   primaryContactEmail: string;
   slug: string;
@@ -402,6 +404,7 @@ export type AdminDashboardCase = {
   enrollmentDate: string;
   enrollmentDateRaw: string;
   id: string;
+  isGmmPartner: boolean;
   lastActivity: string;
   lastActivityRaw: string;
   mspName: string;
@@ -438,6 +441,7 @@ type CreateMspInput = {
   accessMode: AccessMode;
   assignedSalesEngineer?: string;
   enrollmentDate?: string;
+  isGmmPartner?: boolean;
   name: string;
   primaryContactEmail: string;
   slug?: string;
@@ -448,6 +452,7 @@ type UpdateMspInput = {
   assignedSalesEngineer?: string;
   currentStage?: string;
   enrollmentDate?: string;
+  isGmmPartner?: boolean;
   lastActivity?: string;
   name?: string;
   primaryContactEmail?: string;
@@ -499,6 +504,7 @@ function toPublicMspRecord(
       createdAt: true;
       enrollmentDate: true;
       id: true;
+      isGmmPartner: true;
       name: true;
       primaryContactEmail: true;
       slug: true;
@@ -517,6 +523,7 @@ function toPublicMspRecord(
     createdAt: msp.createdAt,
     enrollmentDate: msp.enrollmentDate,
     id: msp.id,
+    isGmmPartner: msp.isGmmPartner,
     name: msp.name,
     primaryContactEmail: msp.primaryContactEmail,
     slug: msp.slug,
@@ -568,6 +575,7 @@ function toAdminDashboardCase(
     enrollmentDate: formatDateLabelFromValue(msp.enrollmentDate ?? msp.createdAt),
     enrollmentDateRaw: (msp.enrollmentDate ?? msp.createdAt).toISOString(),
     id: msp.id,
+    isGmmPartner: msp.isGmmPartner,
     lastActivity: formatDateLabelFromValue(plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt),
     lastActivityRaw: (plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt).toISOString(),
     mspName: msp.name,
@@ -703,6 +711,7 @@ export async function createMsp(input: CreateMspInput) {
       accessMode: input.accessMode,
       assignedSalesEngineer: input.assignedSalesEngineer?.trim() || DEFAULT_SALES_ENGINEER,
       enrollmentDate: parseCalendarDateInput(input.enrollmentDate) ?? new Date(),
+      isGmmPartner: input.isGmmPartner ?? false,
       name: input.name.trim(),
       onboardingPlans: {
         create: {
@@ -757,6 +766,7 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
       accessMode: input.accessMode,
       assignedSalesEngineer: input.assignedSalesEngineer?.trim(),
       enrollmentDate: input.enrollmentDate !== undefined ? parseCalendarDateInput(input.enrollmentDate) : undefined,
+      isGmmPartner: input.isGmmPartner,
       name: trimmedName,
       oidcConfig:
         input.tenantRealm !== undefined

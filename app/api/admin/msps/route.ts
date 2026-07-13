@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       accessMode: "temporary" | "oidc";
       assignedSalesEngineer?: string;
       enrollmentDate?: string;
+      isGmmPartner?: boolean;
       name: string;
       primaryContactEmail: string;
       slug?: string;
