@@ -2865,13 +2865,13 @@ export function InternalDashboard({
               panelMode === "preview"
                 ? "flex max-h-[95vh] max-w-[1040px] flex-col md:max-h-[90vh]"
                 : panelMode === "edit" || panelMode === "enroll"
-                  ? "max-h-[95vh] max-w-[940px] md:max-h-[90vh]"
+                  ? "flex max-h-[95vh] max-w-[940px] flex-col md:max-h-[90vh]"
                   : panelMode === "rollback"
                     ? "max-h-[95vh] max-w-[920px] md:max-h-[90vh]"
                 : "max-h-[95vh] max-w-[520px] overflow-y-auto md:max-h-[90vh]"
             }`}
           >
-            <div className={`flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "edit" || panelMode === "enroll" || panelMode === "rollback") ? "sticky top-0 z-20" : "mb-5"}`}>
+            <div className={`shrink-0 flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "rollback") ? "sticky top-0 z-20" : panelMode === "edit" || panelMode === "enroll" ? "z-10" : "mb-5"}`}>
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-blue-200">
                   {panelMode === "preview"
@@ -3348,7 +3348,7 @@ export function InternalDashboard({
 
             {panelMode === "edit" && selectedCase && editState ? (
               <>
-                <div className="max-h-[calc(100vh-11rem)] overflow-y-auto px-4 py-4 md:max-h-[calc(100vh-12rem)] md:px-6 md:py-6">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-28 md:px-6 md:py-6 md:pb-32">
                   <div className="grid gap-5">
                     <div className="grid gap-5 lg:grid-cols-2">
                       <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
@@ -3538,13 +3538,15 @@ export function InternalDashboard({
                   </div>
                 </div>
 
-                <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:flex-row md:justify-end md:px-6">
-                  <Button className="md:min-w-[180px]" onClick={handleSaveEdit}>
-                    Save MSP Details
-                  </Button>
-                  <Button onClick={closePanel} variant="outline">
-                    Cancel
-                  </Button>
+                <div className="shrink-0 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:px-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:justify-end">
+                    <Button className="md:min-w-[180px]" onClick={handleSaveEdit}>
+                      Save MSP Details
+                    </Button>
+                    <Button onClick={closePanel} variant="outline">
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               </>
             ) : null}
@@ -3659,7 +3661,7 @@ export function InternalDashboard({
 
             {panelMode === "enroll" ? (
               <>
-                <div className="max-h-[calc(95vh-11rem)] overflow-y-auto px-4 py-4 pb-28 md:max-h-[calc(90vh-12rem)] md:px-6 md:py-6 md:pb-32">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-28 md:px-6 md:py-6 md:pb-32">
                   <div className="grid gap-5">
                     <div className="grid gap-5 lg:grid-cols-2">
                       <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
@@ -3864,13 +3866,15 @@ export function InternalDashboard({
                   </div>
                 </div>
 
-                <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:flex-row md:justify-end md:px-6">
-                  <Button className="md:min-w-[180px]" onClick={handleEnroll}>
-                    Save MSP Details
-                  </Button>
-                  <Button onClick={closePanel} variant="outline">
-                    Cancel
-                  </Button>
+                <div className="shrink-0 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:px-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:justify-end">
+                    <Button className="md:min-w-[180px]" onClick={handleEnroll}>
+                      Save MSP Details
+                    </Button>
+                    <Button onClick={closePanel} variant="outline">
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
               </>
             ) : null}
