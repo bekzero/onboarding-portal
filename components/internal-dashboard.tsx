@@ -3333,6 +3333,7 @@ export function InternalDashboard({
                     </div>
 
                     <DocumentsReviewCard
+                      downloadUrlBase={`/api/admin/plans/${selectedCase.onboardingPlanId}/documents`}
                       emptyStateTitle="No documents added yet."
                       listUrl={`/api/admin/plans/${selectedCase.onboardingPlanId}/documents`}
                       planType={selectedCase.startingPlanType}

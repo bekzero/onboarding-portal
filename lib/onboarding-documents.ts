@@ -1,6 +1,6 @@
 import "server-only";
 
-import { del, put } from "@vercel/blob";
+import { del, get, put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
 import {
   getDocumentTypeLabel,
@@ -25,6 +25,7 @@ function toPortalDocumentRecord(document: {
   id: string;
   mimeType: string | null;
   status: string;
+  storageKey: string | null;
   storageUrl: string | null;
   uploadedBy: string | null;
   uploadedByRole: string | null;
@@ -34,9 +35,9 @@ function toPortalDocumentRecord(document: {
     fileName: document.fileName,
     fileSize: document.fileSize,
     fileType: getDocumentTypeLabel(document.fileName, document.mimeType),
+    hasDownload: Boolean(document.storageKey || document.storageUrl),
     id: document.id,
     status: document.status,
-    storageUrl: document.storageUrl ?? "",
     uploadedByName: document.uploadedBy,
     uploadedByRole: document.uploadedByRole
   } satisfies PortalDocumentRecord;
@@ -81,6 +82,18 @@ export async function listOnboardingDocuments(planId: string) {
     },
     orderBy: {
       createdAt: "desc"
+    },
+    select: {
+      createdAt: true,
+      fileName: true,
+      fileSize: true,
+      id: true,
+      mimeType: true,
+      status: true,
+      storageKey: true,
+      storageUrl: true,
+      uploadedBy: true,
+      uploadedByRole: true
     }
   });
 
@@ -117,7 +130,7 @@ export async function uploadOnboardingDocuments({
       const blobPath = buildDocumentPath(planId, file.name);
       const uploadedByRole = onboardingPlan.tenantType === "customer" ? "Customer" : "MSP";
       const uploadedBlob = await put(blobPath, file, {
-        access: "public",
+        access: "private",
         addRandomSuffix: true,
         contentType: file.type || undefined
       });
@@ -138,11 +151,58 @@ export async function uploadOnboardingDocuments({
 
         return toPortalDocumentRecord(document);
       } catch (error) {
-        await del(uploadedBlob.url).catch(() => null);
+        await del(uploadedBlob.pathname).catch(() => null);
         throw error;
       }
     })
   );
 
   return createdDocuments;
+}
+
+export async function getOnboardingDocumentForDownload(planId: string, documentId: string) {
+  const onboardingPlan = await getPersistedPlan(planId);
+
+  if (!onboardingPlan) {
+    return { status: "plan_not_found" as const };
+  }
+
+  const document = await prisma.document.findFirst({
+    where: {
+      id: documentId,
+      onboardingPlanId: onboardingPlan.id
+    },
+    select: {
+      fileName: true,
+      id: true,
+      mimeType: true,
+      storageKey: true,
+      storageUrl: true
+    }
+  });
+
+  if (!document) {
+    return { status: "document_not_found" as const };
+  }
+
+  const blobReference = document.storageKey?.trim() || document.storageUrl?.trim();
+
+  if (!blobReference) {
+    return { status: "document_not_found" as const };
+  }
+
+  const blobResult = await get(blobReference, {
+    access: "private"
+  });
+
+  if (!blobResult || blobResult.statusCode !== 200 || !blobResult.stream) {
+    return { status: "document_not_found" as const };
+  }
+
+  return {
+    blob: blobResult.blob,
+    document,
+    status: "found" as const,
+    stream: blobResult.stream
+  };
 }

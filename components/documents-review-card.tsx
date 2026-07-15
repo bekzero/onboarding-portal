@@ -16,6 +16,7 @@ const EMPTY_DOCUMENTS: PortalDocumentRecord[] = [];
 
 type DocumentsReviewCardProps = {
   canUpload?: boolean;
+  downloadUrlBase?: string;
   emptyStateTitle?: string;
   initialDocuments?: PortalDocumentRecord[];
   listUrl?: string;
@@ -73,6 +74,7 @@ function getEmptyStateBody(planType: "nfr" | "customer") {
 
 export function DocumentsReviewCard({
   canUpload = false,
+  downloadUrlBase,
   emptyStateTitle = "No Documents Added",
   initialDocuments = EMPTY_DOCUMENTS,
   listUrl,
@@ -185,7 +187,7 @@ export function DocumentsReviewCard({
 
       setRefreshToken((current) => current + 1);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Could not upload the selected documents.");
+      setErrorMessage("Document upload failed. Please try again.");
     } finally {
       setIsUploading(false);
       event.target.value = "";
@@ -268,8 +270,8 @@ export function DocumentsReviewCard({
 
                   <div className="flex shrink-0 items-center gap-2 self-start">
                     <Badge status={getStatusTone(document.status)}>{formatStatusLabel(document.status)}</Badge>
-                    {document.storageUrl ? (
-                      <a href={document.storageUrl} rel="noreferrer" target="_blank">
+                    {document.hasDownload && downloadUrlBase ? (
+                      <a href={`${downloadUrlBase}/${document.id}/download`} rel="noreferrer" target="_blank">
                         <Button className="h-8 px-3" variant="outline">
                           <Download className="mr-2 h-3.5 w-3.5" />
                           Open / Download

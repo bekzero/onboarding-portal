@@ -113,9 +113,9 @@ export type PortalDocumentRecord = {
   fileName: string;
   fileSize: number | null;
   fileType: string;
+  hasDownload: boolean;
   id: string;
   status: string;
-  storageUrl: string;
   uploadedByName?: string | null;
   uploadedByRole?: string | null;
 };

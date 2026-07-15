@@ -1357,6 +1357,7 @@ export function PlanView({
             {activeTab === "documents" ? (
               <DocumentsReviewCard
                 canUpload
+                downloadUrlBase={`/api/portal/plans/${bundle.plan.id}/documents`}
                 listUrl={`/api/portal/plans/${bundle.plan.id}/documents`}
                 planType={bundle.plan.tenantType}
                 uploadUrl={`/api/portal/plans/${bundle.plan.id}/documents`}

@@ -914,9 +914,9 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                   fileName: attachment.name,
                   fileSize: null,
                   fileType: attachment.kind === "plan" ? "Plan Document" : "Guide Document",
+                  hasDownload: false,
                   id: attachment.id,
                   status: "approved",
-                  storageUrl: "",
                   uploadedByName: "KZero Passwordless",
                   uploadedByRole: "KZero"
                 }))}
