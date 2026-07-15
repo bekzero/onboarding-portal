@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^6.19.3",
     "@vercel/blob": "^2.6.1",
     "class-variance-authority": "^0.7.1",
@@ -16,6 +17,7 @@
     "lucide-react": "^0.552.0",
     "next": "^15.5.0",
     "next-auth": "^5.0.0-beta.29",
+    "pg": "^8.22.0",
     "prisma": "^6.19.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

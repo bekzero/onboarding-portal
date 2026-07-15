@@ -4,6 +4,8 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Runtime app queries use DATABASE_URL. If DIRECT_URL is configured in the
+  // deployment environment, keep it reserved for Prisma CLI and migrations.
   url      = env("DATABASE_URL")
 }
 
