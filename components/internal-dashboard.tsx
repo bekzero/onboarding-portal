@@ -1243,30 +1243,50 @@ function ExecutiveSummaryReport({ data }: { data: ExecutiveSummaryReportData }) 
 
 function DashboardTable({
   countLabel = "MSPs",
+  defaultExpanded = false,
   emptyLabel,
   items,
   onSortChange,
   onView,
+  rowLimit = 15,
   sortColumn,
   showCustomerColumn = false,
   showGmmColumn = true,
+  showFullResults = false,
   sortDirection,
   title
 }: {
   countLabel?: string;
+  defaultExpanded?: boolean;
   emptyLabel: string;
   items: DashboardCase[];
   onSortChange?: (column: DashboardSortColumn) => void;
   onView: (item: DashboardCase) => void;
+  rowLimit?: number;
   sortColumn?: DashboardSortColumn | null;
   showCustomerColumn?: boolean;
   showGmmColumn?: boolean;
+  showFullResults?: boolean;
   sortDirection?: DashboardSortDirection | null;
   title: string;
 }) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const [visibleRowCount, setVisibleRowCount] = useState(rowLimit);
   const sortableColumns: Array<{ key: DashboardSortColumn; label: string }> = [
     { key: "msp", label: "MSP" }
   ];
+
+  useEffect(() => {
+    setVisibleRowCount(rowLimit);
+  }, [items, rowLimit]);
+
+  const shouldLimitRows = !showFullResults;
+  const visibleItems = shouldLimitRows ? items.slice(0, visibleRowCount) : items;
+  const hasMoreRows = shouldLimitRows && items.length > visibleItems.length;
+  const hasHiddenRows = items.length > 0 && visibleItems.length < items.length;
+  const waitingOnMspCount = items.filter((item) => item.status === "waiting_on_msp" && !isCompletedCase(item)).length;
+  const waitingOnKzeroCount = items.filter((item) => isKzeroActionRequiredCase(item)).length;
+  const completedCount = items.filter((item) => isCompletedCase(item)).length;
 
   if (showCustomerColumn) {
     sortableColumns.push({ key: "customer", label: "Customer" });
@@ -1315,19 +1335,74 @@ function DashboardTable({
 
   return (
     <Card className="border-white/10 bg-[#101a2d]">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <p className="mt-1 text-sm text-slate-300">{items.length} {countLabel}</p>
+      <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:px-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              {items.length} {items.length === 1 ? countLabel.slice(0, -1) || countLabel : countLabel}
+            </p>
+          </div>
+          <Button
+            aria-expanded={isExpanded}
+            className="h-10 self-start px-4"
+            onClick={() => setIsExpanded((current) => !current)}
+            type="button"
+            variant="outline"
+          >
+            {isExpanded ? "Collapse" : "Expand"}
+            {isExpanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
+          </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200">
+            {items.length} {items.length === 1 ? "case" : "cases"}
+          </span>
+          {waitingOnMspCount > 0 ? (
+            <Badge status="waiting_on_msp">Waiting on MSP: {waitingOnMspCount}</Badge>
+          ) : null}
+          {waitingOnKzeroCount > 0 ? (
+            <Badge status="waiting_on_kzero">KZero Action Required: {waitingOnKzeroCount}</Badge>
+          ) : null}
+          {completedCount > 0 && waitingOnMspCount === 0 && waitingOnKzeroCount === 0 ? (
+            <Badge status="complete">Complete: {completedCount}</Badge>
+          ) : null}
         </div>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0a1424]">
-        <div className="overflow-x-auto">
-          {items.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
-          ) : (
-            <table className={`${showCustomerColumn ? "min-w-[1120px]" : "min-w-[1080px]"} w-full table-fixed`}>
+      {!isExpanded ? (
+        <div className="px-4 py-4 md:px-5 md:py-5">
+          <div className="rounded-[1.25rem] border border-white/10 bg-[#0a1424] px-4 py-4">
+            {items.length === 0 ? (
+              <p className="text-sm text-slate-400">No cases in this section.</p>
+            ) : (
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <p className="text-sm text-slate-300">{items.length} {items.length === 1 ? "case is" : "cases are"} hidden.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {waitingOnMspCount > 0 ? (
+                    <span className="rounded-full border border-cyan-400/20 bg-cyan-400/[0.08] px-3 py-1 text-xs font-medium text-cyan-100">
+                      Waiting on MSP: {waitingOnMspCount}
+                    </span>
+                  ) : null}
+                  {waitingOnKzeroCount > 0 ? (
+                    <span className="rounded-full border border-amber-400/20 bg-amber-400/[0.08] px-3 py-1 text-xs font-medium text-amber-100">
+                      KZero Action Required: {waitingOnKzeroCount}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="px-4 py-4 md:px-5 md:py-5">
+          <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0a1424]">
+            <div className="overflow-x-auto">
+              {items.length === 0 ? (
+                <div className="px-4 py-6 text-sm text-slate-400">No cases in this section.</div>
+              ) : (
+                <table className={`${showCustomerColumn ? "min-w-[1120px]" : "min-w-[1080px]"} w-full table-fixed`}>
               <colgroup>
                 <col className={showCustomerColumn ? "w-[19%]" : "w-[25%]"} />
                 {showCustomerColumn ? <col className="w-[17%]" /> : null}
@@ -1345,7 +1420,7 @@ function DashboardTable({
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {visibleItems.map((item) => (
                   <tr key={item.onboardingPlanId} className="border-b border-white/10 last:border-b-0">
                     <td className="px-4 py-3 align-middle">
                       <div className="min-w-0">
@@ -1394,10 +1469,38 @@ function DashboardTable({
                   </tr>
                 ))}
               </tbody>
-            </table>
-          )}
+                </table>
+              )}
+            </div>
+          </div>
+
+          {items.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p className="text-sm text-slate-400">
+                {showFullResults
+                  ? `Showing all ${items.length} matching ${items.length === 1 ? "case" : "cases"}.`
+                  : hasHiddenRows
+                    ? `Showing ${visibleItems.length} of ${items.length} ${items.length === 1 ? "case" : "cases"}.`
+                    : `Showing all ${items.length} ${items.length === 1 ? "case" : "cases"}.`}
+              </p>
+              {!showFullResults ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {hasMoreRows ? (
+                    <Button className="h-9 px-4" onClick={() => setVisibleRowCount((current) => current + rowLimit)} variant="outline">
+                      Show More
+                    </Button>
+                  ) : null}
+                  {visibleRowCount > rowLimit ? (
+                    <Button className="h-9 px-4" onClick={() => setVisibleRowCount(rowLimit)} variant="outline">
+                      Show Fewer
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-      </div>
+      )}
     </Card>
   );
 }
@@ -1826,6 +1929,7 @@ export function InternalDashboard({
     { label: "OIDC Not Configured", value: "oidc_not_configured" },
     { label: "Completed", value: "completed" }
   ];
+  const hasActiveDashboardSearch = Boolean(searchQuery.trim()) || quickFilter !== "all";
 
   function handleSortChange(column: DashboardSortColumn) {
     if (sortColumn !== column) {
@@ -2664,6 +2768,7 @@ export function InternalDashboard({
                 </Card>
 
                 <DashboardTable
+                  defaultExpanded
                   emptyLabel={
                     searchQuery || quickFilter !== "all"
                       ? "No in-progress MSPs match the current search and filters."
@@ -2672,12 +2777,14 @@ export function InternalDashboard({
                   items={inProgressMspCases}
                   onSortChange={handleSortChange}
                   onView={openPreview}
+                  showFullResults={hasActiveDashboardSearch}
                   sortColumn={sortColumn}
                   sortDirection={sortDirection}
                   title="In Progress MSPs"
                 />
 
                 <DashboardTable
+                  defaultExpanded={false}
                   emptyLabel={
                     searchQuery || quickFilter !== "all"
                       ? "No completed MSPs match the current search and filters."
@@ -2685,11 +2792,13 @@ export function InternalDashboard({
                   }
                   items={completedMspCases}
                   onView={openPreview}
+                  showFullResults={hasActiveDashboardSearch}
                   title="Completed MSPs"
                 />
 
                 <DashboardTable
                   countLabel="Customer Plans"
+                  defaultExpanded={inProgressCustomerCases.length > 0}
                   emptyLabel={
                     searchQuery || quickFilter !== "all"
                       ? "No in-progress customer plans match the current search and filters."
@@ -2700,6 +2809,7 @@ export function InternalDashboard({
                   onView={openPreview}
                   showCustomerColumn
                   showGmmColumn={false}
+                  showFullResults={hasActiveDashboardSearch}
                   sortColumn={sortColumn}
                   sortDirection={sortDirection}
                   title="MSPs First Customer - In Progress"
@@ -2707,6 +2817,7 @@ export function InternalDashboard({
 
                 <DashboardTable
                   countLabel="Customer Plans"
+                  defaultExpanded={false}
                   emptyLabel={
                     searchQuery || quickFilter !== "all"
                       ? "No completed customer plans match the current search and filters."
@@ -2716,6 +2827,7 @@ export function InternalDashboard({
                   onView={openPreview}
                   showCustomerColumn
                   showGmmColumn={false}
+                  showFullResults={hasActiveDashboardSearch}
                   title="MSPs First Customer - Complete"
                 />
 
