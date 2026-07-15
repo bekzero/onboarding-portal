@@ -68,6 +68,7 @@ type AdminApiCase = {
   activeTaskStatus?: string;
   activeTaskTitle?: string;
   assignedSalesEngineer: string;
+  customerName?: string;
   currentStage: string;
   enrollmentDate: string;
   enrollmentDateRaw: string;
@@ -82,6 +83,7 @@ type AdminApiCase = {
   planId: string;
   primaryContactEmail: string;
   progress: number;
+  planType: TenantType;
   status: OnboardingCase["status"];
   submittedApps?: Array<{
     id: string;
@@ -176,6 +178,7 @@ type EnrollmentFormState = {
   accessMode: OnboardingCase["accessMode"];
   clientId: string;
   clientSecret: string;
+  customerName: string;
   currentStage: string;
   enrollmentDate: string;
   isGmmPartner: boolean;
@@ -191,6 +194,7 @@ type EnrollmentFormState = {
 
 type EditFormState = {
   accessMode: OnboardingCase["accessMode"];
+  customerName: string;
   currentStage: string;
   enrollmentDate: string;
   isGmmPartner: boolean;
@@ -198,6 +202,7 @@ type EditFormState = {
   mspName: string;
   primaryContactEmail: string;
   progress: number;
+  startingPlanType: TenantType;
   status: OnboardingCase["status"];
   submittedSaasAppCount: number;
   tenantName: string;
@@ -231,8 +236,8 @@ const ACCESS_MODE_OPTIONS: Array<{ label: string; value: OnboardingCase["accessM
 ];
 
 const PLAN_TYPE_OPTIONS: Array<{ label: string; value: TenantType }> = [
-  { label: "NFR Tenant", value: "nfr" },
-  { label: "Customer Tenant", value: "customer" }
+  { label: "NFR Plan", value: "nfr" },
+  { label: "Customer Plan", value: "customer" }
 ];
 
 const REFERENCE_PLAN_ID = "abcmsp-nfr";
@@ -307,6 +312,14 @@ function getAccessLabel(item: OnboardingCase) {
 
 function getGmmLabel(isGmmPartner: boolean) {
   return isGmmPartner ? "Yes" : "No";
+}
+
+function formatDashboardPlanTypeLabel(planType: TenantType) {
+  return planType === "customer" ? "Customer Plan" : "NFR Plan";
+}
+
+function isCustomerPlanCase(item: Pick<OnboardingCase, "startingPlanType">) {
+  return item.startingPlanType === "customer";
 }
 
 function formatNotificationTimestamp(value: string) {
@@ -790,6 +803,7 @@ function matchesSearchQuery(item: DashboardCase, searchQuery: string) {
 
   const searchableFields = [
     item.mspName,
+    item.customerName ?? "",
     item.primaryContactEmail,
     item.tenantName ?? "",
     item.currentStage,
@@ -969,6 +983,7 @@ function createEnrollmentState(): EnrollmentFormState {
     accessMode: "temporary",
     clientId: "",
     clientSecret: "",
+    customerName: "",
     currentStage: "Kickoff",
     enrollmentDate: getTodayDateInputValue(),
     isGmmPartner: false,
@@ -986,6 +1001,7 @@ function createEnrollmentState(): EnrollmentFormState {
 function createEditState(item: OnboardingCase): EditFormState {
   return {
     accessMode: item.accessMode,
+    customerName: item.customerName ?? "",
     currentStage: item.currentStage,
     enrollmentDate: formatDateInputValue(item.enrollmentDate ?? item.lastActivity),
     isGmmPartner: item.isGmmPartner,
@@ -993,6 +1009,7 @@ function createEditState(item: OnboardingCase): EditFormState {
     mspName: item.mspName,
     primaryContactEmail: item.primaryContactEmail,
     progress: item.progress,
+    startingPlanType: item.startingPlanType,
     status: item.status,
     submittedSaasAppCount: item.submittedSaasAppCount,
     tenantName: item.tenantName ?? ""
@@ -1015,6 +1032,7 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     activeTaskStatus: item.activeTaskStatus,
     activeTaskTitle: item.activeTaskTitle,
     assignedSalesEngineer: SALES_ENGINEER_NAME,
+    customerName: item.customerName,
     firstCustomerPilot: item.firstCustomerPilot ?? null,
     currentStage: item.currentStage,
     enrollmentDate: item.enrollmentDate,
@@ -1031,8 +1049,8 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     onboardingPlanId: item.planId,
     primaryContactEmail: item.primaryContactEmail,
     progress: item.progress,
+    startingPlanType: item.planType,
     status: item.status,
-    startingPlanType: "nfr",
     submittedApps: item.submittedApps ?? [],
     submittedSaasAppCount: item.submittedSaasAppCount,
     tenantName: item.tenantRealm
@@ -1095,17 +1113,21 @@ function ReportDistributionBar({ items, title }: { items: ReportDistributionItem
 }
 
 function ReportTable({ items, title }: { items: DashboardCase[]; title: string }) {
+  const showCustomerColumn = items.some((item) => isCustomerPlanCase(item));
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 report-avoid-break">
       <div className="flex items-center justify-between gap-3">
         <h4 className="text-base font-semibold text-slate-950">{title}</h4>
-        <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{items.length} MSPs</span>
+        <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{items.length} Cases</span>
       </div>
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
         <table className="w-full table-fixed text-sm">
           <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th className="px-3 py-3 font-medium">MSP</th>
+              {showCustomerColumn ? <th className="px-3 py-3 font-medium">Customer</th> : null}
+              <th className="px-3 py-3 font-medium">Plan Type</th>
               <th className="px-3 py-3 font-medium">GMM</th>
               <th className="px-3 py-3 font-medium">Stage</th>
               <th className="px-3 py-3 font-medium">Waiting On</th>
@@ -1118,12 +1140,14 @@ function ReportTable({ items, title }: { items: DashboardCase[]; title: string }
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td className="px-3 py-5 text-slate-500" colSpan={8}>No MSP records available.</td>
+                <td className="px-3 py-5 text-slate-500" colSpan={showCustomerColumn ? 10 : 9}>No MSP records available.</td>
               </tr>
             ) : (
               items.map((item) => (
                 <tr key={`${title}-${item.onboardingPlanId}`} className="border-t border-slate-200 align-top text-slate-700">
                   <td className="px-3 py-3 font-medium text-slate-900">{item.mspName}</td>
+                  {showCustomerColumn ? <td className="px-3 py-3">{item.customerName ?? "Not provided"}</td> : null}
+                  <td className="px-3 py-3">{formatDashboardPlanTypeLabel(item.startingPlanType)}</td>
                   <td className="px-3 py-3">{getGmmLabel(item.isGmmPartner)}</td>
                   <td className="px-3 py-3">{item.currentStage}</td>
                   <td className="px-3 py-3">{getWaitingLabel(item)}</td>
@@ -1213,25 +1237,30 @@ function ExecutiveSummaryReport({ data }: { data: ExecutiveSummaryReportData }) 
 }
 
 function DashboardTable({
+  countLabel = "MSPs",
   emptyLabel,
   items,
   onSortChange,
   onView,
   sortColumn,
+  showCustomerColumn = false,
+  showGmmColumn = true,
   sortDirection,
   title
 }: {
+  countLabel?: string;
   emptyLabel: string;
   items: DashboardCase[];
   onSortChange?: (column: DashboardSortColumn) => void;
   onView: (item: DashboardCase) => void;
   sortColumn?: DashboardSortColumn | null;
+  showCustomerColumn?: boolean;
+  showGmmColumn?: boolean;
   sortDirection?: DashboardSortDirection | null;
   title: string;
 }) {
   const sortableColumns: Array<{ key: DashboardSortColumn; label: string }> = [
     { key: "msp", label: "MSP" },
-    { key: "gmm", label: "GMM" },
     { key: "stage", label: "Stage" },
     { key: "progress", label: "Progress" },
     { key: "waiting_on", label: "Waiting On" },
@@ -1239,6 +1268,10 @@ function DashboardTable({
     { key: "enrolled", label: "Enrolled" },
     { key: "updated", label: "Updated" }
   ];
+
+  if (showGmmColumn) {
+    sortableColumns.splice(1, 0, { key: "gmm", label: "GMM" });
+  }
 
   function renderSortHeader(column: DashboardSortColumn, label: string) {
     const isActive = sortColumn === column && !!sortDirection;
@@ -1273,7 +1306,7 @@ function DashboardTable({
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <p className="mt-1 text-sm text-slate-300">{items.length} MSPs</p>
+          <p className="mt-1 text-sm text-slate-300">{items.length} {countLabel}</p>
         </div>
       </div>
 
@@ -1284,11 +1317,12 @@ function DashboardTable({
           ) : (
             <table className="min-w-[1080px] w-full table-fixed">
               <colgroup>
-                <col className="w-[25%]" />
-                <col className="w-[8%]" />
-                <col className="w-[14%]" />
+                <col className={showCustomerColumn ? "w-[20%]" : "w-[25%]"} />
+                {showCustomerColumn ? <col className="w-[18%]" /> : null}
+                {showGmmColumn ? <col className="w-[8%]" /> : null}
+                <col className={showCustomerColumn ? "w-[13%]" : "w-[14%]"} />
                 <col className="w-[15%]" />
-                <col className="w-[14%]" />
+                <col className={showCustomerColumn ? "w-[13%]" : "w-[14%]"} />
                 <col className="w-[7%]" />
                 <col className="w-[9%]" />
                 <col className="w-[8%]" />
@@ -1313,7 +1347,12 @@ function DashboardTable({
                         <p className="mt-1 truncate text-xs text-slate-400">{item.primaryContactEmail}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{getGmmLabel(item.isGmmPartner)}</td>
+                    {showCustomerColumn ? (
+                      <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.customerName ?? "Not provided"}</td>
+                    ) : null}
+                    {showGmmColumn ? (
+                      <td className="px-4 py-3 align-middle text-sm text-slate-300">{getGmmLabel(item.isGmmPartner)}</td>
+                    ) : null}
                     <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.currentStage}</td>
                     <td className="px-4 py-3 align-middle">
                       <div className="min-w-[110px]">
@@ -1700,18 +1739,36 @@ export function InternalDashboard({
     return onboardingCases.filter((item) => matchesSearchQuery(item, searchQuery) && matchesQuickFilter(item, quickFilter));
   }, [onboardingCases, quickFilter, searchQuery]);
 
-  const inProgressCases = useMemo(() => {
-    return sortDashboardCasesByColumn(filteredCases.filter((item) => !isCompletedCase(item)), sortColumn, sortDirection);
+  const inProgressMspCases = useMemo(() => {
+    return sortDashboardCasesByColumn(
+      filteredCases.filter((item) => item.startingPlanType === "nfr" && !isCompletedCase(item)),
+      sortColumn,
+      sortDirection
+    );
   }, [filteredCases, sortColumn, sortDirection]);
 
-  const completedCases = useMemo(() => {
-    return [...filteredCases.filter((item) => isCompletedCase(item))].sort((left, right) =>
+  const completedMspCases = useMemo(() => {
+    return [...filteredCases.filter((item) => item.startingPlanType === "nfr" && isCompletedCase(item))].sort((left, right) =>
       compareDashboardCasesByDefault(left, right)
     );
   }, [filteredCases]);
 
-  const waitingOnMsp = inProgressCases.filter((item) => item.status === "waiting_on_msp").length;
-  const waitingOnKZero = inProgressCases.filter((item) => item.status === "waiting_on_kzero").length;
+  const inProgressCustomerCases = useMemo(() => {
+    return sortDashboardCasesByColumn(
+      filteredCases.filter((item) => item.startingPlanType === "customer" && !isCompletedCase(item)),
+      sortColumn,
+      sortDirection
+    );
+  }, [filteredCases, sortColumn, sortDirection]);
+
+  const completedCustomerCases = useMemo(() => {
+    return [...filteredCases.filter((item) => item.startingPlanType === "customer" && isCompletedCase(item))].sort((left, right) =>
+      compareDashboardCasesByDefault(left, right)
+    );
+  }, [filteredCases]);
+
+  const waitingOnMsp = onboardingCases.filter((item) => !isCompletedCase(item) && item.status === "waiting_on_msp").length;
+  const waitingOnKZero = onboardingCases.filter((item) => !isCompletedCase(item) && item.status === "waiting_on_kzero").length;
   const executiveSummaryReportData = useMemo<ExecutiveSummaryReportData>(() => {
     const detailedPipeline = sortDashboardCases([...onboardingCases]);
     const kzeroActionRequiredAll = getKZeroActionRequiredCases(detailedPipeline);
@@ -1733,7 +1790,7 @@ export function InternalDashboard({
       stageDistribution: groupByStage(detailedPipeline),
       stalledCases,
       summaryMetrics: [
-        { label: "Total MSPs", value: String(detailedPipeline.length) },
+        { label: "Total Cases", value: String(detailedPipeline.length) },
         { label: "In Progress", value: String(inProgressCount) },
         { label: "Completed", value: String(completedCount) },
         { label: "Waiting on MSP", value: String(detailedPipeline.filter((item) => isWaitingOnMspCase(item)).length) },
@@ -1931,6 +1988,12 @@ export function InternalDashboard({
 
   async function handleEnroll() {
     const normalizedMspSlug = normalizeTenantName(enrollmentState.mspName);
+    const trimmedCustomerName = enrollmentState.customerName.trim();
+    const normalizedCustomerSlug = normalizeTenantName(trimmedCustomerName);
+    const caseSlug =
+      enrollmentState.startingPlanType === "customer" && normalizedCustomerSlug
+        ? `${normalizedMspSlug}-${normalizedCustomerSlug}`
+        : normalizedMspSlug;
     const exactTenantName = enrollmentState.tenantName.trim();
     const trimmedMspName = enrollmentState.mspName.trim();
     const trimmedPrimaryContactEmail = enrollmentState.primaryContactEmail.trim();
@@ -1943,7 +2006,11 @@ export function InternalDashboard({
     const nextEnrollmentDate = enrollmentState.enrollmentDate || getTodayDateInputValue();
     const nextLastActivity = formatDateDisplayValue(enrollmentState.lastActivity) || formatDateLabel();
 
-    if (!trimmedMspName || !trimmedPrimaryContactEmail || !normalizedMspSlug) {
+    if (!trimmedMspName || !trimmedPrimaryContactEmail || !caseSlug) {
+      return;
+    }
+
+    if (enrollmentState.startingPlanType === "customer" && !trimmedCustomerName) {
       return;
     }
 
@@ -1957,11 +2024,13 @@ export function InternalDashboard({
           body: JSON.stringify({
             accessMode,
             assignedSalesEngineer: SALES_ENGINEER_NAME,
+            customerName: enrollmentState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
             enrollmentDate: nextEnrollmentDate,
             isGmmPartner: enrollmentState.isGmmPartner,
             name: trimmedMspName,
+            planType: enrollmentState.startingPlanType,
             primaryContactEmail: trimmedPrimaryContactEmail,
-            slug: normalizedMspSlug
+            slug: caseSlug
           })
         });
 
@@ -1982,13 +2051,15 @@ export function InternalDashboard({
             body: JSON.stringify({
               accessMode,
               assignedSalesEngineer: SALES_ENGINEER_NAME,
+              customerName: enrollmentState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
               currentStage: enrollmentState.currentStage,
               isGmmPartner: enrollmentState.isGmmPartner,
               lastActivity: nextLastActivity,
               name: trimmedMspName,
+              planType: enrollmentState.startingPlanType,
               primaryContactEmail: trimmedPrimaryContactEmail,
               progress,
-              slug: normalizedMspSlug,
+              slug: caseSlug,
               status: progress >= 100 ? "complete" : enrollmentState.status,
               submittedSaasAppCount: enrollmentState.submittedSaasAppCount,
               tenantRealm: exactTenantName || undefined
@@ -2031,7 +2102,7 @@ export function InternalDashboard({
       }
     }
 
-    const nextPlanId = `${normalizedMspSlug}-${enrollmentState.startingPlanType}`;
+    const nextPlanId = `${caseSlug}-${enrollmentState.startingPlanType}`;
 
     const nextStatus: OnboardingCase["status"] = progress >= 100 ? "complete" : enrollmentState.status;
 
@@ -2039,6 +2110,7 @@ export function InternalDashboard({
       ...caseOverrides,
       [nextPlanId]: {
         accessMode,
+        customerName: enrollmentState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
         currentStage: enrollmentState.currentStage,
         enrollmentDate: formatDateDisplayValue(nextEnrollmentDate),
         isGmmPartner: enrollmentState.isGmmPartner,
@@ -2066,6 +2138,7 @@ export function InternalDashboard({
     }
 
     const nextProgress = Math.max(0, Math.min(100, Number(editState.progress) || 0));
+    const trimmedCustomerName = editState.customerName.trim();
     const exactTenantName = editState.tenantName.trim();
     const nextEnrollmentDate = editState.enrollmentDate || formatDateInputValue(selectedCase.enrollmentDate ?? selectedCase.lastActivity);
     const nextLastActivity = formatDateDisplayValue(editState.lastActivity) || selectedCase.lastActivity;
@@ -2078,6 +2151,10 @@ export function InternalDashboard({
       nextAccessMode === "oidc" ? "configured" : "not_configured";
     const waitingStatus: OnboardingCase["status"] = nextProgress >= 100 ? "complete" : editState.status;
 
+    if (editState.startingPlanType === "customer" && !trimmedCustomerName) {
+      return;
+    }
+
     if (useServerData && selectedCase.mspId) {
       try {
         const response = await fetch(`/api/admin/msps/${selectedCase.mspId}`, {
@@ -2088,11 +2165,13 @@ export function InternalDashboard({
           body: JSON.stringify({
             accessMode: nextAccessMode,
             assignedSalesEngineer: SALES_ENGINEER_NAME,
+            customerName: editState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
             currentStage: editState.currentStage,
             enrollmentDate: nextEnrollmentDate,
             isGmmPartner: editState.isGmmPartner,
             lastActivity: nextLastActivity,
             name: editState.mspName,
+            planType: editState.startingPlanType,
             primaryContactEmail: editState.primaryContactEmail,
             progress: nextProgress,
             slug: selectedCase.mspSlug,
@@ -2122,6 +2201,7 @@ export function InternalDashboard({
       [selectedCase.onboardingPlanId]: {
         ...caseOverrides[selectedCase.onboardingPlanId],
         accessMode: nextAccessMode,
+        customerName: editState.startingPlanType === "customer" ? trimmedCustomerName : selectedCase.customerName,
         currentStage: editState.currentStage.trim() || selectedCase.currentStage,
         enrollmentDate: formatDateDisplayValue(nextEnrollmentDate) || selectedCase.enrollmentDate,
         isGmmPartner: editState.isGmmPartner,
@@ -2130,6 +2210,7 @@ export function InternalDashboard({
         oidcStatus: nextOidcStatus,
         primaryContactEmail: editState.primaryContactEmail.trim() || selectedCase.primaryContactEmail,
         progress: nextProgress,
+        startingPlanType: editState.startingPlanType,
         status: waitingStatus,
         submittedSaasAppCount: Math.max(0, Number(editState.submittedSaasAppCount) || 0),
         tenantName: exactTenantName || undefined
@@ -2463,7 +2544,7 @@ export function InternalDashboard({
                     <Building2 className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-sm text-slate-300">Total MSPs</p>
+                    <p className="text-sm text-slate-300">Total Cases</p>
                     <p className="mt-1 text-3xl font-semibold text-white">{onboardingCases.length}</p>
                   </div>
                 </div>
@@ -2475,7 +2556,7 @@ export function InternalDashboard({
                   </div>
                   <div>
                     <p className="text-sm text-slate-300">In Progress</p>
-                    <p className="mt-1 text-3xl font-semibold text-white">{inProgressCases.length}</p>
+                    <p className="mt-1 text-3xl font-semibold text-white">{inProgressMspCases.length + inProgressCustomerCases.length}</p>
                   </div>
                 </div>
               </Card>
@@ -2508,7 +2589,7 @@ export function InternalDashboard({
                   </div>
                   <div>
                     <p className="text-sm text-slate-300">Completed</p>
-                    <p className="mt-1 text-3xl font-semibold text-white">{completedCases.length}</p>
+                    <p className="mt-1 text-3xl font-semibold text-white">{completedMspCases.length + completedCustomerCases.length}</p>
                   </div>
                 </div>
               </Card>
@@ -2516,9 +2597,9 @@ export function InternalDashboard({
 
                 {onboardingCases.length === 0 ? (
               <Card className="border-white/10 bg-[#101a2d] px-5 py-8">
-                <h3 className="text-lg font-semibold text-white">No MSPs enrolled yet.</h3>
+                <h3 className="text-lg font-semibold text-white">No onboarding cases yet.</h3>
                 <p className="mt-2 text-sm text-slate-300">
-                  Add your first MSP onboarding case to start tracking rollout progress and OIDC readiness.
+                  Add your first onboarding case to start tracking rollout progress and OIDC readiness.
                 </p>
                 <div className="mt-4">
                   <Button className="h-10 px-4" onClick={openEnroll}>
@@ -2533,7 +2614,7 @@ export function InternalDashboard({
                   <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end xl:gap-6">
                     <div className="min-w-0 xl:max-w-xl">
                       <label className="block text-xs uppercase tracking-[0.22em] text-slate-400" htmlFor="msp-search">
-                        Search MSPs
+                        Search Cases
                       </label>
                       <div className="relative mt-2">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -2541,7 +2622,7 @@ export function InternalDashboard({
                           className="h-11 w-full rounded-2xl border border-white/10 bg-[#0a1424] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60"
                           id="msp-search"
                           onChange={(event) => setSearchQuery(event.target.value)}
-                          placeholder="Search MSP name, email, tenant, or stage"
+                          placeholder="Search MSP name, customer name, email, tenant, or stage"
                           type="search"
                           value={searchQuery}
                         />
@@ -2570,7 +2651,7 @@ export function InternalDashboard({
                       ? "No in-progress MSPs match the current search and filters."
                       : "No in-progress MSPs right now."
                   }
-                  items={inProgressCases}
+                  items={inProgressMspCases}
                   onSortChange={handleSortChange}
                   onView={openPreview}
                   sortColumn={sortColumn}
@@ -2584,9 +2665,40 @@ export function InternalDashboard({
                       ? "No completed MSPs match the current search and filters."
                       : "No completed MSPs yet."
                   }
-                  items={completedCases}
+                  items={completedMspCases}
                   onView={openPreview}
                   title="Completed MSPs"
+                />
+
+                <DashboardTable
+                  countLabel="Customer Plans"
+                  emptyLabel={
+                    searchQuery || quickFilter !== "all"
+                      ? "No in-progress customer plans match the current search and filters."
+                      : "No in-progress customer plans right now."
+                  }
+                  items={inProgressCustomerCases}
+                  onSortChange={handleSortChange}
+                  onView={openPreview}
+                  showCustomerColumn
+                  showGmmColumn={false}
+                  sortColumn={sortColumn}
+                  sortDirection={sortDirection}
+                  title="MSPs First Customer - In Progress"
+                />
+
+                <DashboardTable
+                  countLabel="Customer Plans"
+                  emptyLabel={
+                    searchQuery || quickFilter !== "all"
+                      ? "No completed customer plans match the current search and filters."
+                      : "No completed customer plans yet."
+                  }
+                  items={completedCustomerCases}
+                  onView={openPreview}
+                  showCustomerColumn
+                  showGmmColumn={false}
+                  title="MSPs First Customer - Complete"
                 />
 
                 <Card className="border-white/10 bg-[#101a2d]" id="onboarding-flow-reference">
@@ -2898,10 +3010,18 @@ export function InternalDashboard({
                         ? "Select the onboarding step to reopen and make current again."
                       : panelMode === "delete"
                         ? "This action permanently removes the MSP and related onboarding records."
-                      : panelMode === "edit"
-                        ? "Update account details and case status."
+                        : panelMode === "edit"
+                          ? "Update account details and case status."
                         : getAccessLabel(selectedCase!)}
                 </p>
+                {(panelMode === "preview" || panelMode === "edit") && selectedCase ? (
+                  <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-300">
+                    <span>Plan Type: {formatDashboardPlanTypeLabel(selectedCase.startingPlanType)}</span>
+                    {selectedCase.customerName && isCustomerPlanCase(selectedCase) ? (
+                      <span>Customer: {selectedCase.customerName}</span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {panelMode === "preview" && selectedCase ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge status={getStatusTone(selectedCase)}>{getWaitingLabel(selectedCase)}</Badge>
@@ -3023,6 +3143,9 @@ export function InternalDashboard({
                         <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
                           <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current Stage</p>
                           <p className="mt-2 text-lg font-semibold text-white">{selectedCase.currentStage}</p>
+                          {selectedCase.customerName && isCustomerPlanCase(selectedCase) ? (
+                            <p className="mt-2 text-sm text-slate-300">Customer: {selectedCase.customerName}</p>
+                          ) : null}
                         </div>
 
                         <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
@@ -3095,6 +3218,16 @@ export function InternalDashboard({
                         <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
                           <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Summary</p>
                           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Plan Type</p>
+                              <p className="mt-1 text-sm text-slate-200">{formatDashboardPlanTypeLabel(selectedCase.startingPlanType)}</p>
+                            </div>
+                            {selectedCase.customerName && isCustomerPlanCase(selectedCase) ? (
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer Name</p>
+                                <p className="mt-1 text-sm text-slate-200">{selectedCase.customerName}</p>
+                              </div>
+                            ) : null}
                             <div>
                               <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Progress</p>
                               <p className="mt-1 text-lg font-semibold text-white">{selectedCase.progress}%</p>
@@ -3394,6 +3527,36 @@ export function InternalDashboard({
                       <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
                         <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Onboarding Status</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
+                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                            <span>Plan Type</span>
+                            <select
+                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              onChange={(event) =>
+                                setEditState((current) =>
+                                  current ? { ...current, startingPlanType: event.target.value as TenantType } : current
+                                )
+                              }
+                              value={editState.startingPlanType}
+                            >
+                              {PLAN_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {editState.startingPlanType === "customer" ? (
+                            <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                              <span>Customer Name</span>
+                              <input
+                                className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                                onChange={(event) =>
+                                  setEditState((current) => (current ? { ...current, customerName: event.target.value } : current))
+                                }
+                                value={editState.customerName}
+                              />
+                            </label>
+                          ) : null}
                           <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
                             <span>Current Stage</span>
                             <select
@@ -3811,7 +3974,7 @@ export function InternalDashboard({
                         <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Reporting Details</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
                           <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
-                            <span>Starting Plan Type</span>
+                            <span>Plan Type</span>
                             <select
                               className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
                               onChange={(event) =>
@@ -3829,6 +3992,16 @@ export function InternalDashboard({
                               ))}
                             </select>
                           </label>
+                          {enrollmentState.startingPlanType === "customer" ? (
+                            <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                              <span>Customer Name</span>
+                              <input
+                                className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, customerName: event.target.value }))}
+                                value={enrollmentState.customerName}
+                              />
+                            </label>
+                          ) : null}
                           <label className="grid gap-2 text-sm text-slate-300">
                             <span>Progress %</span>
                             <input

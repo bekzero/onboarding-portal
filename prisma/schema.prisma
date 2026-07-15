@@ -56,6 +56,7 @@ model OnboardingPlan {
   planId               String               @unique
   title                String?
   tenantType           String?
+  customerName         String?
   firstCustomerAdminContactEmail String?
   firstCustomerAdminContactName  String?
   firstCustomerAlias             String?

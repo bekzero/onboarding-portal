@@ -88,7 +88,9 @@ export type FirstCustomerPilot = {
 };
 
 export type Plan = {
+  customerName?: string;
   id: string;
+  mspName?: string;
   organizationId: string;
   title: string;
   tenantType: TenantType;
@@ -114,6 +116,7 @@ export type OnboardingCase = {
   accessMode: AccessMode;
   actionHref: string;
   assignedSalesEngineer: string;
+  customerName?: string;
   currentStage: string;
   enrollmentDate?: string;
   isGmmPartner: boolean;
@@ -134,6 +137,7 @@ export type OnboardingCase = {
 
 type DemoCaseConfig = {
   accessMode: AccessMode;
+  customerName?: string;
   currentStage: string;
   isGmmPartner?: boolean;
   lastActivity: string;
@@ -241,24 +245,33 @@ const demoCaseConfigs: DemoCaseConfig[] = [
     submittedSaasAppCount: 5,
     tenantSlug: "skyline",
     tenantType: "nfr"
+  },
+  {
+    accessMode: "oidc",
+    customerName: "Northwind Dental",
+    currentStage: "Tenant Setup",
+    lastActivity: "June 12, 2026",
+    name: "Northwind MSP",
+    planId: "northwind-customer",
+    primaryContactEmail: "avery@northwindmsp.com",
+    progress: 24,
+    salesEngineerId: "user-se-ben",
+    status: "waiting_on_msp",
+    submittedSaasAppCount: 1,
+    tenantSlug: "northwind-customer",
+    tenantType: "customer",
+    tenantName: "northwind-dental"
   }
 ];
 
 export const organizations: Organization[] = [
   ...demoCaseConfigs.map((config) => ({
     id: `org-${config.tenantSlug}`,
-    name: config.name,
+    name: config.customerName ?? config.name,
     tenantSlug: config.tenantSlug,
     tenantType: config.tenantType,
     assignedSalesEngineerId: config.salesEngineerId
-  })),
-  {
-    id: "org-northwind-customer",
-    name: "Northwind Dental",
-    tenantSlug: "northwind-dental",
-    tenantType: "customer",
-    assignedSalesEngineerId: "user-se-ben"
-  }
+  }))
 ];
 
 export const users: User[] = [
@@ -434,31 +447,21 @@ function createTasks(prefix: string) {
 }
 
 const mspTaskSets = demoCaseConfigs.flatMap((config) => createTasks(config.tenantSlug));
-const customerTasks = createTasks("northwind-customer");
-
-export const tasks: Task[] = [...mspTaskSets, ...customerTasks];
+export const tasks: Task[] = mspTaskSets;
 
 export const plans: Plan[] = [
   ...demoCaseConfigs.map((config) => ({
     id: config.planId,
     organizationId: `org-${config.tenantSlug}`,
-    title: `${config.name} NFR Tenant Onboarding`,
+    customerName: config.customerName,
+    mspName: config.name,
+    title: config.tenantType === "nfr" ? `${config.name} NFR Tenant Onboarding` : `${config.customerName ?? config.name} Customer Onboarding`,
     tenantType: config.tenantType,
     phaseIds: phases.map((phase) => phase.id),
     taskIds: createTasks(config.tenantSlug).map((task) => task.id),
     nextTaskId: `${config.tenantSlug}-task-1`,
     progress: config.progress
-  })),
-  {
-    id: "northwind-customer",
-    organizationId: "org-northwind-customer",
-    title: "Northwind Dental Customer Rollout",
-    tenantType: "customer",
-    phaseIds: phases.map((phase) => phase.id),
-    taskIds: customerTasks.map((task) => task.id),
-    nextTaskId: "northwind-customer-task-1",
-    progress: 5
-  }
+  }))
 ];
 
 export const saasApps: SaaSApp[] = [
@@ -602,6 +605,7 @@ export const onboardingCases: OnboardingCase[] = demoCaseConfigs.map((config) =>
   actionHref: `/portal/${config.planId}`,
   assignedSalesEngineer:
     users.find((user) => user.id === config.salesEngineerId)?.name ?? "Unassigned",
+  customerName: config.customerName,
   currentStage: config.currentStage,
   isGmmPartner: config.isGmmPartner ?? false,
   lastActivity: config.lastActivity,
@@ -646,9 +650,11 @@ function createGeneratedPlanBundle(planId: string) {
   };
   const generatedTasks = createTasks(tenantSlug);
   const generatedPlan: Plan = {
+    customerName: tenantType === "customer" ? displayName : undefined,
     id: planId,
+    mspName: tenantType === "customer" ? displayName : `${displayName} MSP`,
     organizationId: generatedOrganization.id,
-    title: tenantType === "nfr" ? `${organizationName} NFR Tenant Onboarding` : `${organizationName} Customer Rollout`,
+    title: tenantType === "nfr" ? `${organizationName} NFR Tenant Onboarding` : `${displayName} Customer Onboarding`,
     tenantType,
     phaseIds: phases.map((phase) => phase.id),
     taskIds: generatedTasks.map((task) => task.id),

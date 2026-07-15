@@ -12,11 +12,13 @@ export async function PATCH(
     const body = (await request.json()) as {
       accessMode?: "temporary" | "oidc";
       assignedSalesEngineer?: string;
+      customerName?: string;
       currentStage?: string;
       enrollmentDate?: string;
       isGmmPartner?: boolean;
       lastActivity?: string;
       name?: string;
+      planType?: "nfr" | "customer";
       primaryContactEmail?: string;
       progress?: number;
       slug?: string;

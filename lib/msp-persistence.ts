@@ -8,6 +8,7 @@ import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-rou
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 const onboardingPlanSelection = {
+  customerName: true,
   firstCustomerAdminContactEmail: true,
   firstCustomerAdminContactName: true,
   firstCustomerAlias: true,
@@ -46,6 +47,7 @@ const onboardingPlanSelection = {
   progress: true,
   status: true,
   submittedAppCount: true,
+  tenantType: true,
   updatedAt: true
 } satisfies Prisma.OnboardingPlanSelect;
 
@@ -256,8 +258,10 @@ function buildBundleFromPersistedState(
   persistedTasks: PortalTaskRecord[],
   persistedApps: MockSaaSApp[],
   persistedPlan?: {
+    customerName?: string | null;
     currentStage: string | null;
     firstCustomerPilot?: FirstCustomerPilot | null;
+    mspName?: string | null;
     organizationName?: string | null;
     progress: number;
     title?: string | null;
@@ -304,6 +308,8 @@ function buildBundleFromPersistedState(
     nextTask,
     plan: {
       ...bundle.plan,
+      customerName: persistedPlan?.customerName?.trim() || bundle.plan.customerName,
+      mspName: persistedPlan?.mspName?.trim() || bundle.plan.mspName,
       nextTaskId: nextTask.id,
       progress: persistedPlan?.progress ?? metrics.progress,
       title: persistedPlan?.title?.trim() || bundle.plan.title
@@ -312,14 +318,23 @@ function buildBundleFromPersistedState(
   } satisfies PlanBundle;
 }
 
-function getPortalPlanDisplayTitle(mspName: string, tenantType: PlanBundle["plan"]["tenantType"]) {
-  const trimmedName = mspName.trim();
+function getPortalPlanDisplayTitle(
+  mspName: string,
+  tenantType: PlanBundle["plan"]["tenantType"],
+  customerName?: string | null
+) {
+  const trimmedMspName = mspName.trim();
+  const trimmedCustomerName = customerName?.trim();
 
-  if (!trimmedName) {
-    return tenantType === "nfr" ? "NFR Tenant Onboarding" : "Customer Rollout";
+  if (tenantType === "customer") {
+    return trimmedCustomerName ? `${trimmedCustomerName} Customer Onboarding` : "Customer Onboarding";
   }
 
-  return tenantType === "nfr" ? `${trimmedName} NFR Tenant Onboarding` : `${trimmedName} Customer Rollout`;
+  if (!trimmedMspName) {
+    return "NFR Tenant Onboarding";
+  }
+
+  return `${trimmedMspName} NFR Tenant Onboarding`;
 }
 
 function mapPersistedAppsToBundleApps(planBundle: PlanBundle, statuses: Array<{
@@ -400,6 +415,7 @@ export type AdminDashboardCase = {
   activeTaskStatus?: string;
   activeTaskTitle?: string;
   assignedSalesEngineer: string;
+  customerName?: string;
   currentStage: string;
   enrollmentDate: string;
   enrollmentDateRaw: string;
@@ -425,6 +441,7 @@ export type AdminDashboardCase = {
   }>;
   submittedSaasAppCount: number;
   tenantRealm?: string;
+  planType: PlanBundle["plan"]["tenantType"];
   firstCustomerPilot?: FirstCustomerPilot | null;
 };
 
@@ -440,9 +457,11 @@ type PortalTaskRecord = {
 type CreateMspInput = {
   accessMode: AccessMode;
   assignedSalesEngineer?: string;
+  customerName?: string;
   enrollmentDate?: string;
   isGmmPartner?: boolean;
   name: string;
+  planType?: PlanBundle["plan"]["tenantType"];
   primaryContactEmail: string;
   slug?: string;
 };
@@ -450,6 +469,7 @@ type CreateMspInput = {
 type UpdateMspInput = {
   accessMode?: AccessMode;
   assignedSalesEngineer?: string;
+  customerName?: string;
   currentStage?: string;
   enrollmentDate?: string;
   isGmmPartner?: boolean;
@@ -457,6 +477,7 @@ type UpdateMspInput = {
   name?: string;
   primaryContactEmail?: string;
   progress?: number;
+  planType?: PlanBundle["plan"]["tenantType"];
   slug?: string;
   status?: string;
   submittedSaasAppCount?: number;
@@ -563,6 +584,7 @@ function toAdminDashboardCase(
       ? portalTasks[derivedMetrics.nextTaskIndex]
       : null;
   const firstCustomerPilot = plan ? mapFirstCustomerPilotFromPlan(plan) : null;
+  const planType = plan?.tenantType === "customer" ? "customer" : "nfr";
 
   return {
     firstCustomerPilot,
@@ -571,6 +593,7 @@ function toAdminDashboardCase(
     activeTaskStatus: activeTask?.status,
     activeTaskTitle: activeTask?.title,
     assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
+    customerName: plan?.customerName ?? undefined,
     currentStage: derivedMetrics?.currentStage ?? plan?.currentStage ?? "Kickoff",
     enrollmentDate: formatDateLabelFromValue(msp.enrollmentDate ?? msp.createdAt),
     enrollmentDateRaw: (msp.enrollmentDate ?? msp.createdAt).toISOString(),
@@ -585,6 +608,7 @@ function toAdminDashboardCase(
     planId,
     primaryContactEmail: msp.primaryContactEmail,
     progress: derivedMetrics?.progress ?? plan?.progress ?? 0,
+    planType,
     status: derivedMetrics?.status ?? plan?.status ?? "waiting_on_msp",
     submittedApps: (plan?.saasAppSubmissions ?? []).map((submission) => ({
       id: submission.id,
@@ -698,11 +722,16 @@ export async function createMsp(input: CreateMspInput) {
   ensureDatabaseConfigured();
 
   const slug = input.slug?.trim() || normalizeTenantName(input.name);
+  const planType = input.planType === "customer" ? "customer" : "nfr";
+  const customerName = input.customerName?.trim() || null;
   if (!slug) {
     throw new Error("MSP slug is required.");
   }
+  if (planType === "customer" && !customerName) {
+    throw new Error("Customer name is required for a Customer Plan.");
+  }
 
-  const planId = `${slug}-nfr`;
+  const planId = `${slug}-${planType}`;
   const templateBundle = getTemplateBundle(planId);
   const templateTasks = templateBundle ? getOrderedTemplateTasks(templateBundle) : [];
 
@@ -715,6 +744,7 @@ export async function createMsp(input: CreateMspInput) {
       name: input.name.trim(),
       onboardingPlans: {
         create: {
+          customerName,
           currentStage: "Kickoff",
           lastActivityAt: new Date(),
           onboardingTasks: templateTasks.length > 0
@@ -733,8 +763,8 @@ export async function createMsp(input: CreateMspInput) {
           progress: 0,
           status: "waiting_on_msp",
           submittedAppCount: 0,
-          tenantType: "nfr",
-          title: getPortalPlanDisplayTitle(input.name, "nfr")
+          tenantType: planType,
+          title: getPortalPlanDisplayTitle(input.name, planType, customerName)
         }
       },
       primaryContactEmail: input.primaryContactEmail.trim(),
@@ -759,6 +789,8 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
   ensureDatabaseConfigured();
 
   const trimmedName = input.name?.trim();
+  const nextPlanType = input.planType === "customer" ? "customer" : input.planType === "nfr" ? "nfr" : undefined;
+  const nextCustomerName = input.customerName?.trim();
 
   const msp = await prisma.msp.update({
     where: { id: mspId },
@@ -781,12 +813,17 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
         updateMany: {
           where: {},
           data: {
+            customerName: nextCustomerName || undefined,
             currentStage: input.currentStage?.trim(),
             lastActivityAt: parseLastActivityInput(input.lastActivity),
             progress: input.progress,
             status: input.status?.trim(),
             submittedAppCount: input.submittedSaasAppCount,
-            title: trimmedName ? getPortalPlanDisplayTitle(trimmedName, "nfr") : undefined
+            tenantType: nextPlanType,
+            title:
+              trimmedName || nextPlanType || nextCustomerName
+                ? getPortalPlanDisplayTitle(trimmedName ?? "", nextPlanType ?? "nfr", nextCustomerName)
+                : undefined
           }
         }
       },
@@ -859,10 +896,16 @@ export async function getPortalPlanBundle(planId: string) {
     persistedApps,
     {
       currentStage: onboardingPlan.currentStage,
+      customerName: onboardingPlan.customerName,
       firstCustomerPilot,
+      mspName: onboardingPlan.msp?.name,
       organizationName: onboardingPlan.msp?.name,
       progress: onboardingPlan.progress,
-      title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
+      title: getPortalPlanDisplayTitle(
+        onboardingPlan.msp?.name ?? onboardingPlan.title,
+        onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"],
+        onboardingPlan.customerName
+      )
     }
   );
 }
@@ -946,12 +989,15 @@ export async function submitPortalSaasApp(planId: string, input: SubmitPortalSaa
     mapPersistedAppsToBundleApps(templateBundle, refreshedPlan.saasAppSubmissions),
     {
       currentStage: refreshedPlan.currentStage,
+      customerName: refreshedPlan.customerName,
       firstCustomerPilot: mapFirstCustomerPilotFromPlan(refreshedPlan),
+      mspName: refreshedPlan.msp?.name,
       organizationName: refreshedPlan.msp?.name,
       progress: refreshedPlan.progress,
       title: getPortalPlanDisplayTitle(
         refreshedPlan.msp?.name ?? refreshedPlan.title,
-        refreshedPlan.tenantType as PlanBundle["plan"]["tenantType"]
+        refreshedPlan.tenantType as PlanBundle["plan"]["tenantType"],
+        refreshedPlan.customerName
       )
     }
   );
@@ -1093,7 +1139,10 @@ async function advanceOnboardingPlanTask({
     try {
       await createTaskCompletedAdminNotification({
         mspId: onboardingPlan.mspId,
-        mspName: onboardingPlan.msp?.name ?? onboardingPlan.title ?? "MSP",
+        mspName:
+          onboardingPlan.tenantType === "customer" && onboardingPlan.customerName
+            ? `${onboardingPlan.msp?.name ?? "MSP"} - ${onboardingPlan.customerName}`
+            : onboardingPlan.msp?.name ?? onboardingPlan.title ?? "MSP",
         planId,
         stage: metrics.currentStage,
         taskId: activeTemplateTask.id,
@@ -1106,10 +1155,16 @@ async function advanceOnboardingPlanTask({
 
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
     currentStage: metrics.currentStage,
+    customerName: onboardingPlan.customerName,
     firstCustomerPilot,
+    mspName: onboardingPlan.msp?.name,
     organizationName: onboardingPlan.msp?.name,
     progress: metrics.progress,
-    title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
+    title: getPortalPlanDisplayTitle(
+      onboardingPlan.msp?.name ?? onboardingPlan.title,
+      onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"],
+      onboardingPlan.customerName
+    )
   });
 }
 
@@ -1254,10 +1309,16 @@ export async function rollbackPortalTaskForMsp(mspId: string, templateTaskId: st
 
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
     currentStage: metrics.currentStage,
+    customerName: onboardingPlan.customerName,
     firstCustomerPilot,
+    mspName: onboardingPlan.msp?.name,
     organizationName: onboardingPlan.msp?.name,
     progress: metrics.progress,
-    title: getPortalPlanDisplayTitle(onboardingPlan.msp?.name ?? onboardingPlan.title, onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"])
+    title: getPortalPlanDisplayTitle(
+      onboardingPlan.msp?.name ?? onboardingPlan.title,
+      onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"],
+      onboardingPlan.customerName
+    )
   });
 }
 
@@ -1338,10 +1399,16 @@ export async function submitFirstCustomerPilot(planId: string, input: SubmitFirs
     mapPersistedAppsToBundleApps(templateBundle, updatedPlan.saasAppSubmissions),
     {
       currentStage: updatedPlan.currentStage,
+      customerName: updatedPlan.customerName,
       firstCustomerPilot: mapFirstCustomerPilotFromPlan(updatedPlan),
+      mspName: updatedPlan.msp?.name,
       organizationName: updatedPlan.msp?.name,
       progress: updatedPlan.progress,
-      title: getPortalPlanDisplayTitle(updatedPlan.msp?.name ?? updatedPlan.title, updatedPlan.tenantType as PlanBundle["plan"]["tenantType"])
+      title: getPortalPlanDisplayTitle(
+        updatedPlan.msp?.name ?? updatedPlan.title,
+        updatedPlan.tenantType as PlanBundle["plan"]["tenantType"],
+        updatedPlan.customerName
+      )
     }
   );
 }
@@ -1413,10 +1480,16 @@ export async function getMspByLookup(lookupValue: string) {
     select: mspWithDashboardSelection
   });
 
-  const match = msps.find((msp) => {
+  const matches = msps.filter((msp) => {
     const candidates = [msp.slug, msp.name, msp.oidcConfig?.tenantRealm];
     return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedLookupValue);
   });
+
+  const match = matches.sort((left, right) => {
+    const leftType = left.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
+    const rightType = right.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
+    return leftType - rightType;
+  })[0];
 
   return match ? toPublicMspRecord(match) : null;
 }
@@ -1500,12 +1573,16 @@ export async function getMspWithOidcByLookupServer(lookupValue: string) {
     select: mspWithDashboardSelection
   });
 
-  return (
-    msps.find((msp) => {
+  const matches = msps.filter((msp) => {
       const candidates = [msp.slug, msp.name, msp.oidcConfig?.tenantRealm];
       return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedLookupValue);
-    }) ?? null
-  );
+    });
+
+  return matches.sort((left, right) => {
+    const leftType = left.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
+    const rightType = right.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
+    return leftType - rightType;
+  })[0] ?? null;
 }
 
 export async function getMspWithOidcByPlanIdServer(planId: string) {

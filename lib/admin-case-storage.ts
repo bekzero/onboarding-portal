@@ -6,6 +6,7 @@ export type AdminCaseOverride = Partial<
   Pick<
     OnboardingCase,
     | "accessMode"
+    | "customerName"
     | "currentStage"
     | "enrollmentDate"
     | "isGmmPartner"

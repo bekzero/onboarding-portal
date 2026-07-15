@@ -26,7 +26,7 @@ const TOUR_STORAGE_KEY_PREFIX = "kzero-onboarding-tour-seen:";
 const PORTAL_TOUR_STEPS: PortalTourStep[] = [
   {
     title: "Welcome to Your KZero Passwordless Onboarding Workspace",
-    body: "This portal guides your team through NFR tenant setup, SaaS app review, SSO rollout, and your first customer pilot."
+    body: "This portal guides your team through tenant setup, SaaS app review, SSO rollout, and your first customer pilot."
   },
   {
     title: "Start With Your Status",
@@ -345,6 +345,12 @@ export function PlanView({
   const meaningfulComments = bundle.comments.filter((comment) => isMeaningfulComment(comment.body));
   const nextTaskDescription = getTaskDisplayDescription(nextTask);
   const nextTaskTitle = getTaskDisplayTitle(nextTask);
+  const isCustomerPlan = bundle.plan.tenantType === "customer";
+  const tenantSetupLabel = isCustomerPlan ? "customer tenant setup" : "NFR tenant setup";
+  const portalHeading = bundle.plan.title;
+  const portalSubtitle = isCustomerPlan
+    ? `Managed by ${bundle.plan.mspName ?? bundle.organization.name} through KZero Passwordless.`
+    : "KZero Passwordless onboarding workspace";
   const yourNextAction = isPlanComplete
     ? "Onboarding complete"
     : isKZeroOwnedCurrentTask
@@ -362,7 +368,7 @@ export function PlanView({
         : isSubmittingSaasApps
           ? "Submit your SaaS applications from the Apps section to continue."
         : isKickoffBookingTask
-          ? "Book your kickoff meeting to begin NFR tenant setup."
+          ? `Book your kickoff meeting to begin ${tenantSetupLabel}.`
           : formatCurrentStepStatusLabel(nextTask.status);
   const whatHappensNext = isPlanComplete
     ? "You can return to this workspace at any time to review completed onboarding milestones."
@@ -370,7 +376,9 @@ export function PlanView({
     ? "We'll update this plan when the next step is ready."
     : followingTask
     ? isKickoffBookingTask
-      ? "After kickoff, you'll add backup admins and invite your MSP users."
+      ? isCustomerPlan
+        ? "After kickoff, you'll add backup admins and invite your customer users."
+        : "After kickoff, you'll add backup admins and invite your MSP users."
       : `${getTaskDisplayTitle(followingTask)} (${formatTaskOwnerLabelShort(followingTask.owner)})`
     : "This completes the current onboarding milestone.";
   const currentStepLabel = isPlanComplete ? "Completed onboarding plan" : isKickoffBookingTask ? "Book kickoff call" : nextTaskTitle;
@@ -647,9 +655,14 @@ export function PlanView({
                 <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-blue-100/80">
                   {formatPlanTypeLabel(bundle.plan.tenantType)}
                 </span>
+                {isCustomerPlan && bundle.plan.customerName ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-slate-200">
+                    Customer: {bundle.plan.customerName}
+                  </span>
+                ) : null}
               </div>
-              <h1 className="mt-2 text-2xl font-semibold text-white md:text-3xl">{bundle.organization.name}</h1>
-              <p className="mt-1 text-sm text-slate-300">KZero Passwordless onboarding workspace</p>
+              <h1 className="mt-2 text-2xl font-semibold text-white md:text-3xl">{portalHeading}</h1>
+              <p className="mt-1 text-sm text-slate-300">{portalSubtitle}</p>
             </div>
           </div>
 

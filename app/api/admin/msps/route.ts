@@ -26,9 +26,11 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       accessMode: "temporary" | "oidc";
       assignedSalesEngineer?: string;
+      customerName?: string;
       enrollmentDate?: string;
       isGmmPartner?: boolean;
       name: string;
+      planType?: "nfr" | "customer";
       primaryContactEmail: string;
       slug?: string;
     };
