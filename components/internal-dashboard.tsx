@@ -21,6 +21,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import { DocumentsReviewCard } from "@/components/documents-review-card";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1618,7 +1619,6 @@ export function InternalDashboard({
     [selectedCase]
   );
   const selectedCaseApps = selectedCase?.submittedApps ?? selectedCaseBundle?.apps ?? [];
-  const selectedCaseDocuments = useServerData ? [] : selectedCaseBundle?.attachments ?? [];
   const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
   const adminPortalOpenHref = selectedCase?.mspId ? `/api/admin/msps/${selectedCase.mspId}/open-portal` : null;
   const canOpenPortalAsAdmin = Boolean(selectedCase?.mspId && useServerData);
@@ -3314,22 +3314,6 @@ export function InternalDashboard({
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-sm font-semibold text-white">Documents</p>
-                        <div className="mt-3 grid gap-2">
-                          {selectedCaseDocuments.length > 0 ? (
-                            selectedCaseDocuments.map((attachment) => (
-                              <div key={attachment.id} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
-                                <p className="text-sm text-white">{attachment.name}</p>
-                                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{attachment.kind}</p>
-                              </div>
-                            ))
-                          ) : (
-                            <p className="text-sm text-slate-300">No documents attached yet.</p>
-                          )}
-                        </div>
-                      </div>
-
                       {selectedCaseComments.length > 0 ? (
                         <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
                           <p className="text-sm font-semibold text-white">Notes / Activity</p>
@@ -3344,6 +3328,13 @@ export function InternalDashboard({
                         </div>
                       ) : null}
                     </div>
+
+                    <DocumentsReviewCard
+                      emptyStateTitle="No documents added yet."
+                      listUrl={`/api/admin/plans/${selectedCase.onboardingPlanId}/documents`}
+                      planType={selectedCase.startingPlanType}
+                      subtitle="Uploaded supporting files for this onboarding case."
+                    />
 
                     <div>
                       <Link href={selectedCase.actionHref}>

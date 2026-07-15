@@ -1,284 +1,281 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, ImageIcon, Upload } from "lucide-react";
+import { Download, FileText, ImageIcon, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { Attachment } from "@/lib/mock-data";
+import {
+  DOCUMENT_UPLOAD_ACCEPT,
+  formatDocumentSize,
+  MAX_DOCUMENT_SIZE_BYTES,
+  type PortalDocumentRecord
+} from "@/lib/onboarding-document-config";
 
-type ReviewStatus = "Submitted" | "In review" | "Approved";
-
-type StoredDocument = {
-  id: string;
-  name: string;
-  size: number;
-  status: ReviewStatus;
-  type: string;
-  uploadedAt: string;
-  uploadedBy: string;
+type DocumentsReviewCardProps = {
+  canUpload?: boolean;
+  emptyStateTitle?: string;
+  initialDocuments?: PortalDocumentRecord[];
+  listUrl?: string;
+  planType: "nfr" | "customer";
+  subtitle?: string;
+  title?: string;
+  uploadUrl?: string;
 };
 
-type DocumentItem = {
-  id: string;
-  isStored: boolean;
-  name: string;
-  sizeLabel: string;
-  status: ReviewStatus;
-  typeLabel: string;
-  uploadedBy: string;
-};
+function formatUploadedDate(value: string) {
+  const parsed = new Date(value);
 
-function getStorageKey(planId: string) {
-  return `kzero-review-documents:${planId}`;
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(parsed);
 }
 
-function formatSize(bytes: number) {
-  if (bytes <= 0) {
-    return "Pending";
-  }
+function getStatusTone(status: string) {
+  const normalizedStatus = status.trim().toLowerCase();
 
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatTypeLabel(type: string, attachmentName?: string) {
-  if (type.startsWith("image/")) {
-    return "Image";
-  }
-
-  if (type === "application/pdf") {
-    return "PDF";
-  }
-
-  if (type.includes("word")) {
-    return "Word document";
-  }
-
-  if (type.includes("text")) {
-    return "Text document";
-  }
-
-  if (attachmentName?.toLowerCase().includes("guide")) {
-    return "Guide";
-  }
-
-  if (attachmentName?.toLowerCase().includes("plan")) {
-    return "Plan";
-  }
-
-  return "Document";
-}
-
-function getStatusTone(status: ReviewStatus) {
-  if (status === "Approved") {
+  if (normalizedStatus === "approved" || normalizedStatus === "complete") {
     return "complete" as const;
   }
 
-  if (status === "In review") {
+  if (normalizedStatus === "in_review" || normalizedStatus === "in review" || normalizedStatus === "waiting_on_kzero") {
     return "waiting_on_kzero" as const;
   }
 
   return "waiting_on_msp" as const;
 }
 
-function isPlaceholderAttachment(attachment: Attachment) {
-  return attachment.name.toLowerCase().includes("placeholder");
+function formatStatusLabel(status: string) {
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function getSubtitle(planType: "nfr" | "customer") {
+  return planType === "customer"
+    ? "Upload and review supporting files for the customer onboarding plan."
+    : "Upload and review supporting files for your onboarding plan.";
+}
+
+function getEmptyStateBody(planType: "nfr" | "customer") {
+  return planType === "customer"
+    ? "Documents shared by the MSP, customer, or KZero Passwordless will appear here."
+    : "Documents shared by your team or KZero Passwordless will appear here.";
 }
 
 export function DocumentsReviewCard({
-  attachments,
-  allowBrowserDocuments = false,
-  planId
-}: {
-  attachments: Attachment[];
-  allowBrowserDocuments?: boolean;
-  planId: string;
-}) {
+  canUpload = false,
+  emptyStateTitle = "No Documents Added",
+  initialDocuments = [],
+  listUrl,
+  planType,
+  subtitle,
+  title = "Documents for Review",
+  uploadUrl
+}: DocumentsReviewCardProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [storedDocuments, setStoredDocuments] = useState<StoredDocument[]>([]);
+  const [documents, setDocuments] = useState<PortalDocumentRecord[]>(initialDocuments);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(Boolean(listUrl));
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
-    if (!allowBrowserDocuments) {
-      setStoredDocuments([]);
-      return;
-    }
-
-    const rawValue = window.localStorage.getItem(getStorageKey(planId));
-
-    if (!rawValue) {
-      setStoredDocuments([]);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(rawValue) as unknown;
-      setStoredDocuments(Array.isArray(parsed) ? (parsed as StoredDocument[]) : []);
-    } catch {
-      setStoredDocuments([]);
-    }
-  }, [allowBrowserDocuments, planId]);
+    setDocuments(initialDocuments);
+  }, [initialDocuments]);
 
   useEffect(() => {
-    if (!allowBrowserDocuments) {
+    if (!listUrl) {
+      setIsLoading(false);
       return;
     }
 
-    // TODO: production needs secure server-side document storage and malware scanning.
-    // This demo intentionally stores only file metadata in localStorage, never file contents.
-    window.localStorage.setItem(getStorageKey(planId), JSON.stringify(storedDocuments));
-  }, [allowBrowserDocuments, planId, storedDocuments]);
+    const nextListUrl = listUrl;
+    let isCancelled = false;
 
-  const documents = useMemo(() => {
-    const uploaded = storedDocuments.map((item) => ({
-      id: item.id,
-      isStored: true,
-      name: item.name,
-      sizeLabel: formatSize(item.size),
-      status: item.status,
-      typeLabel: formatTypeLabel(item.type, item.name),
-      uploadedBy: item.uploadedBy
-    }));
+    async function loadDocuments() {
+      setIsLoading(true);
+      setErrorMessage(null);
 
-    const savedAttachments = attachments
-      .filter((attachment) => !isPlaceholderAttachment(attachment))
-      .map((attachment) => ({
-        id: attachment.id,
-        isStored: false,
-        name: attachment.name,
-        sizeLabel: "Shared",
-        status: "Approved" as ReviewStatus,
-        typeLabel: formatTypeLabel("", attachment.name),
-        uploadedBy: "KZero"
-      }));
+      try {
+        const response = await fetch(nextListUrl, {
+          cache: "no-store"
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | {
+              documents?: PortalDocumentRecord[];
+              error?: string;
+            }
+          | null;
 
-    return [...(allowBrowserDocuments ? uploaded : []), ...savedAttachments] satisfies DocumentItem[];
-  }, [allowBrowserDocuments, attachments, storedDocuments]);
+        if (!response.ok || !payload?.documents) {
+          throw new Error(payload?.error ?? "Could not load documents.");
+        }
 
-  function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
+        if (!isCancelled) {
+          setDocuments(payload.documents);
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setDocuments(initialDocuments);
+          setErrorMessage(error instanceof Error ? error.message : "Could not load documents.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadDocuments();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [initialDocuments, listUrl]);
+
+  const acceptedTypesLabel = useMemo(
+    () => `Accepted: PDF, Word, spreadsheet, TXT, PNG, JPG, JPEG, and WEBP files up to ${Math.round(MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024))} MB each.`,
+    []
+  );
+
+  async function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
     const selectedFiles = Array.from(event.target.files ?? []);
 
-    if (selectedFiles.length === 0) {
+    if (!uploadUrl || selectedFiles.length === 0) {
+      event.target.value = "";
       return;
     }
 
-    const uploadedAt = new Intl.DateTimeFormat("en-US", {
-      day: "numeric",
-      month: "short"
-    }).format(new Date());
+    const nextUploadUrl = uploadUrl;
+    setIsUploading(true);
+    setErrorMessage(null);
 
-    setStoredDocuments((current) => [
-      ...selectedFiles.map((file) => ({
-        id: `${file.name}-${file.size}-${Date.now()}`,
-        name: file.name,
-        size: file.size,
-        status: "Submitted" as ReviewStatus,
-        type: file.type || "application/octet-stream",
-        uploadedAt,
-        uploadedBy: "MSP Admin"
-      })),
-      ...current
-    ]);
+    try {
+      const formData = new FormData();
 
-    event.target.value = "";
-  }
+      selectedFiles.forEach((file) => {
+        formData.append("files", file);
+      });
 
-  function updateDocumentStatus(id: string, status: ReviewStatus) {
-    setStoredDocuments((current) =>
-      current.map((item) => (item.id === id ? { ...item, status } : item))
-    );
+      const response = await fetch(nextUploadUrl, {
+        body: formData,
+        method: "POST"
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            documents?: PortalDocumentRecord[];
+            error?: string;
+          }
+        | null;
+
+      if (!response.ok || !payload?.documents) {
+        throw new Error(payload?.error ?? "Could not upload the selected documents.");
+      }
+
+      setDocuments((current) => [...payload.documents!, ...current]);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not upload the selected documents.");
+    } finally {
+      setIsUploading(false);
+      event.target.value = "";
+    }
   }
 
   return (
     <Card className="border-white/10 bg-[#101a2d] p-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-          <FileText className="h-4 w-4" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+            <FileText className="h-4 w-4" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">{title}</h3>
+            <p className="text-sm text-slate-300">{subtitle ?? getSubtitle(planType)}</p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-lg font-semibold text-white">Documents for Review</h3>
-          <p className="text-sm text-slate-300">Share supporting files for rollout review.</p>
-        </div>
+
+        {canUpload && uploadUrl ? (
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <input
+              accept={DOCUMENT_UPLOAD_ACCEPT}
+              className="hidden"
+              multiple
+              onChange={handleFileSelection}
+              ref={inputRef}
+              type="file"
+            />
+            <Button className="h-10 px-4" disabled={isUploading} onClick={() => inputRef.current?.click()}>
+              <Upload className="mr-2 h-4 w-4" />
+              {isUploading ? "Uploading..." : "Upload Documents"}
+            </Button>
+            <p className="max-w-md text-xs text-slate-400">{acceptedTypesLabel}</p>
+          </div>
+        ) : null}
       </div>
 
-      {allowBrowserDocuments ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <input
-            accept=".pdf,.doc,.docx,.txt,image/*"
-            className="hidden"
-            multiple
-            onChange={handleFileSelection}
-            ref={inputRef}
-            type="file"
-          />
-          <Button className="h-10 px-4" onClick={() => inputRef.current?.click()}>
-            <Upload className="mr-2 h-4 w-4" />
-            Select documents
-          </Button>
-          <p className="text-xs text-slate-400">
-            Accepted: PDF, Word, text, and image files.
-          </p>
+      {errorMessage ? (
+        <div className="mt-4 rounded-[1.1rem] border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-sm text-amber-100">
+          {errorMessage}
         </div>
-      ) : (
-        <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-[#0a1424] px-4 py-3 text-sm text-slate-300">
-          <p className="font-medium text-white">Document upload is not configured yet.</p>
-          <p className="mt-1">Documents shared by your team or KZero Passwordless will appear here.</p>
-        </div>
-      )}
+      ) : null}
 
       <div className="mt-4 grid gap-3">
-        {documents.length === 0 ? (
-          <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-4 py-4">
-            <p className="text-base font-semibold text-white">No Documents Added</p>
-            <p className="mt-2 text-sm text-slate-400">
-              Documents shared by your team or KZero Passwordless will appear here.
-            </p>
+        {isLoading ? (
+          <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] px-4 py-4 text-sm text-slate-300">
+            Loading documents...
           </div>
         ) : null}
 
-        {documents.map((document) => (
-          <div key={document.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  {document.typeLabel === "Image" ? (
-                    <ImageIcon className="h-4 w-4 text-slate-400" />
-                  ) : (
-                    <FileText className="h-4 w-4 text-slate-400" />
-                  )}
-                  <p className="truncate font-medium text-white">{document.name}</p>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-300">
-                  <span>Type: {document.typeLabel}</span>
-                  <span>Size: {document.sizeLabel}</span>
-                  <span>Uploaded by: {document.uploadedBy}</span>
-                </div>
-              </div>
-              <Badge status={getStatusTone(document.status)}>{document.status}</Badge>
-            </div>
-
-            {document.isStored ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button className="h-8 px-3" onClick={() => updateDocumentStatus(document.id, "Submitted")} variant="outline">
-                  Mark submitted
-                </Button>
-                <Button className="h-8 px-3" onClick={() => updateDocumentStatus(document.id, "In review")} variant="outline">
-                  Mark in review
-                </Button>
-                <Button className="h-8 px-3" onClick={() => updateDocumentStatus(document.id, "Approved")} variant="outline">
-                  Approve
-                </Button>
-              </div>
-            ) : null}
+        {!isLoading && documents.length === 0 ? (
+          <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-4 py-4">
+            <p className="text-base font-semibold text-white">{emptyStateTitle}</p>
+            <p className="mt-2 text-sm text-slate-400">{getEmptyStateBody(planType)}</p>
           </div>
-        ))}
+        ) : null}
+
+        {!isLoading
+          ? documents.map((document) => (
+              <div key={document.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      {document.fileType.toLowerCase().includes("image") ? (
+                        <ImageIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                      ) : (
+                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                      )}
+                      <p className="truncate font-medium text-white">{document.fileName}</p>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-300">
+                      <span>Type: {document.fileType}</span>
+                      <span>Size: {formatDocumentSize(document.fileSize)}</span>
+                      <span>Uploaded: {formatUploadedDate(document.createdAt)}</span>
+                      {document.uploadedByName ? <span>Uploaded by: {document.uploadedByName}</span> : null}
+                      {document.uploadedByRole ? <span>Role: {document.uploadedByRole}</span> : null}
+                    </div>
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2 self-start">
+                    <Badge status={getStatusTone(document.status)}>{formatStatusLabel(document.status)}</Badge>
+                    {document.storageUrl ? (
+                      <a href={document.storageUrl} rel="noreferrer" target="_blank">
+                        <Button className="h-8 px-3" variant="outline">
+                          <Download className="mr-2 h-3.5 w-3.5" />
+                          Open / Download
+                        </Button>
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))
+          : null}
       </div>
     </Card>
   );
