@@ -3,6 +3,9 @@ import { requirePortalUser } from "@/lib/auth";
 import { listOnboardingDocuments, uploadOnboardingDocuments } from "@/lib/onboarding-documents";
 import { isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ planId: string }> }

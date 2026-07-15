@@ -3,6 +3,9 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { markAdminNotificationRead } from "@/lib/admin-notifications";
 import { isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function PATCH(
   _request: NextRequest,
   { params }: { params: Promise<{ notificationId: string }> }

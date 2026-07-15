@@ -6,6 +6,9 @@ import {
 } from "@/lib/msp-persistence";
 import { findTenantByInput } from "@/lib/tenant-routing";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
   const lookup = request.nextUrl.searchParams.get("lookup")?.trim() || "";
 

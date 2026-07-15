@@ -53,8 +53,26 @@ function createPrismaClient() {
   });
 }
 
+export function getPrisma() {
+  if (globalForPrisma.prisma) {
+    return globalForPrisma.prisma;
+  }
+
+  const client = createPrismaClient();
+  globalForPrisma.prisma = client;
+  return client;
+}
+
 // Reuse one Prisma client per runtime process to avoid opening fresh database
 // connections on every import, hot reload, or warm serverless invocation.
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
-
-globalForPrisma.prisma = prisma;
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, property) {
+    const client = getPrisma();
+    const value = Reflect.get(client, property);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+  set(_target, property, newValue) {
+    const client = getPrisma();
+    return Reflect.set(client, property, newValue);
+  }
+});

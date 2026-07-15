@@ -3,6 +3,9 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { getAdminPortalAccessByMspId, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 import { writePortalSession } from "@/lib/oidc-session";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ mspId: string }> }

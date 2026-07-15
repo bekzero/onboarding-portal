@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { findPortalLookupMatch, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 import { writePortalSession } from "@/lib/oidc-session";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 function redirectToStart(request: NextRequest, error: string) {
   const targetUrl = new URL("/start", request.url);
   targetUrl.searchParams.set("error", error);

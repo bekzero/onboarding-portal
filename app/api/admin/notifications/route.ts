@@ -3,6 +3,9 @@ import { requireAdminSession } from "@/lib/admin-auth";
 import { getAdminNotifications } from "@/lib/admin-notifications";
 import { isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   await requireAdminSession();
 
