@@ -43,7 +43,7 @@ const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database m
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
-type DashboardSortColumn = "msp" | "gmm" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
+type DashboardSortColumn = "msp" | "customer" | "gmm" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
 type DashboardSortDirection = "asc" | "desc";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
@@ -884,6 +884,10 @@ function getSortableValue(item: DashboardCase, column: DashboardSortColumn) {
     return item.mspName.toLowerCase();
   }
 
+  if (column === "customer") {
+    return (item.customerName ?? "").toLowerCase();
+  }
+
   if (column === "gmm") {
     return item.isGmmPartner ? 1 : 0;
   }
@@ -1260,18 +1264,25 @@ function DashboardTable({
   title: string;
 }) {
   const sortableColumns: Array<{ key: DashboardSortColumn; label: string }> = [
-    { key: "msp", label: "MSP" },
+    { key: "msp", label: "MSP" }
+  ];
+
+  if (showCustomerColumn) {
+    sortableColumns.push({ key: "customer", label: "Customer" });
+  }
+
+  if (showGmmColumn) {
+    sortableColumns.push({ key: "gmm", label: "GMM" });
+  }
+
+  sortableColumns.push(
     { key: "stage", label: "Stage" },
     { key: "progress", label: "Progress" },
     { key: "waiting_on", label: "Waiting On" },
     { key: "apps", label: "Apps" },
     { key: "enrolled", label: "Enrolled" },
     { key: "updated", label: "Updated" }
-  ];
-
-  if (showGmmColumn) {
-    sortableColumns.splice(1, 0, { key: "gmm", label: "GMM" });
-  }
+  );
 
   function renderSortHeader(column: DashboardSortColumn, label: string) {
     const isActive = sortColumn === column && !!sortDirection;
@@ -1315,17 +1326,17 @@ function DashboardTable({
           {items.length === 0 ? (
             <div className="px-4 py-6 text-sm text-slate-400">{emptyLabel}</div>
           ) : (
-            <table className="min-w-[1080px] w-full table-fixed">
+            <table className={`${showCustomerColumn ? "min-w-[1120px]" : "min-w-[1080px]"} w-full table-fixed`}>
               <colgroup>
-                <col className={showCustomerColumn ? "w-[20%]" : "w-[25%]"} />
-                {showCustomerColumn ? <col className="w-[18%]" /> : null}
+                <col className={showCustomerColumn ? "w-[19%]" : "w-[25%]"} />
+                {showCustomerColumn ? <col className="w-[17%]" /> : null}
                 {showGmmColumn ? <col className="w-[8%]" /> : null}
-                <col className={showCustomerColumn ? "w-[13%]" : "w-[14%]"} />
-                <col className="w-[15%]" />
-                <col className={showCustomerColumn ? "w-[13%]" : "w-[14%]"} />
-                <col className="w-[7%]" />
-                <col className="w-[9%]" />
-                <col className="w-[8%]" />
+                <col className={showCustomerColumn ? "w-[15%]" : "w-[14%]"} />
+                <col className={showCustomerColumn ? "w-[15%]" : "w-[15%]"} />
+                <col className={showCustomerColumn ? "w-[14%]" : "w-[14%]"} />
+                <col className="w-[6%]" />
+                <col className={showCustomerColumn ? "w-[9%]" : "w-[9%]"} />
+                <col className={showCustomerColumn ? "w-[9%]" : "w-[8%]"} />
               </colgroup>
               <thead>
                 <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
@@ -1348,12 +1359,16 @@ function DashboardTable({
                       </div>
                     </td>
                     {showCustomerColumn ? (
-                      <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.customerName ?? "Not provided"}</td>
+                      <td className="px-4 py-3 align-middle text-sm text-slate-300">
+                        <span className="block truncate">{item.customerName ?? "Not provided"}</span>
+                      </td>
                     ) : null}
                     {showGmmColumn ? (
                       <td className="px-4 py-3 align-middle text-sm text-slate-300">{getGmmLabel(item.isGmmPartner)}</td>
                     ) : null}
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.currentStage}</td>
+                    <td className="px-4 py-3 align-middle text-sm text-slate-300">
+                      <span className="block truncate">{item.currentStage}</span>
+                    </td>
                     <td className="px-4 py-3 align-middle">
                       <div className="min-w-[110px]">
                         <p className="text-sm font-medium text-white">{item.progress}%</p>
