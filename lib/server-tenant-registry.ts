@@ -1,6 +1,7 @@
 import { onboardingCases } from "@/lib/mock-data";
 import {
   decryptOidcClientSecret,
+  findPortalLookupMatch,
   getMspWithOidcByLookupServer,
   getMspWithOidcByPlanIdServer,
   isDatabasePersistenceConfigured
@@ -10,11 +11,26 @@ import { normalizeTenantName } from "@/lib/tenant-routing";
 export type ServerTenantOidcConfig = {
   clientId?: string;
   clientSecret?: string;
+  customerName?: string;
   mspName: string;
   mspSlug: string;
   planId: string;
+  planType?: "nfr" | "customer";
   tenantName: string;
 };
+
+export type ServerTenantOidcLookupResult =
+  | {
+      config: ServerTenantOidcConfig;
+      status: "found";
+    }
+  | {
+      matches: Array<Pick<ServerTenantOidcConfig, "customerName" | "mspName" | "planId" | "planType" | "tenantName">>;
+      status: "ambiguous";
+    }
+  | {
+      status: "not_found";
+    };
 
 function getBaseUrl() {
   return process.env.KZERO_OIDC_BASE_URL?.trim() || "https://ca.auth.kzero.com";
@@ -49,36 +65,61 @@ function buildServerOidcRegistry() {
     .map((item) => ({
       clientId: process.env[getClientIdEnvKey(item.mspSlug)]?.trim() || item.oidcClientId,
       clientSecret: process.env[getClientSecretEnvKey(item.mspSlug)]?.trim(),
+      customerName: item.customerName,
       mspName: item.mspName,
       mspSlug: item.mspSlug,
       planId: item.onboardingPlanId,
+      planType: item.startingPlanType,
       tenantName: item.tenantName as string
     }));
 }
 
-async function getDatabaseTenantOidcConfigByLookup(input: string) {
+async function getDatabaseTenantOidcConfigByLookup(input: string): Promise<ServerTenantOidcLookupResult> {
   if (!isDatabasePersistenceConfigured()) {
-    return null;
+    return { status: "not_found" };
+  }
+
+  const lookupResult = await findPortalLookupMatch(input).catch(() => ({ status: "not_found" } as const));
+  if (lookupResult.status !== "found") {
+    if (lookupResult.status === "ambiguous") {
+      return {
+        matches: lookupResult.matches.map((match) => ({
+          customerName: match.customerName,
+          mspName: match.mspName,
+          planId: match.planId,
+          planType: match.planType,
+          tenantName: match.tenantRealm ?? ""
+        })),
+        status: "ambiguous"
+      };
+    }
+
+    return { status: "not_found" };
   }
 
   const msp = await getMspWithOidcByLookupServer(input).catch(() => null);
   if (!msp?.oidcConfig) {
-    return null;
+    return { status: "not_found" } as const;
   }
 
   const clientSecret = await decryptOidcClientSecret(msp.id).catch(() => null);
   if (!clientSecret) {
-    return null;
+    return { status: "not_found" } as const;
   }
 
   return {
-    clientId: msp.oidcConfig.clientId,
-    clientSecret,
-    mspName: msp.name,
-    mspSlug: msp.slug,
-    planId: msp.onboardingPlans[0]?.planId ?? `${msp.slug}-nfr`,
-    tenantName: msp.oidcConfig.tenantRealm
-  } satisfies ServerTenantOidcConfig;
+    config: {
+      clientId: msp.oidcConfig.clientId,
+      clientSecret,
+      customerName: lookupResult.match.customerName,
+      mspName: msp.name,
+      mspSlug: msp.slug,
+      planId: lookupResult.match.planId,
+      planType: lookupResult.match.planType,
+      tenantName: msp.oidcConfig.tenantRealm
+    } satisfies ServerTenantOidcConfig,
+    status: "found"
+  } satisfies ServerTenantOidcLookupResult;
 }
 
 async function getDatabaseTenantOidcConfigByPlanId(planId: string) {
@@ -108,20 +149,45 @@ async function getDatabaseTenantOidcConfigByPlanId(planId: string) {
 
 function matchesLookup(config: ServerTenantOidcConfig, input: string) {
   const normalizedInput = normalizeTenantName(input);
-  const candidates = [config.tenantName, config.mspName, config.mspSlug];
+  const candidates =
+    config.planType === "customer"
+      ? [config.customerName, `${config.mspName} - ${config.customerName}`, config.tenantName, config.planId, config.mspSlug]
+      : [config.tenantName, config.planId, config.mspSlug, config.mspName];
   return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedInput);
 }
 
 export async function findServerTenantOidcConfigByInput(input?: string | null) {
   if (!input?.trim()) {
-    return null;
+    return { status: "not_found" } satisfies ServerTenantOidcLookupResult;
   }
 
   if (isDatabasePersistenceConfigured()) {
     return getDatabaseTenantOidcConfigByLookup(input);
   }
 
-  return buildServerOidcRegistry().find((config) => matchesLookup(config, input)) ?? null;
+  const matches = buildServerOidcRegistry().filter((config) => matchesLookup(config, input));
+
+  if (matches.length === 0) {
+    return { status: "not_found" } satisfies ServerTenantOidcLookupResult;
+  }
+
+  if (matches.length > 1) {
+    return {
+      matches: matches.map((match) => ({
+        customerName: match.customerName,
+        mspName: match.mspName,
+        planId: match.planId,
+        planType: match.planType,
+        tenantName: match.tenantName
+      })),
+      status: "ambiguous"
+    } satisfies ServerTenantOidcLookupResult;
+  }
+
+  return {
+    config: matches[0],
+    status: "found"
+  } satisfies ServerTenantOidcLookupResult;
 }
 
 export async function findServerTenantOidcConfigByPlanId(planId?: string | null) {

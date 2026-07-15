@@ -388,16 +388,44 @@ function hasSavedFirstCustomerPilotDetails(pilot: FirstCustomerPilot | null | un
 export type PublicMspRecord = {
   accessMode: AccessMode;
   assignedSalesEngineer: string;
+  customerName?: string;
   createdAt: Date;
   enrollmentDate: Date;
   id: string;
   isGmmPartner: boolean;
   name: string;
+  planId?: string;
+  planType?: PlanBundle["plan"]["tenantType"];
   primaryContactEmail: string;
   slug: string;
   tenantRealm?: string;
   updatedAt: Date;
 };
+
+export type PortalLookupMatch = {
+  accessMode: AccessMode;
+  customerName?: string;
+  displayName: string;
+  id: string;
+  mspName: string;
+  planId: string;
+  planType: PlanBundle["plan"]["tenantType"];
+  slug: string;
+  tenantRealm?: string;
+};
+
+export type PortalLookupResult =
+  | {
+      match: PortalLookupMatch;
+      status: "found";
+    }
+  | {
+      matches: PortalLookupMatch[];
+      status: "ambiguous";
+    }
+  | {
+      status: "not_found";
+    };
 
 export type PublicOidcConfig = {
   clientId: string;
@@ -519,33 +547,20 @@ function ensureDatabaseConfigured() {
 
 function toPublicMspRecord(
   msp: Prisma.MspGetPayload<{
-    select: {
-      accessMode: true;
-      assignedSalesEngineer: true;
-      createdAt: true;
-      enrollmentDate: true;
-      id: true;
-      isGmmPartner: true;
-      name: true;
-      primaryContactEmail: true;
-      slug: true;
-      updatedAt: true;
-      oidcConfig: {
-        select: {
-          tenantRealm: true;
-        };
-      };
-    };
+    select: typeof mspWithDashboardSelection;
   }>
 ): PublicMspRecord {
   return {
     accessMode: msp.accessMode,
     assignedSalesEngineer: msp.assignedSalesEngineer,
+    customerName: msp.onboardingPlans[0]?.customerName ?? undefined,
     createdAt: msp.createdAt,
     enrollmentDate: msp.enrollmentDate,
     id: msp.id,
     isGmmPartner: msp.isGmmPartner,
     name: msp.name,
+    planId: msp.onboardingPlans[0]?.planId,
+    planType: msp.onboardingPlans[0]?.tenantType as PlanBundle["plan"]["tenantType"] | undefined,
     primaryContactEmail: msp.primaryContactEmail,
     slug: msp.slug,
     tenantRealm: msp.oidcConfig?.tenantRealm,
@@ -721,9 +736,13 @@ async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string)
 export async function createMsp(input: CreateMspInput) {
   ensureDatabaseConfigured();
 
-  const slug = input.slug?.trim() || normalizeTenantName(input.name);
   const planType = input.planType === "customer" ? "customer" : "nfr";
   const customerName = input.customerName?.trim() || null;
+  const slug =
+    input.slug?.trim() ||
+    (planType === "customer" && customerName
+      ? `${normalizeTenantName(input.name)}-${normalizeTenantName(customerName)}`
+      : normalizeTenantName(input.name));
   if (!slug) {
     throw new Error("MSP slug is required.");
   }
@@ -1476,22 +1495,17 @@ export async function getMspByLookup(lookupValue: string) {
     return null;
   }
 
-  const msps = await prisma.msp.findMany({
+  const result = await findPortalLookupMatch(lookupValue);
+  if (result.status !== "found") {
+    return null;
+  }
+
+  const msp = await prisma.msp.findUnique({
+    where: { id: result.match.id },
     select: mspWithDashboardSelection
   });
 
-  const matches = msps.filter((msp) => {
-    const candidates = [msp.slug, msp.name, msp.oidcConfig?.tenantRealm];
-    return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedLookupValue);
-  });
-
-  const match = matches.sort((left, right) => {
-    const leftType = left.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
-    const rightType = right.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
-    return leftType - rightType;
-  })[0];
-
-  return match ? toPublicMspRecord(match) : null;
+  return msp ? toPublicMspRecord(msp) : null;
 }
 
 export async function getAdminDashboardCases() {
@@ -1564,25 +1578,108 @@ export async function getOidcConfigForMspServer(mspId: string) {
 export async function getMspWithOidcByLookupServer(lookupValue: string) {
   ensureDatabaseConfigured();
 
+  const result = await findPortalLookupMatch(lookupValue);
+  if (result.status !== "found") {
+    return null;
+  }
+
+  return prisma.msp.findUnique({
+    where: { id: result.match.id },
+    select: mspWithDashboardSelection
+  });
+}
+
+function buildPortalLookupCandidates(msp: Prisma.MspGetPayload<{ select: typeof mspWithDashboardSelection }>) {
+  const plan = msp.onboardingPlans[0];
+  const planType = plan?.tenantType === "customer" ? "customer" : "nfr";
+  const customerName = plan?.customerName?.trim();
+  const combinedCustomerLabel = customerName ? `${msp.name} - ${customerName}` : "";
+
+  if (planType === "customer") {
+    return [
+      { priority: 0, value: customerName },
+      { priority: 1, value: combinedCustomerLabel },
+      { priority: 2, value: msp.oidcConfig?.tenantRealm },
+      { priority: 3, value: plan?.planId },
+      { priority: 4, value: msp.slug }
+    ];
+  }
+
+  return [
+    { priority: 2, value: msp.oidcConfig?.tenantRealm },
+    { priority: 3, value: plan?.planId },
+    { priority: 4, value: msp.slug },
+    { priority: 5, value: msp.name }
+  ];
+}
+
+function toPortalLookupMatch(msp: Prisma.MspGetPayload<{ select: typeof mspWithDashboardSelection }>): PortalLookupMatch {
+  const plan = msp.onboardingPlans[0];
+  const planType = plan?.tenantType === "customer" ? "customer" : "nfr";
+  const customerName = plan?.customerName?.trim() || undefined;
+
+  return {
+    accessMode: msp.accessMode,
+    customerName,
+    displayName: planType === "customer" ? customerName ?? msp.name : msp.name,
+    id: msp.id,
+    mspName: msp.name,
+    planId: plan?.planId ?? `${msp.slug}-${planType}`,
+    planType,
+    slug: msp.slug,
+    tenantRealm: msp.oidcConfig?.tenantRealm
+  };
+}
+
+export async function findPortalLookupMatch(lookupValue: string): Promise<PortalLookupResult> {
+  ensureDatabaseConfigured();
+
   const normalizedLookupValue = normalizeTenantName(lookupValue);
   if (!normalizedLookupValue) {
-    return null;
+    return { status: "not_found" };
   }
 
   const msps = await prisma.msp.findMany({
     select: mspWithDashboardSelection
   });
 
-  const matches = msps.filter((msp) => {
-      const candidates = [msp.slug, msp.name, msp.oidcConfig?.tenantRealm];
-      return candidates.some((candidate) => normalizeTenantName(candidate) === normalizedLookupValue);
-    });
+  const rankedMatches: Array<{ match: PortalLookupMatch; priority: number }> = msps
+    .map((msp) => {
+      const matchPriority = buildPortalLookupCandidates(msp)
+        .filter((candidate) => normalizeTenantName(candidate.value) === normalizedLookupValue)
+        .sort((left, right) => left.priority - right.priority)[0];
 
-  return matches.sort((left, right) => {
-    const leftType = left.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
-    const rightType = right.onboardingPlans[0]?.tenantType === "customer" ? 1 : 0;
-    return leftType - rightType;
-  })[0] ?? null;
+      if (!matchPriority) {
+        return null;
+      }
+
+      return {
+        match: toPortalLookupMatch(msp),
+        priority: matchPriority.priority
+      };
+    })
+    .filter((item) => item !== null);
+
+  if (rankedMatches.length === 0) {
+    return { status: "not_found" };
+  }
+
+  const bestPriority = Math.min(...rankedMatches.map((item) => item.priority));
+  const bestMatches = rankedMatches
+    .filter((item) => item.priority === bestPriority)
+    .map((item) => item.match);
+
+  if (bestMatches.length > 1) {
+    return {
+      matches: bestMatches.sort((left, right) => left.displayName.localeCompare(right.displayName)),
+      status: "ambiguous"
+    };
+  }
+
+  return {
+    match: bestMatches[0],
+    status: "found"
+  };
 }
 
 export async function getMspWithOidcByPlanIdServer(planId: string) {

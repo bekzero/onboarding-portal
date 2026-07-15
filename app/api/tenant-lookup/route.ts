@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMspByLookup, getOidcConfigForMsp, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
+import {
+  findPortalLookupMatch,
+  getOidcConfigForMsp,
+  isDatabasePersistenceConfigured
+} from "@/lib/msp-persistence";
 import { findTenantByInput } from "@/lib/tenant-routing";
 
 export async function GET(request: NextRequest) {
@@ -10,18 +14,42 @@ export async function GET(request: NextRequest) {
   }
 
   if (isDatabasePersistenceConfigured()) {
-    const msp = await getMspByLookup(lookup).catch(() => null);
+    const lookupResult = await findPortalLookupMatch(lookup).catch(() => ({ status: "not_found" } as const));
 
-    if (msp) {
-      const oidcConfig = msp.accessMode === "oidc" ? await getOidcConfigForMsp(msp.id).catch(() => null) : null;
+    if (lookupResult.status === "ambiguous") {
+      return NextResponse.json(
+        {
+          ambiguous: true,
+          found: false,
+          matches: lookupResult.matches.map((match) => ({
+            customerName: match.customerName,
+            displayName: match.displayName,
+            mspName: match.mspName,
+            planId: match.planId,
+            planType: match.planType
+          }))
+        },
+        { status: 409 }
+      );
+    }
+
+    if (lookupResult.status === "found") {
+      const oidcConfig =
+        lookupResult.match.accessMode === "oidc"
+          ? await getOidcConfigForMsp(lookupResult.match.id).catch(() => null)
+          : null;
       return NextResponse.json({
         found: true,
         msp: {
-          accessMode: msp.accessMode,
+          accessMode: lookupResult.match.accessMode,
+          customerName: lookupResult.match.customerName,
           destination: "portal",
-          name: msp.name,
-          planId: `${msp.slug}-nfr`,
-          slug: msp.slug,
+          displayName: lookupResult.match.displayName,
+          mspName: lookupResult.match.mspName,
+          name: lookupResult.match.mspName,
+          planId: lookupResult.match.planId,
+          planType: lookupResult.match.planType,
+          slug: lookupResult.match.slug,
           tenantRealm: oidcConfig?.tenantRealm
         }
       });
@@ -31,19 +59,40 @@ export async function GET(request: NextRequest) {
   }
 
   const fallbackTenant = findTenantByInput(lookup);
-  if (!fallbackTenant) {
+  if (!fallbackTenant || fallbackTenant.status === "not_found") {
     return NextResponse.json({ found: false }, { status: 404 });
+  }
+
+  if (fallbackTenant.status === "ambiguous") {
+    return NextResponse.json(
+      {
+        ambiguous: true,
+        found: false,
+        matches: fallbackTenant.matches.map((match) => ({
+          customerName: match.customerName,
+          displayName: match.displayName,
+          mspName: match.mspName,
+          planId: match.planId,
+          planType: match.planType
+        }))
+      },
+      { status: 409 }
+    );
   }
 
   return NextResponse.json({
     found: true,
     msp: {
-      accessMode: fallbackTenant.accessMode,
+      accessMode: fallbackTenant.match.accessMode,
+      customerName: fallbackTenant.match.customerName,
       destination: "demo",
-      name: fallbackTenant.displayName,
-      planId: fallbackTenant.planId,
-      slug: fallbackTenant.mspSlug,
-      tenantRealm: fallbackTenant.tenantName
+      displayName: fallbackTenant.match.displayName,
+      mspName: fallbackTenant.match.mspName,
+      name: fallbackTenant.match.mspName,
+      planId: fallbackTenant.match.planId,
+      planType: fallbackTenant.match.planType,
+      slug: fallbackTenant.match.mspSlug,
+      tenantRealm: fallbackTenant.match.tenantName
     }
   });
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getMspByLookup, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
+import { findPortalLookupMatch, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 import { writePortalSession } from "@/lib/oidc-session";
 
 function redirectToStart(request: NextRequest, error: string) {
@@ -18,21 +18,24 @@ export async function GET(request: NextRequest) {
     return redirectToStart(request, "not_found");
   }
 
-  const msp = await getMspByLookup(lookup).catch(() => null);
+  const lookupResult = await findPortalLookupMatch(lookup).catch(() => ({ status: "not_found" } as const));
 
-  if (!msp || msp.accessMode !== "temporary") {
+  if (lookupResult.status === "ambiguous") {
+    return redirectToStart(request, "ambiguous");
+  }
+
+  if (lookupResult.status !== "found" || lookupResult.match.accessMode !== "temporary") {
     return redirectToStart(request, "not_found");
   }
 
-  const planId = `${msp.slug}-nfr`;
   const sessionWritten = await writePortalSession({
-    planId,
-    tenantName: msp.tenantRealm ?? msp.name
+    planId: lookupResult.match.planId,
+    tenantName: lookupResult.match.tenantRealm ?? lookupResult.match.displayName
   });
 
   if (!sessionWritten) {
     return redirectToStart(request, "session_required");
   }
 
-  return NextResponse.redirect(new URL(`/portal/${planId}`, request.url));
+  return NextResponse.redirect(new URL(`/portal/${lookupResult.match.planId}`, request.url));
 }

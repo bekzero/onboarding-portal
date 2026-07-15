@@ -17,11 +17,17 @@ function redirectToStart(request: NextRequest, error: string) {
 
 export async function GET(request: NextRequest) {
   const lookupValue = request.nextUrl.searchParams.get("tenant")?.trim() || "";
-  const tenantConfig = await findServerTenantOidcConfigByInput(lookupValue);
+  const tenantLookup = await findServerTenantOidcConfigByInput(lookupValue);
 
-  if (!lookupValue || !tenantConfig) {
+  if (tenantLookup.status === "ambiguous") {
+    return redirectToStart(request, "ambiguous");
+  }
+
+  if (!lookupValue || tenantLookup.status !== "found") {
     return redirectToStart(request, "not_found");
   }
+
+  const tenantConfig = tenantLookup.config;
 
   if (!tenantConfig.clientId || !process.env.AUTH_SECRET) {
     return redirectToStart(request, "oidc_not_configured");

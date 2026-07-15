@@ -30,6 +30,7 @@ export default function StartPage() {
     }
 
     const messages: Record<string, string> = {
+      ambiguous: "We found more than one onboarding case for that lookup. Enter the customer name for Customer Plan access, or use the exact MSP or tenant name for the NFR Plan.",
       not_found: "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer.",
       oidc_not_configured: "KZero sign-in is not fully configured for this onboarding portal yet. Contact your KZero Sales Engineer for help.",
       plan_not_found: "We could not open that onboarding portal. Confirm the plan is enrolled and try again.",
@@ -51,18 +52,42 @@ export default function StartPage() {
         cache: "no-store"
       });
 
-      if (!response.ok) {
-        throw new Error("lookup_failed");
-      }
-
       const payload = (await response.json()) as {
+        ambiguous?: boolean;
         found: boolean;
+        matches?: Array<{
+          customerName?: string;
+          displayName: string;
+          mspName: string;
+          planId: string;
+          planType: "nfr" | "customer";
+        }>;
         msp?: {
           accessMode: "temporary" | "oidc";
           destination?: "demo" | "portal";
           planId: string;
         };
       };
+
+      if (response.status === 409 && payload.ambiguous) {
+        const labels = payload.matches?.map((match) => {
+          if (match.planType === "customer") {
+            return `${match.displayName} (managed by ${match.mspName})`;
+          }
+
+          return `${match.mspName} (NFR Plan)`;
+        }) ?? [];
+
+        throw new Error(
+          labels.length > 0
+            ? `Multiple onboarding cases matched that lookup: ${labels.join(", ")}. Enter the customer name for Customer Plan access or the exact MSP name for the NFR Plan.`
+            : "We found more than one onboarding case for that lookup. Enter the customer name for Customer Plan access, or use the exact MSP or tenant name for the NFR Plan."
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error("lookup_failed");
+      }
 
       if (!payload.found || !payload.msp) {
         throw new Error("not_found");
@@ -81,9 +106,11 @@ export default function StartPage() {
       }
 
       window.location.assign(`/api/portal/temporary-start?lookup=${encodeURIComponent(lookupValue)}`);
-    } catch {
+    } catch (error) {
       setError(
-        "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer."
+        error instanceof Error && error.message && error.message !== "lookup_failed" && error.message !== "not_found"
+          ? error.message
+          : "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer."
       );
     }
   }
@@ -120,7 +147,7 @@ export default function StartPage() {
                   Find Your KZero Passwordless Onboarding Portal
                 </h1>
                 <p className="max-w-3xl text-base leading-7 text-blue-100/78 md:text-lg">
-                  Enter the MSP or tenant name provided by your KZero Passwordless Sales Engineer.
+                  Enter the MSP name for an NFR Plan, or the customer name for a Customer Plan, exactly as provided by your KZero Passwordless Sales Engineer.
                 </p>
               </div>
             </div>
@@ -130,19 +157,19 @@ export default function StartPage() {
                 <div>
                   <p className="text-lg font-semibold text-white">Continue To Your Workspace</p>
                   <p className="mt-1 text-sm leading-6 text-slate-300">
-                    Use the exact MSP or tenant name shared with your team.
+                    Use the exact MSP, customer, or tenant name shared with your team.
                   </p>
                 </div>
                 <div className="grid gap-3">
                   <label className="grid gap-2 text-sm text-blue-100/82">
-                    <span>MSP or Tenant Name</span>
+                    <span>MSP, Customer, or Tenant Name</span>
                     <input
                       className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none placeholder:text-slate-500"
                       onChange={(event) => {
                         setTenantName(event.target.value);
                         setError("");
                       }}
-                      placeholder="Enter your tenant name"
+                      placeholder="Enter your MSP, customer, or tenant name"
                       value={tenantName}
                     />
                   </label>
