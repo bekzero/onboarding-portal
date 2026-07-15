@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePortalUser } from "@/lib/auth";
+import { requirePortalUserOrAdmin } from "@/lib/auth";
 import { completePortalTask, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ planId: string; taskId: string }> }
 ) {
-  await requirePortalUser();
+  await requirePortalUserOrAdmin();
 
   if (!isDatabasePersistenceConfigured()) {
     return NextResponse.json({ error: "Server-side onboarding persistence is not configured." }, { status: 503 });

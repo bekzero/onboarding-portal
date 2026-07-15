@@ -84,9 +84,7 @@ export async function listOnboardingDocuments(planId: string) {
     }
   });
 
-  return documents
-    .filter((document) => Boolean(document.storageUrl))
-    .map(toPortalDocumentRecord);
+  return documents.map(toPortalDocumentRecord);
 }
 
 export async function uploadOnboardingDocuments({

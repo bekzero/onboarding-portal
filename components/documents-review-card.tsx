@@ -12,6 +12,8 @@ import {
   type PortalDocumentRecord
 } from "@/lib/onboarding-document-config";
 
+const EMPTY_DOCUMENTS: PortalDocumentRecord[] = [];
+
 type DocumentsReviewCardProps = {
   canUpload?: boolean;
   emptyStateTitle?: string;
@@ -72,7 +74,7 @@ function getEmptyStateBody(planType: "nfr" | "customer") {
 export function DocumentsReviewCard({
   canUpload = false,
   emptyStateTitle = "No Documents Added",
-  initialDocuments = [],
+  initialDocuments = EMPTY_DOCUMENTS,
   listUrl,
   planType,
   subtitle,
@@ -84,10 +86,13 @@ export function DocumentsReviewCard({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(listUrl));
   const [isUploading, setIsUploading] = useState(false);
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
-    setDocuments(initialDocuments);
-  }, [initialDocuments]);
+    if (!listUrl) {
+      setDocuments(initialDocuments);
+    }
+  }, [initialDocuments, listUrl]);
 
   useEffect(() => {
     if (!listUrl) {
@@ -119,11 +124,11 @@ export function DocumentsReviewCard({
 
         if (!isCancelled) {
           setDocuments(payload.documents);
+          setErrorMessage(null);
         }
       } catch (error) {
         if (!isCancelled) {
-          setDocuments(initialDocuments);
-          setErrorMessage(error instanceof Error ? error.message : "Could not load documents.");
+          setErrorMessage("Documents could not be loaded right now.");
         }
       } finally {
         if (!isCancelled) {
@@ -137,7 +142,7 @@ export function DocumentsReviewCard({
     return () => {
       isCancelled = true;
     };
-  }, [initialDocuments, listUrl]);
+  }, [listUrl, refreshToken]);
 
   const acceptedTypesLabel = useMemo(
     () => `Accepted: PDF, Word, spreadsheet, TXT, PNG, JPG, JPEG, and WEBP files up to ${Math.round(MAX_DOCUMENT_SIZE_BYTES / (1024 * 1024))} MB each.`,
@@ -178,7 +183,7 @@ export function DocumentsReviewCard({
         throw new Error(payload?.error ?? "Could not upload the selected documents.");
       }
 
-      setDocuments((current) => [...payload.documents!, ...current]);
+      setRefreshToken((current) => current + 1);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Could not upload the selected documents.");
     } finally {

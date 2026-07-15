@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSession } from "@/lib/admin-auth";
 import { getAdminPortalAccessByMspId, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
-import { writePortalSession } from "@/lib/oidc-session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,22 +12,26 @@ export async function GET(
   await requireAdminSession();
 
   if (!isDatabasePersistenceConfigured()) {
+    const fallbackPlanId = request.nextUrl.searchParams.get("planId")?.trim();
+    if (fallbackPlanId) {
+      return NextResponse.redirect(new URL(`/portal/${fallbackPlanId}`, request.url));
+    }
+
     return NextResponse.redirect(new URL("/admin", request.url));
   }
 
   const { mspId } = await params;
-  const mspAccess = await getAdminPortalAccessByMspId(mspId).catch(() => null);
-
-  if (!mspAccess?.planId) {
-    return NextResponse.redirect(new URL("/admin", request.url));
-  }
-
-  const sessionWritten = await writePortalSession({
-    planId: mspAccess.planId,
-    tenantName: mspAccess.tenantName
+  const requestedPlanId = request.nextUrl.searchParams.get("planId")?.trim() || null;
+  const mspAccess = await getAdminPortalAccessByMspId(mspId, requestedPlanId).catch((error) => {
+    console.error("Could not resolve admin portal access.", error);
+    return null;
   });
 
-  if (!sessionWritten) {
+  if (!mspAccess?.planId && requestedPlanId) {
+    return NextResponse.redirect(new URL(`/portal/${requestedPlanId}`, request.url));
+  }
+
+  if (!mspAccess?.planId) {
     return NextResponse.redirect(new URL("/admin", request.url));
   }
 

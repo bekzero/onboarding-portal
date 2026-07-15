@@ -1620,7 +1620,10 @@ export function InternalDashboard({
   );
   const selectedCaseApps = selectedCase?.submittedApps ?? selectedCaseBundle?.apps ?? [];
   const selectedCaseComments = (selectedCaseBundle?.comments ?? []).filter((comment) => isMeaningfulAdminComment(comment.body));
-  const adminPortalOpenHref = selectedCase?.mspId ? `/api/admin/msps/${selectedCase.mspId}/open-portal` : null;
+  const adminPortalOpenHref =
+    selectedCase?.mspId
+      ? `/api/admin/msps/${selectedCase.mspId}/open-portal?planId=${encodeURIComponent(selectedCase.onboardingPlanId)}`
+      : null;
   const canOpenPortalAsAdmin = Boolean(selectedCase?.mspId && useServerData);
   const rollbackStageOptions = useMemo<RollbackStageOption[]>(() => {
     if (!selectedCaseBundle) {

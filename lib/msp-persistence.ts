@@ -1521,7 +1521,7 @@ export async function getAdminDashboardCases() {
   return msps.map(toAdminDashboardCase);
 }
 
-export async function getAdminPortalAccessByMspId(mspId: string) {
+export async function getAdminPortalAccessByMspId(mspId: string, requestedPlanId?: string | null) {
   ensureDatabaseConfigured();
 
   const msp = await prisma.msp.findUnique({
@@ -1535,8 +1535,7 @@ export async function getAdminPortalAccessByMspId(mspId: string) {
         },
         select: {
           planId: true
-        },
-        take: 1
+        }
       },
       oidcConfig: {
         select: {
@@ -1550,9 +1549,14 @@ export async function getAdminPortalAccessByMspId(mspId: string) {
     return null;
   }
 
+  const resolvedPlanId =
+    requestedPlanId?.trim() && msp.onboardingPlans.some((plan) => plan.planId === requestedPlanId.trim())
+      ? requestedPlanId.trim()
+      : msp.onboardingPlans[0]?.planId ?? null;
+
   return {
     id: msp.id,
-    planId: msp.onboardingPlans[0]?.planId ?? null,
+    planId: resolvedPlanId,
     tenantName: msp.oidcConfig?.tenantRealm ?? msp.name
   };
 }

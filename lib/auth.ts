@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { hasAdminSession } from "@/lib/admin-auth";
 import { users } from "@/lib/mock-data";
 import { readPortalOidcSession } from "@/lib/oidc-session";
 
@@ -103,6 +104,24 @@ export async function requirePortalUser() {
   }
 
   return sessionUser;
+}
+
+export async function requirePortalUserOrAdmin() {
+  const sessionUser = await getSessionUser("portal");
+
+  if (sessionUser) {
+    return sessionUser;
+  }
+
+  if (await hasAdminSession()) {
+    return {
+      name: "Admin",
+      email: null,
+      roles: ["admin"]
+    } satisfies SessionUser;
+  }
+
+  redirect("/start?error=session_required");
 }
 
 export async function requireInternalUser() {

@@ -16,12 +16,17 @@ export async function GET(
     return NextResponse.json({ error: "Server-side onboarding persistence is not configured." }, { status: 503 });
   }
 
-  const { planId } = await params;
-  const documents = await listOnboardingDocuments(planId);
+  try {
+    const { planId } = await params;
+    const documents = await listOnboardingDocuments(planId);
 
-  if (!documents) {
-    return NextResponse.json({ error: "Onboarding plan not found." }, { status: 404 });
+    if (!documents) {
+      return NextResponse.json({ error: "Onboarding plan not found." }, { status: 404 });
+    }
+
+    return NextResponse.json({ documents });
+  } catch (error) {
+    console.error("Could not load admin onboarding documents.", error);
+    return NextResponse.json({ error: "Documents could not be loaded right now." }, { status: 500 });
   }
-
-  return NextResponse.json({ documents });
 }
