@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/admin-auth";
+import { getAdminApiAuthError } from "@/lib/admin-auth";
 import { createMsp, getAdminDashboardCases, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  await requireAdminSession();
+  const authError = await getAdminApiAuthError();
+  if (authError) return authError;
 
   if (!isDatabasePersistenceConfigured()) {
     return NextResponse.json({ error: "DATABASE_URL is not configured." }, { status: 503 });
@@ -23,7 +24,8 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  await requireAdminSession();
+  const authError = await getAdminApiAuthError();
+  if (authError) return authError;
 
   try {
     const body = (await request.json()) as {

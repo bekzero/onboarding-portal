@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/admin-auth";
+import { getAdminApiAuthError } from "@/lib/admin-auth";
 import { markAdminNotificationRead } from "@/lib/admin-notifications";
 import { isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
@@ -10,7 +10,8 @@ export async function PATCH(
   _request: NextRequest,
   { params }: { params: Promise<{ notificationId: string }> }
 ) {
-  await requireAdminSession();
+  const authError = await getAdminApiAuthError();
+  if (authError) return authError;
 
   if (!isDatabasePersistenceConfigured()) {
     return NextResponse.json({ error: "DATABASE_URL is not configured." }, { status: 503 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/admin-auth";
+import { getAdminApiAuthError } from "@/lib/admin-auth";
 import { listOnboardingDocuments } from "@/lib/onboarding-documents";
 import { isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
@@ -10,7 +10,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ planId: string }> }
 ) {
-  await requireAdminSession();
+  const authError = await getAdminApiAuthError();
+  if (authError) return authError;
 
   if (!isDatabasePersistenceConfigured()) {
     return NextResponse.json({ error: "Server-side onboarding persistence is not configured." }, { status: 503 });

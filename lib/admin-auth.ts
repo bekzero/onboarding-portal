@@ -1,6 +1,10 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { NextResponse } from "next/server";
+
+export const ADMIN_SESSION_UNAVAILABLE_MESSAGE =
+  "Admin session unavailable. Open the dashboard in a new tab or sign in again.";
 
 function getCookieName() {
   return process.env.ADMIN_SESSION_COOKIE || "kzero_admin_session";
@@ -43,7 +47,7 @@ export async function createAdminSession() {
     httpOnly: true,
     maxAge: 60 * 60 * 8,
     path: "/",
-    sameSite: "lax",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     secure: process.env.NODE_ENV === "production"
   });
 
@@ -71,4 +75,12 @@ export async function requireAdminSession() {
   if (!(await hasAdminSession())) {
     redirect("/admin-login");
   }
+}
+
+export async function getAdminApiAuthError() {
+  if (await hasAdminSession()) {
+    return null;
+  }
+
+  return NextResponse.json({ error: ADMIN_SESSION_UNAVAILABLE_MESSAGE }, { status: 401 });
 }

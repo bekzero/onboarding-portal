@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/admin-auth";
+import { getAdminApiAuthError } from "@/lib/admin-auth";
 import { rollbackPortalTaskForMsp } from "@/lib/msp-persistence";
 
 export const runtime = "nodejs";
@@ -9,7 +9,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mspId: string }> }
 ) {
-  await requireAdminSession();
+  const authError = await getAdminApiAuthError();
+  if (authError) return authError;
 
   try {
     const body = (await request.json()) as {

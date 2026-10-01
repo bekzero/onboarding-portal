@@ -46,6 +46,7 @@ type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
 type DashboardSortColumn = "msp" | "customer" | "gmm" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
 type DashboardSortDirection = "asc" | "desc";
+type ServerErrorKind = "network" | "server" | "unauthorized";
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
   activeTaskStatus?: string;
@@ -1517,6 +1518,8 @@ export function InternalDashboard({
   const [useServerData, setUseServerData] = useState(false);
   const [serverLoadState, setServerLoadState] = useState<"loading" | "server" | "fallback" | "error">("loading");
   const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null);
+  const [serverErrorKind, setServerErrorKind] = useState<ServerErrorKind | null>(null);
+  const [isEmbedded, setIsEmbedded] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("preview");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
@@ -1552,13 +1555,18 @@ export function InternalDashboard({
     return undefined;
   }
 
-  function setServerUnavailableState(errorMessage?: string, options?: { preserveServerData?: boolean }) {
+  function setServerUnavailableState(
+    errorMessage?: string,
+    options?: { kind?: ServerErrorKind; preserveServerData?: boolean }
+  ) {
     const safeErrorMessage = errorMessage?.trim() || null;
+    const errorKind = options?.kind ?? "server";
 
-    if (allowLocalFallback && !options?.preserveServerData) {
+    if (allowLocalFallback && errorKind !== "unauthorized" && !options?.preserveServerData) {
       setUseServerData(false);
       setApiCases([]);
       setServerLoadState("fallback");
+      setServerErrorKind(errorKind);
       setServerErrorMessage(
         safeErrorMessage
           ? `Showing local fallback data because the server API is unavailable. ${safeErrorMessage}`
@@ -1574,26 +1582,45 @@ export function InternalDashboard({
 
     setServerLoadState("error");
     setServerErrorMessage(safeErrorMessage);
+    setServerErrorKind(errorKind);
   }
 
   async function loadDashboardCases() {
     try {
       setServerLoadState("loading");
       setServerErrorMessage(null);
+      setServerErrorKind(null);
       const response = await fetch("/api/admin/msps", { cache: "no-store" });
       const payload = (await response.json().catch(() => null)) as AdminApiResponse | null;
 
-      if (!response.ok) {
-        throw new Error(payload?.error ?? `Request failed with status ${response.status}.`);
+      if (response.status === 401 || response.status === 403) {
+        setServerUnavailableState(
+          payload?.error ?? "Admin session unavailable. Open the dashboard in a new tab or sign in again.",
+          { kind: "unauthorized" }
+        );
+        return false;
       }
 
-      setApiCases((payload?.msps ?? []).map(adminApiCaseToDashboardCase));
+      if (!response.ok) {
+        setServerUnavailableState(payload?.error ?? `Request failed with status ${response.status}.`, { kind: "server" });
+        return false;
+      }
+
+      if (!Array.isArray(payload?.msps)) {
+        setServerUnavailableState("The server returned an invalid admin dashboard response.", { kind: "server" });
+        return false;
+      }
+
+      setApiCases(payload.msps.map(adminApiCaseToDashboardCase));
       setUseServerData(true);
       setServerLoadState("server");
+      setServerErrorKind(null);
       return true;
     } catch (error) {
       console.error("Failed to load /api/admin/msps.", error);
-      setServerUnavailableState(getSafeApiErrorMessage(error));
+      setServerUnavailableState(getSafeApiErrorMessage(error) ?? "Could not reach the admin dashboard API.", {
+        kind: "network"
+      });
       return false;
     }
   }
@@ -1622,6 +1649,7 @@ export function InternalDashboard({
   }
 
   useEffect(() => {
+    setIsEmbedded(window.self !== window.top);
     setCaseOverrides(readAdminCaseOverridesFromStorage());
     void loadDashboardCases();
     void loadNotifications();
@@ -2635,10 +2663,43 @@ export function InternalDashboard({
           <>
             {showBlockingServerError ? (
               <Card className="border-red-400/20 bg-red-400/[0.06] px-5 py-6">
-                <p className="text-base font-medium text-white">{SERVER_API_UNAVAILABLE_MESSAGE}</p>
-                {serverErrorMessage ? (
-                  <p className="mt-2 text-sm text-red-100/90">Error: {serverErrorMessage}</p>
-                ) : null}
+                {serverErrorKind === "unauthorized" ? (
+                  <>
+                    <p className="text-base font-medium text-white">
+                      {isEmbedded
+                        ? "Zoho embedded view could not access the admin session."
+                        : "Admin session unavailable. Open the dashboard in a new tab or sign in again."}
+                    </p>
+                    {isEmbedded ? (
+                      <>
+                        <p className="mt-2 text-sm text-red-100/90">
+                          Admin session unavailable. Open the dashboard in a new tab or sign in again.
+                        </p>
+                        <p className="mt-2 text-sm text-slate-300">
+                          Some browsers block third-party cookies in embedded apps. Opening the dashboard in a new tab
+                          uses the normal first-party session.
+                        </p>
+                      </>
+                    ) : null}
+                    <Button
+                      className="mt-5"
+                      onClick={() => window.open(`${window.location.origin}/admin`, "_blank", "noopener,noreferrer")}
+                    >
+                      Open Dashboard in New Tab
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-base font-medium text-white">
+                      {serverErrorKind === "network"
+                        ? "Network error. The admin dashboard API could not be reached."
+                        : "The admin dashboard API returned an error."}
+                    </p>
+                    {serverErrorMessage ? (
+                      <p className="mt-2 text-sm text-red-100/90">Error: {serverErrorMessage}</p>
+                    ) : null}
+                  </>
+                )}
               </Card>
             ) : null}
 

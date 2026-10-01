@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/admin-auth";
+import { getAdminApiAuthError } from "@/lib/admin-auth";
 import { getAdminPortalAccessByMspId, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
 export const runtime = "nodejs";
@@ -9,7 +9,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ mspId: string }> }
 ) {
-  await requireAdminSession();
+  const authError = await getAdminApiAuthError();
+  if (authError) return authError;
 
   if (!isDatabasePersistenceConfigured()) {
     const fallbackPlanId = request.nextUrl.searchParams.get("planId")?.trim();

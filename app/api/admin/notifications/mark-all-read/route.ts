@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminSession } from "@/lib/admin-auth";
+import { getAdminApiAuthError } from "@/lib/admin-auth";
 import { markAllAdminNotificationsRead } from "@/lib/admin-notifications";
 import { isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 
@@ -7,7 +7,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  await requireAdminSession();
+  const authError = await getAdminApiAuthError();
+  if (authError) return authError;
 
   if (!isDatabasePersistenceConfigured()) {
     return NextResponse.json({ error: "DATABASE_URL is not configured." }, { status: 503 });
