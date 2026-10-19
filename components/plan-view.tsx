@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  ChevronDown,
   Clock3,
   ListChecks,
+  LockKeyhole,
   Mail
 } from "lucide-react";
 import { GuidePreviewModal } from "@/components/guide-preview-modal";
@@ -312,6 +314,7 @@ export function PlanView({
   const [pilotError, setPilotError] = useState<string | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
+  const [expandedPhaseIds, setExpandedPhaseIds] = useState<string[]>([]);
   const orderedTasks = bundle.plan.taskIds
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
@@ -490,7 +493,18 @@ export function PlanView({
   }
 
   function goToCurrentTask() {
+    setExpandedPhaseIds((current) =>
+      current.includes(nextTask.phaseId) ? current : [...current, nextTask.phaseId]
+    );
     goToTabSection("tasks", "current-task-card");
+  }
+
+  function togglePhase(phaseId: string) {
+    setExpandedPhaseIds((current) =>
+      current.includes(phaseId)
+        ? current.filter((currentPhaseId) => currentPhaseId !== phaseId)
+        : [...current, phaseId]
+    );
   }
 
   function getCurrentActionTargetTab() {
@@ -1089,7 +1103,9 @@ export function PlanView({
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold text-white">Phase Checklist</h3>
-                    <p className="text-sm text-slate-300">Track each step, who owns it, and when a meeting is needed.</p>
+                    <p className="text-sm text-slate-300">
+                      Expand an available phase to view its tasks. Each phase unlocks when the previous phase is complete.
+                    </p>
                   </div>
                 </div>
 
@@ -1098,12 +1114,10 @@ export function PlanView({
                     const phaseTaskIndexes = tasks.map((task) => orderedTasks.findIndex((item) => item.id === task.id));
                     const hasCurrentTask = phaseTaskIndexes.includes(activeTaskIndex);
                     const hasIncompleteTask = tasks.some((task) => task.status !== "complete");
-                    const isPhaseLocked =
-                      !isPlanComplete &&
-                      !hasCurrentTask &&
-                      hasIncompleteTask &&
-                      phaseTaskIndexes.length > 0 &&
-                      phaseTaskIndexes.every((taskIndex) => taskIndex > activeTaskIndex);
+                    const isPhaseLocked = phaseTasks
+                      .slice(0, index)
+                      .some(({ tasks: previousTasks }) => previousTasks.some((task) => task.status !== "complete"));
+                    const isPhaseExpanded = !isPhaseLocked && expandedPhaseIds.includes(phase.id);
                     const phaseStatusLabel = isPhaseLocked
                       ? "Locked"
                       : hasCurrentTask
@@ -1113,8 +1127,17 @@ export function PlanView({
                           : "Complete";
 
                     return (
-                      <div key={phase.id} className="rounded-[1.5rem] border border-white/10 bg-[#0d1627] p-4">
-                        <div className="flex items-start gap-3">
+                      <div key={phase.id} className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-[#0d1627]">
+                        <button
+                          aria-controls={`phase-tasks-${phase.id}`}
+                          aria-expanded={isPhaseExpanded}
+                          className={`flex w-full items-start gap-3 p-4 text-left transition ${
+                            isPhaseLocked ? "cursor-not-allowed opacity-65" : "hover:bg-white/[0.03]"
+                          }`}
+                          disabled={isPhaseLocked}
+                          onClick={() => togglePhase(phase.id)}
+                          type="button"
+                        >
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
                             {index + 1}
                           </div>
@@ -1126,10 +1149,23 @@ export function PlanView({
                               </div>
                               <div className="text-right">
                                 <p className="text-sm text-slate-400">{tasks.length} tasks</p>
-                                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">{phaseStatusLabel}</p>
+                                <div className="mt-1 flex items-center justify-end gap-2 text-xs uppercase tracking-[0.2em] text-slate-500">
+                                  {isPhaseLocked ? <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" /> : null}
+                                  <span>{phaseStatusLabel}</span>
+                                  {!isPhaseLocked ? (
+                                    <ChevronDown
+                                      aria-hidden="true"
+                                      className={`h-4 w-4 transition-transform ${isPhaseExpanded ? "rotate-180" : ""}`}
+                                    />
+                                  ) : null}
+                                </div>
                               </div>
                             </div>
+                          </div>
+                        </button>
 
+                        {isPhaseExpanded ? (
+                          <div className="px-4 pb-4" id={`phase-tasks-${phase.id}`}>
                             <div className="mt-4 border-l border-white/10 pl-4">
                               <div className="grid gap-3">
                                 {tasks.map((task) => {
@@ -1254,7 +1290,7 @@ export function PlanView({
                               </div>
                             </div>
                           </div>
-                        </div>
+                        ) : null}
                       </div>
                     );
                   })}
