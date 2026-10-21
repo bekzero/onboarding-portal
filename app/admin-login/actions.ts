@@ -8,7 +8,7 @@ export async function submitAdminLogin(formData: FormData) {
     redirect("/admin-login?setup=1");
   }
 
-  const submittedCode = String(formData.get("accessCode") || "").trim();
+  const submittedCode = String(formData.get("password") || "").trim();
   const expectedCode = process.env.ADMIN_ACCESS_CODE?.trim() || "";
 
   if (!submittedCode || submittedCode !== expectedCode) {
