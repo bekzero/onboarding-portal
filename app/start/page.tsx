@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -12,6 +12,7 @@ const TENANT_STORAGE_KEY = "kzero-demo-tenant";
 export default function StartPage() {
   const [tenantName, setTenantName] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const storedTenant = window.localStorage.getItem(TENANT_STORAGE_KEY);
@@ -31,21 +32,28 @@ export default function StartPage() {
 
     const messages: Record<string, string> = {
       ambiguous: "We found more than one onboarding case for that lookup. Enter the customer name for Customer Plan access, or use the exact MSP or tenant name for the NFR Plan.",
-      not_found: "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer.",
-      oidc_not_configured: "KZero sign-in is not fully configured for this onboarding portal yet. Contact your KZero Sales Engineer for help.",
+      not_found: "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Passwordless Sales Engineer.",
+      oidc_not_configured: "KZero Passwordless sign-in is not fully configured for this onboarding portal yet. Contact your KZero Passwordless Sales Engineer for help.",
       plan_not_found: "We could not open that onboarding portal. Confirm the plan is enrolled and try again.",
       portal_unavailable: "The onboarding portal is temporarily unavailable. Check database migration and environment variables, then try again.",
       session_required: "Your sign-in session expired or could not be verified. Please start again from your onboarding portal lookup.",
-      signin_failed: "We could not complete KZero sign-in. Please try again or contact your KZero Sales Engineer."
+      signin_failed: "We could not complete KZero Passwordless sign-in. Please try again or contact your KZero Passwordless Sales Engineer."
     };
 
     setError(messages[errorCode] ?? messages.not_found);
   }, []);
 
-  async function handleContinue() {
+  async function handleContinue(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isLoading) {
+      return;
+    }
+
     const lookupValue = tenantName.trim();
 
     window.localStorage.setItem(TENANT_STORAGE_KEY, lookupValue);
+    setIsLoading(true);
 
     try {
       const response = await fetch(`/api/tenant-lookup?lookup=${encodeURIComponent(lookupValue)}`, {
@@ -110,80 +118,87 @@ export default function StartPage() {
       setError(
         error instanceof Error && error.message && error.message !== "lookup_failed" && error.message !== "not_found"
           ? error.message
-          : "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Sales Engineer."
+          : "We could not find that onboarding portal. Check the MSP or tenant name, or contact your KZero Passwordless Sales Engineer."
       );
+      setIsLoading(false);
     }
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-6 md:px-10 md:py-8">
-      <header className="rounded-[1.6rem] border border-white/10 bg-[#101a2d] px-5 py-4 shadow-panel md:px-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <KzeroLogo className="shrink-0" priority />
-          <div className="flex flex-wrap gap-3">
-            <Link href="/">
-              <Button className="h-10 px-4" variant="outline">
-                Back to Home
-              </Button>
+    <div className="flex min-h-screen flex-col">
+      <header className="border-b border-white/10 bg-[#0b1526]/90">
+        <div className="mx-auto flex w-full max-w-7xl flex-col items-start gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 md:px-10">
+          <KzeroLogo className="shrink-0" imageClassName="w-[168px] sm:w-[180px]" priority />
+          <nav className="flex w-full items-center justify-between gap-4 sm:w-auto sm:justify-end" aria-label="Portal navigation">
+            <Link
+              className="inline-flex items-center rounded-lg py-2 text-sm font-medium text-slate-300 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              href="/"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+              Back to Home
             </Link>
-            <Link href="/admin-login">
-              <Button className="h-10 px-4" variant="outline">
-                Admin Sign In
-              </Button>
+            <Link
+              className="rounded-lg py-2 text-sm font-medium text-slate-400 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              href="/admin-login"
+            >
+              Admin Sign In
             </Link>
-          </div>
+          </nav>
         </div>
       </header>
 
-      <main className="mt-5 grid gap-6">
-        <Card className="overflow-hidden border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(64,109,191,0.35),transparent_34%),linear-gradient(135deg,#1d376d_0%,#111d32_54%,#09111d_100%)] p-0">
-          <div className="grid gap-8 px-6 py-8 md:px-8 md:py-10 xl:grid-cols-[1.1fr_0.9fr] xl:items-center">
-            <div className="space-y-5">
-              <div className="inline-flex rounded-full border border-blue-200/15 bg-white/5 px-3 py-1 text-xs font-medium uppercase tracking-[0.22em] text-blue-100/80">
-                Secure Portal Lookup
-              </div>
-              <div className="space-y-4">
-                <h1 className="max-w-4xl text-4xl font-semibold tracking-tight text-white md:text-5xl xl:text-[3.35rem]">
-                  Find Your KZero Passwordless Onboarding Portal
-                </h1>
-                <p className="max-w-3xl text-base leading-7 text-blue-100/78 md:text-lg">
-                  Enter the MSP name for an NFR Plan, or the customer name for a Customer Plan, exactly as provided by your KZero Passwordless Sales Engineer.
-                </p>
-              </div>
-            </div>
-
-            <div className="rounded-[1.75rem] border border-white/10 bg-[#0b1424]/88 p-6">
-              <div className="space-y-4">
-                <div>
-                  <p className="text-lg font-semibold text-white">Continue To Your Workspace</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-300">
-                    Use the exact MSP, customer, or tenant name shared with your team.
-                  </p>
-                </div>
-                <div className="grid gap-3">
-                  <label className="grid gap-2 text-sm text-blue-100/82">
-                    <span>MSP, Customer, or Tenant Name</span>
-                    <input
-                      className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none placeholder:text-slate-500"
-                      onChange={(event) => {
-                        setTenantName(event.target.value);
-                        setError("");
-                      }}
-                      placeholder="Enter your MSP, customer, or tenant name"
-                      value={tenantName}
-                    />
-                  </label>
-                  <div className="flex flex-wrap gap-3">
-                    <Button className="h-11 px-5" onClick={handleContinue}>
-                      Continue
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-                  {error ? <p className="text-sm leading-6 text-amber-200">{error}</p> : null}
-                </div>
-              </div>
-            </div>
+      <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-10">
+        <Card className="w-full max-w-[540px] border-white/10 bg-[#101a2d] p-6 shadow-panel sm:p-8">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-white">Find Your Onboarding Plan</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Enter the name provided by your KZero Passwordless Sales Engineer to continue.
+            </p>
           </div>
+
+          <form className="mt-6" onSubmit={handleContinue}>
+            <label className="block text-sm font-medium text-slate-200" htmlFor="tenant-name">
+              MSP, Customer, or Tenant Name
+            </label>
+            <input
+              aria-describedby={error ? "tenant-name-error tenant-name-help" : "tenant-name-help"}
+              aria-invalid={Boolean(error)}
+              autoComplete="organization"
+              className="mt-2 h-12 w-full rounded-xl border border-white/15 bg-[#08111f] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/25 sm:text-base"
+              id="tenant-name"
+              name="tenantName"
+              onChange={(event) => {
+                setTenantName(event.target.value);
+                setError("");
+              }}
+              placeholder="Enter your organization or tenant name"
+              required
+              value={tenantName}
+            />
+
+            {error ? (
+              <p className="mt-2 text-sm leading-5 text-amber-200" id="tenant-name-error" role="alert">
+                {error}
+              </p>
+            ) : null}
+
+            <p className="mt-2 text-xs leading-5 text-slate-400" id="tenant-name-help">
+              For an MSP NFR Plan, enter your MSP name. For a Customer Plan, enter the customer name.
+            </p>
+
+            <Button
+              className="mt-5 h-12 w-full whitespace-nowrap rounded-xl px-5"
+              disabled={isLoading}
+              type="submit"
+            >
+              {isLoading ? "Continuing..." : "Continue"}
+              {!isLoading ? <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" /> : null}
+            </Button>
+          </form>
+
+          <p className="mt-6 border-t border-white/10 pt-5 text-sm leading-6 text-slate-400">
+            Not sure which name to enter? Contact your KZero Passwordless Sales Engineer.
+          </p>
         </Card>
       </main>
     </div>
