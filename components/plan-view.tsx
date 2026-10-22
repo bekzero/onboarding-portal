@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   ArrowRight,
   ChevronDown,
-  Clock3,
   ListChecks,
   LockKeyhole,
   Mail
@@ -39,8 +38,8 @@ const PORTAL_TOUR_STEPS: PortalTourStep[] = [
     body: "The Tasks view is where your team completes onboarding steps. Each phase unlocks as the previous required work is completed."
   },
   {
-    title: "Focus on the Current Step",
-    body: "The current step card shows what to do now, who owns it, and the next step that unlocks after completion."
+    title: "Focus on Your Next Action",
+    body: "The next action summary shows what to do now and takes you directly to the task where work is completed."
   },
   {
     title: "Use Built-In Guides",
@@ -56,11 +55,11 @@ const PORTAL_TOUR_STEPS: PortalTourStep[] = [
   },
   {
     title: "When KZero Passwordless Is Working",
-    body: "Some steps are owned by your KZero Sales Engineer. When that happens, no action is needed from your team until the next step is ready."
+    body: "Some steps are owned by your KZero Passwordless Sales Engineer. When that happens, no action is needed from your team until the next step is ready."
   },
   {
     title: "You’re Ready to Continue",
-    body: "Use Tasks to complete the current step. You can relaunch this tour anytime from the portal header."
+    body: "Use Tasks to complete your active work. You can relaunch this tour anytime from the portal header."
   }
 ];
 
@@ -91,11 +90,11 @@ function formatLabel(value: string) {
 
 function formatTaskStatusLabel(status: string) {
   if (status === "waiting_on_msp") {
-    return "Action needed from you";
+    return "Action Required";
   }
 
   if (status === "waiting_on_kzero") {
-    return "KZero is working on this";
+    return "KZero Passwordless is working on this";
   }
 
   if (status === "not_started") {
@@ -107,7 +106,7 @@ function formatTaskStatusLabel(status: string) {
 
 function formatCurrentStepStatusLabel(status: string) {
   if (status === "waiting_on_msp") {
-    return "Waiting on MSP";
+    return "Action Required";
   }
 
   if (status === "waiting_on_kzero") {
@@ -149,7 +148,7 @@ function getPortalTaskStatusLabel(task: PlanBundle["tasks"][number], isLocked: b
 
 function formatTaskOwnerLabel(owner: string) {
   if (owner === "kzero_se") {
-    return "KZero Sales Engineer";
+    return "KZero Passwordless Sales Engineer";
   }
 
   if (owner === "shared") {
@@ -164,7 +163,19 @@ function formatTaskOwnerLabel(owner: string) {
 }
 
 function formatWaitingLabel(waitingOn: "msp" | "kzero") {
-  return waitingOn === "kzero" ? "KZero action in progress" : "Action needed from you";
+  return waitingOn === "kzero" ? "KZero action in progress" : "Action Required";
+}
+
+function getRealDueLabel(dueLabel?: string) {
+  if (!dueLabel) {
+    return null;
+  }
+
+  const hasCalendarDate = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i.test(dueLabel) ||
+    /\b\d{4}-\d{2}-\d{2}\b/.test(dueLabel) ||
+    /\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/.test(dueLabel);
+
+  return hasCalendarDate ? dueLabel : null;
 }
 
 function formatTaskOwnerLabelShort(owner: string) {
@@ -250,15 +261,15 @@ function getTaskDisplayDescription(task: Pick<PlanBundle["tasks"][number], "titl
   }
 
   if (task.title === "Review App Compatibility and Prepare the Onboarding Plan") {
-    return "KZero is working on this. No action needed from you right now.";
+    return "KZero Passwordless is working on this. No action needed from you right now.";
   }
 
   if (task.title === "Upload the Onboarding Plan") {
-    return "KZero is working on this. No action needed from you right now. Your team will review the plan as soon as it is available.";
+    return "KZero Passwordless is working on this. No action needed from you right now. Your team will review the plan as soon as it is available.";
   }
 
   if (task.title === "KZero Reviews Pilot Plan") {
-    return "KZero is working on this. No action needed from you right now.";
+    return "KZero Passwordless is working on this. No action needed from you right now.";
   }
 
   if (task.title === "Complete First Customer Rollout") {
@@ -340,24 +351,21 @@ export function PlanView({
   const hasSavedFirstCustomerPilot =
     Boolean(bundle.firstCustomerPilot?.customerAlias?.trim() && bundle.firstCustomerPilot?.targetRolloutTiming?.trim());
   const hasRequiredPilotFormDetails = hasRequiredFirstCustomerPilotDetails(pilotForm);
-  const isBlocked = nextTask.waitingOn === "kzero" && !isKZeroOwnedCurrentTask;
-  const showCurrentKzeroBanner =
-    activeTab === "tasks" &&
-    !isPlanComplete &&
-    (isKZeroOwnedCurrentTask || nextTask.status === "waiting_on_kzero" || nextTask.waitingOn === "kzero");
   const meaningfulComments = bundle.comments.filter((comment) => isMeaningfulComment(comment.body));
   const nextTaskDescription = getTaskDisplayDescription(nextTask);
   const nextTaskTitle = getTaskDisplayTitle(nextTask);
   const isCustomerPlan = bundle.plan.tenantType === "customer";
   const tenantSetupLabel = isCustomerPlan ? "customer tenant setup" : "NFR tenant setup";
-  const portalHeading = bundle.plan.title;
+  const portalHeading = isCustomerPlan
+    ? bundle.plan.customerName ?? bundle.plan.title
+    : bundle.organization.name;
   const portalSubtitle = isCustomerPlan
     ? `Managed by ${bundle.plan.mspName ?? bundle.organization.name} through KZero Passwordless.`
-    : "KZero Passwordless onboarding workspace";
+    : "KZero Passwordless NFR onboarding workspace";
   const yourNextAction = isPlanComplete
     ? "Onboarding complete"
     : isKZeroOwnedCurrentTask
-      ? "KZero is working on this."
+      ? "KZero Passwordless is working on this."
       : nextTaskTitle;
   const yourNextActionDetail = isPlanComplete
     ? "Your team has completed the current onboarding plan."
@@ -367,7 +375,7 @@ export function PlanView({
   const actionStatusMessage = isPlanComplete
     ? "All onboarding steps in this plan are complete."
     : isKZeroOwnedCurrentTask
-      ? "KZero is working on this. No action needed from you right now."
+      ? "KZero Passwordless is working on this. No action needed from you right now."
         : isSubmittingSaasApps
           ? "Submit your SaaS applications from the Apps section to continue."
         : isKickoffBookingTask
@@ -388,20 +396,15 @@ export function PlanView({
   const currentOwnerLabel = isPlanComplete
     ? "Complete"
     : nextTask.owner === "kzero_se"
-    ? "KZero"
+    ? "KZero Passwordless"
     : nextTask.owner === "shared"
-      ? "Your team and KZero"
+      ? "Your team and KZero Passwordless"
       : "Your team";
   const currentStatusLabel = isPlanComplete
     ? "Complete"
     : isKZeroOwnedCurrentTask
       ? "KZero Action Required"
       : formatCurrentStepStatusLabel(nextTask.status);
-  const nextStepLabel = isPlanComplete
-    ? "No further step"
-    : followingTask
-      ? getTaskDisplayTitle(followingTask)
-      : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [
     { id: "overview", label: "Status" },
     { id: "tasks", label: "Tasks" },
@@ -507,55 +510,8 @@ export function PlanView({
     );
   }
 
-  function getCurrentActionTargetTab() {
-    const normalizedTitle = nextTask.title.toLowerCase();
-
-    if (normalizedTitle.includes("submit saas apps")) {
-      return "apps" as const;
-    }
-
-    if (normalizedTitle.includes("upload onboarding plan") || normalizedTitle.includes("document")) {
-      return "documents" as const;
-    }
-
-    return "tasks" as const;
-  }
-
-  const currentActionTargetTab = getCurrentActionTargetTab();
-  const currentActionCtaLabel =
-    currentActionTargetTab === "apps"
-      ? "Submit SaaS Apps"
-      : currentActionTargetTab === "documents"
-        ? "Go to Documents"
-        : isSelectingFirstCustomerPilot
-          ? "Select First Customer Pilot"
-        : "Go to Current Task";
-
-  function handleCurrentActionCta() {
-    if (currentActionTargetTab === "apps") {
-      goToTabSection("apps", "apps-submission-form");
-      return;
-    }
-
-    if (currentActionTargetTab === "documents") {
-      goToTab("documents");
-      return;
-    }
-
-    if (isSelectingFirstCustomerPilot) {
-      goToTabSection("tasks", "first-customer-pilot-form");
-      return;
-    }
-
-    goToCurrentTask();
-  }
-
   function openAppSubmissionForm() {
     goToTabSection("apps", "apps-submission-form");
-  }
-
-  function openFirstCustomerPilotForm() {
-    goToTabSection("tasks", "first-customer-pilot-form");
   }
 
   async function submitPortalApp() {
@@ -659,10 +615,10 @@ export function PlanView({
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 md:px-6 md:py-6">
-      <header className="rounded-[1.55rem] border border-white/10 bg-[#101c31]/92 px-4 py-4 shadow-panel md:px-5">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 md:px-6 md:py-5">
+      <header className="rounded-3xl border border-white/10 bg-[#101c31]/92 p-4 shadow-panel md:px-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-start gap-4">
+          <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:gap-4">
             <KzeroLogo className="shrink-0" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -675,24 +631,23 @@ export function PlanView({
                   </span>
                 ) : null}
               </div>
-              <h1 className="mt-2 text-2xl font-semibold text-white md:text-3xl">{portalHeading}</h1>
+              <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">{portalHeading}</h1>
               <p className="mt-1 text-sm text-slate-300">{portalSubtitle}</p>
             </div>
           </div>
 
           <div className="flex flex-col gap-3 xl:items-end">
-            <div className="min-w-[250px] rounded-2xl border border-white/10 bg-[#0b1424] px-4 py-3">
-              <div className="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-slate-400">
-                <span>Progress Summary</span>
+            <div className="w-full min-w-[250px] max-w-[320px]">
+              <div className="flex items-center justify-between text-xs font-medium text-slate-400">
+                <span>{completedTasks} of {orderedTasks.length} {orderedTasks.length === 1 ? "task" : "tasks"} completed</span>
                 <span>{bundle.plan.progress}%</span>
               </div>
               <div className="mt-2 h-2 rounded-full bg-white/10">
                 <div
-                  className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
+                  className="h-2 rounded-full bg-primary"
                   style={{ width: `${bundle.plan.progress}%` }}
                 />
               </div>
-              <p className="mt-2 text-sm text-slate-300">{completedTasks} completed steps across your current plan.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button className="h-9 px-4" onClick={openTour} variant="outline">
@@ -713,7 +668,7 @@ export function PlanView({
           <button
             key={tab.id}
             aria-pressed={activeTab === tab.id}
-            className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+            className={`rounded-xl border px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
               activeTab === tab.id
                 ? "border-primary/40 bg-primary/15 text-white"
                 : "border-white/10 bg-[#0d1627] text-slate-300 hover:border-white/20 hover:text-white"
@@ -726,230 +681,42 @@ export function PlanView({
         ))}
       </nav>
 
-      <main className="mt-5 grid gap-5">
-        <div className="grid gap-5 lg:grid-cols-12">
-          <section className="grid gap-5 lg:col-span-8">
-            <Card className="border-white/10 bg-[linear-gradient(135deg,#223c78_0%,#101c31_54%,#09111d_100%)] p-5 md:p-6">
-              <div className="flex flex-col gap-5">
-                <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.24em] text-blue-100/80">
+      <main className="mt-4 grid gap-4">
+        <div>
+          <section className="grid gap-4">
+            <Card className="border-white/10 bg-[#101a2d] p-4 md:p-5">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-blue-200">
                   <span>{safeNextStepPhase?.title ?? "Kickoff"}</span>
                   <span className="text-slate-500">/</span>
-                  <span>Current Step</span>
+                  <span>Your Next Action</span>
                 </div>
-                <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr] lg:items-start">
-                  <div className="rounded-[1.45rem] border border-white/10 bg-[#0a1424]/50 p-5">
-                    <div className="space-y-4">
+                <div>
+                  <div>
+                    <div className="space-y-3">
                       <div className="space-y-3">
-                        <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-white md:text-[2.6rem]">
+                        <h2 className="max-w-3xl text-xl font-semibold leading-tight text-white md:text-2xl">
                           {currentStepLabel}
                         </h2>
-                        <p className="max-w-3xl text-sm leading-7 text-blue-100/80">{yourNextActionDetail}</p>
+                        <p className="max-w-3xl text-sm leading-6 text-slate-300">{yourNextActionDetail}</p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-3 text-sm">
-                        <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-white">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-200">
                           {currentOwnerLabel}
                         </span>
-                        <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-white">
+                        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-200">
                           {currentStatusLabel}
                         </span>
-                        {nextTask.dueLabel ? (
-                          <span className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-white">
-                            {nextTask.dueLabel}
-                          </span>
-                        ) : null}
                       </div>
-                    </div>
-                  </div>
-                  <div className="rounded-[1.45rem] border border-white/10 bg-[#0a1424]/78 p-5 text-sm">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-slate-400">Step Summary</p>
-                    <div className="mt-4 grid gap-3">
-                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-                        <p className="text-slate-400">Owner</p>
-                        <p className="text-right font-medium text-white">{currentOwnerLabel}</p>
-                      </div>
-                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-                        <p className="text-slate-400">Status</p>
-                        <p className="text-right font-medium text-white">{currentStatusLabel}</p>
-                      </div>
-                      <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-                        <p className="text-slate-400">Due / Timing</p>
-                        <p className="text-right font-medium text-white">{nextTask.dueLabel ?? "No specific due date"}</p>
-                      </div>
-                      <div className="flex items-start justify-between gap-4">
-                        <p className="text-slate-400">Next Step</p>
-                        <p className="text-right font-medium text-white">{nextStepLabel}</p>
-                      </div>
+                      {!isPlanComplete ? (
+                        <Button className="h-10 w-fit rounded-xl px-4" onClick={goToCurrentTask}>
+                          Go to Task
+                          <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-3">
-                  {!isPlanComplete && !isKZeroOwnedCurrentTask ? (
-                    isBookingTask(nextTask.title) || nextTask.meetingCta ? (
-                      <>
-                        <a
-                          className={buttonVariants({ variant: "default", className: "h-11 px-5" })}
-                          href={BOOKING_URL}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          {getMeetingButtonLabel(nextTask.title)}
-                        </a>
-                        <Button
-                          className="h-11 px-5"
-                          disabled={savingTaskId === nextTask.id}
-                          onClick={() => markTaskComplete(nextTask.id)}
-                          variant="outline"
-                        >
-                          {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
-                        </Button>
-                      </>
-                    ) : isSubmittingSaasApps ? (
-                      <>
-                        <Button className="h-11 px-5" onClick={openAppSubmissionForm}>
-                          Submit SaaS Apps
-                        </Button>
-                        <Button
-                          className="h-11 px-5"
-                          disabled={savingTaskId === nextTask.id}
-                          onClick={() => markTaskComplete(nextTask.id)}
-                          variant="outline"
-                        >
-                          {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
-                        </Button>
-                      </>
-                    ) : isSelectingFirstCustomerPilot ? (
-                      <>
-                        <Button className="h-11 px-5" onClick={openFirstCustomerPilotForm}>
-                          Select First Customer Pilot
-                        </Button>
-                        {hasSavedFirstCustomerPilot ? (
-                          <Button
-                            className="h-11 px-5"
-                            disabled={savingTaskId === nextTask.id}
-                            onClick={() => markTaskComplete(nextTask.id)}
-                            variant="outline"
-                          >
-                            {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
-                          </Button>
-                        ) : null}
-                      </>
-                    ) : (
-                      <Button
-                        className="h-11 px-5"
-                        disabled={savingTaskId === nextTask.id}
-                        onClick={() => markTaskComplete(nextTask.id)}
-                      >
-                        {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
-                      </Button>
-                    )
-                  ) : null}
-                </div>
-                {isSelectingFirstCustomerPilot ? (
-                  <div
-                    className="rounded-[1.2rem] border border-white/10 bg-[#0a1424]/85 p-4"
-                    id="first-customer-pilot-form"
-                    tabIndex={-1}
-                  >
-                    <div className="flex flex-col gap-4">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">First Customer Pilot</p>
-                        <h3 className="mt-2 text-lg font-semibold text-white">Capture the first customer rollout target</h3>
-                        <p className="mt-1 text-sm text-slate-300">
-                          You can use a customer alias if preferred. Add enough detail for KZero to review the pilot plan and prepare the tenant.
-                        </p>
-                      </div>
-                      <p className="text-sm text-slate-300">Save the pilot details before marking this step complete.</p>
-                      {!hasSavedFirstCustomerPilot ? <div className="grid gap-4 md:grid-cols-2">
-                        <label className="grid gap-2 text-sm text-slate-300">
-                          <span>Customer name or alias</span>
-                          <input
-                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
-                            onChange={(event) => setPilotForm((current) => ({ ...current, customerAlias: event.target.value }))}
-                            value={pilotForm.customerAlias}
-                          />
-                        </label>
-                        <label className="grid gap-2 text-sm text-slate-300">
-                          <span>Estimated user count</span>
-                          <input
-                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
-                            min={1}
-                            onChange={(event) => setPilotForm((current) => ({ ...current, estimatedUserCount: event.target.value }))}
-                            type="number"
-                            value={pilotForm.estimatedUserCount}
-                          />
-                        </label>
-                        <label className="grid gap-2 text-sm text-slate-300">
-                          <span>Target rollout date or timing</span>
-                          <input
-                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
-                            onChange={(event) => setPilotForm((current) => ({ ...current, targetRolloutTiming: event.target.value }))}
-                            placeholder="e.g. July 2026 or Week of July 15"
-                            value={pilotForm.targetRolloutTiming}
-                          />
-                        </label>
-                        <label className="grid gap-2 text-sm text-slate-300">
-                          <span>Customer admin contact name</span>
-                          <input
-                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
-                            onChange={(event) => setPilotForm((current) => ({ ...current, adminContactName: event.target.value }))}
-                            value={pilotForm.adminContactName}
-                          />
-                        </label>
-                        <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
-                          <span>Customer admin contact email</span>
-                          <input
-                            className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
-                            onChange={(event) => setPilotForm((current) => ({ ...current, adminContactEmail: event.target.value }))}
-                            type="email"
-                            value={pilotForm.adminContactEmail}
-                          />
-                        </label>
-                        <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
-                          <span>Notes</span>
-                          <textarea
-                            className="min-h-[110px] rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
-                            onChange={(event) => setPilotForm((current) => ({ ...current, notes: event.target.value }))}
-                            value={pilotForm.notes}
-                          />
-                        </label>
-                      </div> : null}
-                      {hasSavedFirstCustomerPilot && bundle.firstCustomerPilot ? (
-                        <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.05] px-4 py-4 text-sm text-slate-200">
-                          <p className="font-medium text-white">Pilot details saved</p>
-                          <p className="mt-1">
-                            {bundle.firstCustomerPilot.customerAlias} · {bundle.firstCustomerPilot.targetRolloutTiming}
-                          </p>
-                        </div>
-                      ) : null}
-                      {pilotError ? (
-                        <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-sm text-amber-100">
-                          {pilotError}
-                        </div>
-                      ) : null}
-                      <div className="flex flex-wrap gap-3">
-                        {!hasSavedFirstCustomerPilot ? (
-                          <Button
-                            className="h-11 px-5"
-                            disabled={savingPilotDetails || !hasRequiredPilotFormDetails}
-                            onClick={saveFirstCustomerPilot}
-                          >
-                            {savingPilotDetails ? "Saving..." : "Save Pilot Details"}
-                          </Button>
-                        ) : null}
-                        {hasSavedFirstCustomerPilot ? (
-                          <Button
-                            className="h-11 px-5"
-                            disabled={savingTaskId === nextTask.id}
-                            onClick={() => markTaskComplete(nextTask.id)}
-                            variant="outline"
-                          >
-                            {savingTaskId === nextTask.id ? "Saving..." : "Mark Complete"}
-                          </Button>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </Card>
 
@@ -991,7 +758,7 @@ export function PlanView({
                       <Mail className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-lg font-semibold text-white">KZero Contact</h3>
+                      <h3 className="text-lg font-semibold text-white">KZero Passwordless Contact</h3>
                       <p className="mt-1 text-sm text-slate-300">Your Sales Engineer for this onboarding plan.</p>
                     </div>
                   </div>
@@ -999,7 +766,7 @@ export function PlanView({
                     <div className="grid gap-4">
                       <div>
                         <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
-                        <p className="mt-1 text-sm text-slate-300">KZero Sales Engineer</p>
+                        <p className="mt-1 text-sm text-slate-300">KZero Passwordless Sales Engineer</p>
                         <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:b.eakin@kzero.com">
                           b.eakin@kzero.com
                         </a>
@@ -1013,13 +780,13 @@ export function PlanView({
                         </a>
                       </div>
                       <div className="border-t border-white/10 pt-4">
-                        <p className="font-medium text-white">KZero Support</p>
+                        <p className="font-medium text-white">KZero Passwordless Support</p>
                         <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:support@kzero.com">
                           support@kzero.com
                         </a>
                       </div>
                       <div className="border-t border-white/10 pt-4">
-                        <p className="font-medium text-white">KZero Sales Team</p>
+                        <p className="font-medium text-white">KZero Passwordless Sales Team</p>
                         <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:partners@kzero.com">
                           partners@kzero.com
                         </a>
@@ -1034,13 +801,13 @@ export function PlanView({
                       <h3 className="text-lg font-semibold text-white">Current Status</h3>
                       <p className="mt-1 text-sm text-slate-300">
                         {isKZeroOwnedCurrentTask
-                          ? "KZero is working on this. No action needed from you right now."
+                          ? "KZero Passwordless is working on this. No action needed from you right now."
                           : "Use the action button to jump to the place where this step is completed."}
                       </p>
                     </div>
                     {!isPlanComplete ? (
-                      <Button className="h-10 px-4" onClick={handleCurrentActionCta} variant="secondary">
-                        {currentActionCtaLabel}
+                      <Button className="h-10 rounded-xl px-4" onClick={goToCurrentTask} variant="secondary">
+                        Go to Task
                       </Button>
                     ) : null}
                   </div>
@@ -1077,29 +844,11 @@ export function PlanView({
               </div>
             ) : null}
 
-            {showCurrentKzeroBanner ? (
-              <Card className="border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.08),rgba(59,130,246,0.06))] p-4">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/12 text-amber-200">
-                      <Clock3 className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
-                      <p className="mt-1 text-lg font-semibold text-white">{nextTaskTitle}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-300">{nextTaskDescription}</p>
-                    </div>
-                  </div>
-                  <div className="text-sm text-amber-100/85">{formatTaskStatusLabel(nextTask.status)}</div>
-                </div>
-              </Card>
-            ) : null}
-
             {activeTab === "tasks" ? (
-              <Card className="border-white/10 bg-[#101a2d] p-5">
-                <div className="mb-5 flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                    <ListChecks className="h-5 w-5" />
+              <Card className="border-white/10 bg-[#101a2d] p-4 md:p-5">
+                <div className="mb-4 flex items-start gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <ListChecks className="h-4 w-4" />
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold text-white">Phase Checklist</h3>
@@ -1109,7 +858,7 @@ export function PlanView({
                   </div>
                 </div>
 
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                   {phaseTasks.map(({ phase, tasks }, index) => {
                     const phaseTaskIndexes = tasks.map((task) => orderedTasks.findIndex((item) => item.id === task.id));
                     const hasCurrentTask = phaseTaskIndexes.includes(activeTaskIndex);
@@ -1148,7 +897,9 @@ export function PlanView({
                                 <p className="text-sm text-slate-300">{phase.description}</p>
                               </div>
                               <div className="text-right">
-                                <p className="text-sm text-slate-400">{tasks.length} tasks</p>
+                                <p className="text-sm text-slate-400">
+                                  {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+                                </p>
                                 <div className="mt-1 flex items-center justify-end gap-2 text-xs uppercase tracking-[0.2em] text-slate-500">
                                   {isPhaseLocked ? <LockKeyhole className="h-3.5 w-3.5" aria-hidden="true" /> : null}
                                   <span>{phaseStatusLabel}</span>
@@ -1182,32 +933,23 @@ export function PlanView({
                                       id={isCurrentTask ? "current-task-card" : undefined}
                                       tabIndex={isCurrentTask ? -1 : undefined}
                                       key={task.id}
-                                      className={`rounded-[1.2rem] border p-4 ${taskToneClass}`}
+                                      className={`scroll-mt-24 rounded-2xl border p-3.5 transition focus:outline-none focus:ring-2 focus:ring-primary/50 ${
+                                        isCurrentTask ? "ring-1 ring-primary/40" : ""
+                                      } ${taskToneClass}`}
                                     >
                                       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                         <div className="min-w-0">
                                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-slate-400">
                                             <span>Owner: {formatTaskOwnerLabel(task.owner)}</span>
-                                            {task.dueLabel ? (
+                                            {getRealDueLabel(task.dueLabel) ? (
                                               <>
                                                 <span className="text-slate-600">/</span>
-                                                <span>Due: {task.dueLabel}</span>
+                                                <span>Due: {getRealDueLabel(task.dueLabel)}</span>
                                               </>
                                             ) : null}
                                           </div>
-                                          <div className="mt-2 flex flex-wrap items-center gap-3">
+                                          <div className="mt-2">
                                             <h5 className="text-base font-semibold text-white">{getTaskDisplayTitle(task)}</h5>
-                                            {guides.length > 0 ? (
-                                              <button
-                                                className={`text-sm font-medium transition ${
-                                                  isLocked ? "text-slate-400 hover:text-slate-300" : "text-blue-200 hover:text-blue-100"
-                                                }`}
-                                                onClick={() => setGuidePreview({ guides, stepName: task.title })}
-                                                type="button"
-                                              >
-                                                {guides.length > 1 ? "View Guides" : "View Guide"}
-                                              </button>
-                                            ) : null}
                                           </div>
                                           <p className="mt-1 text-sm leading-6 text-slate-300">
                                             {isLocked ? "Complete the previous step to unlock this task." : getTaskDisplayDescription(task)}
@@ -1221,9 +963,9 @@ export function PlanView({
                                           <Badge status={isLocked ? "not_started" : task.waitingOn === "kzero" && task.status !== "complete" ? "waiting_on_kzero" : task.status}>
                                             {taskStatusLabel}
                                           </Badge>
-                                          {guides.length > 0 ? (
+                                          {guides.length > 0 && !isLocked ? (
                                             <Button
-                                              className="h-10 px-4"
+                                              className="h-9 rounded-xl px-3.5"
                                               onClick={() => setGuidePreview({ guides, stepName: task.title })}
                                               variant="outline"
                                             >
@@ -1235,15 +977,10 @@ export function PlanView({
                                               Submit SaaS Apps
                                             </Button>
                                           ) : null}
-                                          {isCurrentTask && isFirstCustomerPilotTask(task.title) ? (
-                                            <Button className="h-10 px-4" onClick={openFirstCustomerPilotForm}>
-                                              Select First Customer Pilot
-                                            </Button>
-                                          ) : null}
                                           {isCurrentTask && (task.meetingCta || isBookingTask(task.title)) ? (
                                             <>
                                               <a
-                                                className={buttonVariants({ variant: "default", className: "h-10 px-4" })}
+                                                className={buttonVariants({ variant: "default", className: "h-10 rounded-xl px-4" })}
                                                 href={BOOKING_URL}
                                                 rel="noreferrer"
                                                 target="_blank"
@@ -1252,7 +989,7 @@ export function PlanView({
                                                 <ArrowRight className="ml-2 h-4 w-4" />
                                               </a>
                                               <Button
-                                                className="h-10 px-4"
+                                                className="h-10 rounded-xl px-4"
                                                 disabled={savingTaskId === task.id}
                                                 onClick={() => markTaskComplete(task.id)}
                                                 variant="outline"
@@ -1263,7 +1000,7 @@ export function PlanView({
                                           ) : null}
                                           {isCurrentTask && isSaasSubmissionTask(task.title) ? (
                                             <Button
-                                              className="h-10 px-4"
+                                              className="h-10 rounded-xl px-4"
                                               disabled={savingTaskId === task.id}
                                               onClick={() => markTaskComplete(task.id)}
                                               variant="outline"
@@ -1274,7 +1011,7 @@ export function PlanView({
                                           {isCurrentTask && !isKZeroOwnedCurrentTask && !task.meetingCta && !isBookingTask(task.title) ? (
                                             (!isFirstCustomerPilotTask(task.title) || hasSavedFirstCustomerPilot) && !isSaasSubmissionTask(task.title) ? (
                                               <Button
-                                                className="h-10 px-4"
+                                                className="h-10 rounded-xl px-4"
                                                 disabled={savingTaskId === task.id}
                                                 onClick={() => markTaskComplete(task.id)}
                                               >
@@ -1284,6 +1021,88 @@ export function PlanView({
                                           ) : null}
                                         </div>
                                       </div>
+
+                                      {isCurrentTask && isFirstCustomerPilotTask(task.title) ? (
+                                        <div
+                                          className="mt-4 border-t border-white/10 pt-4"
+                                          id="first-customer-pilot-form"
+                                          tabIndex={-1}
+                                        >
+                                          {hasSavedFirstCustomerPilot && bundle.firstCustomerPilot ? (
+                                            <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.05] px-4 py-3 text-sm text-slate-200">
+                                              <p className="font-medium text-white">Pilot details saved</p>
+                                              <p className="mt-1">
+                                                {bundle.firstCustomerPilot.customerAlias} · {bundle.firstCustomerPilot.targetRolloutTiming}
+                                              </p>
+                                            </div>
+                                          ) : (
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                              <label className="grid gap-2 text-sm text-slate-300">
+                                                <span>Customer name or alias</span>
+                                                <input
+                                                  className="h-11 rounded-xl border border-white/10 bg-[#08111f] px-3 text-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                                  onChange={(event) => setPilotForm((current) => ({ ...current, customerAlias: event.target.value }))}
+                                                  value={pilotForm.customerAlias}
+                                                />
+                                              </label>
+                                              <label className="grid gap-2 text-sm text-slate-300">
+                                                <span>Target rollout date or timing</span>
+                                                <input
+                                                  className="h-11 rounded-xl border border-white/10 bg-[#08111f] px-3 text-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                                  onChange={(event) => setPilotForm((current) => ({ ...current, targetRolloutTiming: event.target.value }))}
+                                                  placeholder="e.g. July 2026 or week of July 15"
+                                                  value={pilotForm.targetRolloutTiming}
+                                                />
+                                              </label>
+                                              <label className="grid gap-2 text-sm text-slate-300">
+                                                <span>Estimated user count</span>
+                                                <input
+                                                  className="h-11 rounded-xl border border-white/10 bg-[#08111f] px-3 text-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                                  min={1}
+                                                  onChange={(event) => setPilotForm((current) => ({ ...current, estimatedUserCount: event.target.value }))}
+                                                  type="number"
+                                                  value={pilotForm.estimatedUserCount}
+                                                />
+                                              </label>
+                                              <label className="grid gap-2 text-sm text-slate-300">
+                                                <span>Customer admin contact name</span>
+                                                <input
+                                                  className="h-11 rounded-xl border border-white/10 bg-[#08111f] px-3 text-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                                  onChange={(event) => setPilotForm((current) => ({ ...current, adminContactName: event.target.value }))}
+                                                  value={pilotForm.adminContactName}
+                                                />
+                                              </label>
+                                              <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                                                <span>Customer admin contact email</span>
+                                                <input
+                                                  className="h-11 rounded-xl border border-white/10 bg-[#08111f] px-3 text-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                                  onChange={(event) => setPilotForm((current) => ({ ...current, adminContactEmail: event.target.value }))}
+                                                  type="email"
+                                                  value={pilotForm.adminContactEmail}
+                                                />
+                                              </label>
+                                              <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                                                <span>Notes</span>
+                                                <textarea
+                                                  className="min-h-[88px] rounded-xl border border-white/10 bg-[#08111f] px-3 py-2 text-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                                                  onChange={(event) => setPilotForm((current) => ({ ...current, notes: event.target.value }))}
+                                                  value={pilotForm.notes}
+                                                />
+                                              </label>
+                                              <div className="md:col-span-2">
+                                                <Button
+                                                  className="h-10 rounded-xl px-4"
+                                                  disabled={savingPilotDetails || !hasRequiredPilotFormDetails}
+                                                  onClick={saveFirstCustomerPilot}
+                                                >
+                                                  {savingPilotDetails ? "Saving..." : "Save Pilot Details"}
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          )}
+                                          {pilotError ? <p className="mt-3 text-sm text-amber-200">{pilotError}</p> : null}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   );
                                 })}
@@ -1311,7 +1130,7 @@ export function PlanView({
                     <div>
                       <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Submit App For Review</p>
                       <p className="mt-2 text-sm text-slate-300">
-                        Add each SaaS application you want KZero to review for SSO readiness.
+                        Add each SaaS application you want KZero Passwordless to review for SSO readiness.
                       </p>
                     </div>
                     <div className="grid gap-3 md:grid-cols-2">
@@ -1383,7 +1202,7 @@ export function PlanView({
                   ) : (
                     <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] p-4 text-sm text-slate-400">
                       <p>No SaaS apps submitted yet.</p>
-                      <p className="mt-1">Submit the SaaS applications you want KZero to review for SSO readiness.</p>
+                      <p className="mt-1">Submit the SaaS applications you want KZero Passwordless to review for SSO readiness.</p>
                     </div>
                   )}
                 </div>
