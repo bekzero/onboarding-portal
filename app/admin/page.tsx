@@ -9,7 +9,7 @@ export default async function AdminPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 md:px-10">
+    <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 md:px-6 md:py-6">
       <InternalDashboard
         baseCases={onboardingCases}
         salesEngineers={users.filter((user) => user.role === "sales_engineer")}

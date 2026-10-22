@@ -31,7 +31,7 @@ export function AdminSessionUnavailable() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-8">
       <Card className="w-full border-amber-400/20 bg-[#101a2d] px-6 py-7">
-        <KzeroLogo className="w-fit" imageClassName="h-auto w-[176px]" surface="dark" />
+        <KzeroLogo />
         <h1 className="mt-6 text-2xl font-semibold text-white">
           Zoho embedded view could not access the admin session.
         </h1>

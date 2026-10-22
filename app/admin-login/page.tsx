@@ -18,13 +18,7 @@ export default async function AdminLoginPage({
       <main className="w-full">
         <Card className="border-white/10 bg-[#101a2d] p-6 shadow-panel sm:p-8">
           <div>
-            <KzeroLogo
-              className="w-fit"
-              imageClassName="h-auto w-[180px] brightness-0 invert"
-              priority
-              surface="light"
-              variant="horizontal"
-            />
+            <KzeroLogo priority />
           </div>
 
           <div className="mt-7">

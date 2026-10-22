@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 type KzeroLogoProps = {
   className?: string;
@@ -25,31 +26,25 @@ export function KzeroLogo({
   className,
   imageClassName,
   priority = false,
-  surface = "light",
+  surface = "dark",
   variant = "horizontal"
 }: KzeroLogoProps) {
   const logo = logoMap[variant];
-  const useLightChip = surface === "dark" && variant === "horizontal";
-  const image = (
-    <Image
-      alt="KZero Passwordless"
-      className={imageClassName}
-      height={logo.height}
-      priority={priority}
-      src={logo.src}
-      width={logo.width}
-    />
+
+  return (
+    <div className={cn("w-fit", className)}>
+      <Image
+        alt="KZero Passwordless"
+        className={cn(
+          "block h-auto w-[180px] max-w-full",
+          surface === "dark" && "brightness-0 invert",
+          imageClassName
+        )}
+        height={logo.height}
+        priority={priority}
+        src={logo.src}
+        width={logo.width}
+      />
+    </div>
   );
-
-  if (useLightChip) {
-    return (
-      <div className={className}>
-        <div className="inline-flex rounded-[1.15rem] border border-white/60 bg-white px-4 py-3 shadow-sm">
-          {image}
-        </div>
-      </div>
-    );
-  }
-
-  return <div className={className}>{image}</div>;
 }

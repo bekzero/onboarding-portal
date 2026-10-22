@@ -119,7 +119,7 @@ export default function StartPage() {
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-6 md:px-10 md:py-8">
       <header className="rounded-[1.6rem] border border-white/10 bg-[#101a2d] px-5 py-4 shadow-panel md:px-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <KzeroLogo className="w-fit shrink-0" imageClassName="h-auto w-[210px]" priority surface="dark" />
+          <KzeroLogo className="shrink-0" priority />
           <div className="flex flex-wrap gap-3">
             <Link href="/">
               <Button className="h-10 px-4" variant="outline">

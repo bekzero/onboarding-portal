@@ -1175,16 +1175,16 @@ function ExecutiveSummaryReport({ data }: { data: ExecutiveSummaryReportData }) 
   return (
     <div className="report-print-root bg-white text-slate-900">
       <div className="mx-auto w-full max-w-[1120px] px-6 py-8 md:px-10">
-        <div className="flex flex-col gap-5 border-b border-slate-200 pb-6 md:flex-row md:items-start md:justify-between">
+        <div className="report-avoid-break flex flex-col gap-5 rounded-[1.5rem] bg-[#101a2d] p-6 text-white md:flex-row md:items-start md:justify-between">
           <div>
-            <KzeroLogo className="w-fit" imageClassName="h-auto w-[220px]" surface="light" />
-            <h1 className="mt-5 text-3xl font-semibold text-slate-950">MSP Onboarding Executive Summary</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            <KzeroLogo />
+            <h1 className="mt-5 text-3xl font-semibold text-white">MSP Onboarding Executive Summary</h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
               Current onboarding pipeline, ownership, and progress overview.
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600 report-avoid-break">
-            <p><span className="font-semibold text-slate-900">Generated:</span> {data.generatedAt}</p>
+          <div className="report-avoid-break rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300">
+            <p><span className="font-semibold text-white">Generated:</span> {data.generatedAt}</p>
             <p className="mt-2 max-w-xs leading-6">This report reflects the onboarding dashboard data at the time of export.</p>
           </div>
         </div>
@@ -1311,7 +1311,7 @@ function DashboardTable({
     const ariaSort = isActive ? (sortDirection === "asc" ? "ascending" : "descending") : "none";
 
     return (
-      <th aria-sort={ariaSort} className="px-4 py-3 font-medium" key={column}>
+      <th aria-sort={ariaSort} className="whitespace-nowrap px-3 py-2.5 font-medium" key={column}>
         {onSortChange ? (
           <button
             className={`inline-flex items-center gap-1.5 transition ${
@@ -1335,18 +1335,34 @@ function DashboardTable({
   }
 
   return (
-    <Card className="border-white/10 bg-[#101a2d]">
-      <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:px-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
+    <Card className="overflow-hidden border-white/10 bg-[#101a2d] p-0">
+      <div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between md:px-5">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="text-lg font-semibold text-white">{title}</h2>
-            <p className="mt-1 text-sm text-slate-300">
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-300">
               {items.length} {items.length === 1 ? countLabel.slice(0, -1) || countLabel : countLabel}
-            </p>
+            </span>
+            {waitingOnMspCount > 0 ? (
+              <span className="rounded-full border border-amber-400/20 bg-amber-400/[0.08] px-2.5 py-1 text-xs font-medium text-amber-100">
+                Waiting on MSP: {waitingOnMspCount}
+              </span>
+            ) : null}
+            {waitingOnKzeroCount > 0 ? (
+              <span className="rounded-full border border-fuchsia-400/20 bg-fuchsia-400/[0.08] px-2.5 py-1 text-xs font-medium text-fuchsia-100">
+                KZero Action Required: {waitingOnKzeroCount}
+              </span>
+            ) : null}
+            {completedCount > 0 && waitingOnMspCount === 0 && waitingOnKzeroCount === 0 ? (
+              <span className="rounded-full border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 py-1 text-xs font-medium text-emerald-100">
+                Complete: {completedCount}
+              </span>
+            ) : null}
           </div>
+        </div>
           <Button
             aria-expanded={isExpanded}
-            className="h-10 self-start px-4"
+            className="h-9 shrink-0 self-start rounded-xl px-3.5 sm:self-auto"
             onClick={() => setIsExpanded((current) => !current)}
             type="button"
             variant="outline"
@@ -1354,76 +1370,42 @@ function DashboardTable({
             {isExpanded ? "Collapse" : "Expand"}
             {isExpanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
           </Button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-medium text-slate-200">
-            {items.length} {items.length === 1 ? "case" : "cases"}
-          </span>
-          {waitingOnMspCount > 0 ? (
-            <Badge status="waiting_on_msp">Waiting on MSP: {waitingOnMspCount}</Badge>
-          ) : null}
-          {waitingOnKzeroCount > 0 ? (
-            <Badge status="waiting_on_kzero">KZero Action Required: {waitingOnKzeroCount}</Badge>
-          ) : null}
-          {completedCount > 0 && waitingOnMspCount === 0 && waitingOnKzeroCount === 0 ? (
-            <Badge status="complete">Complete: {completedCount}</Badge>
-          ) : null}
-        </div>
       </div>
 
       {!isExpanded ? (
-        <div className="px-4 py-4 md:px-5 md:py-5">
-          <div className="rounded-[1.25rem] border border-white/10 bg-[#0a1424] px-4 py-4">
-            {items.length === 0 ? (
-              <p className="text-sm text-slate-400">No cases in this section.</p>
-            ) : (
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <p className="text-sm text-slate-300">{items.length} {items.length === 1 ? "case is" : "cases are"} hidden.</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  {waitingOnMspCount > 0 ? (
-                    <span className="rounded-full border border-cyan-400/20 bg-cyan-400/[0.08] px-3 py-1 text-xs font-medium text-cyan-100">
-                      Waiting on MSP: {waitingOnMspCount}
-                    </span>
-                  ) : null}
-                  {waitingOnKzeroCount > 0 ? (
-                    <span className="rounded-full border border-amber-400/20 bg-amber-400/[0.08] px-3 py-1 text-xs font-medium text-amber-100">
-                      KZero Action Required: {waitingOnKzeroCount}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            )}
-          </div>
+        <div className="px-4 py-3 md:px-5">
+          <p className="text-sm text-slate-400">
+            {items.length === 0 ? emptyLabel : `Expand to view ${items.length} ${items.length === 1 ? "case" : "cases"}.`}
+          </p>
         </div>
       ) : (
-        <div className="px-4 py-4 md:px-5 md:py-5">
-          <div className="overflow-hidden rounded-[1.25rem] border border-white/10 bg-[#0a1424]">
+        <div className="p-3 md:p-4">
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-[#0a1424]">
             <div className="overflow-x-auto">
               {items.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-slate-400">No cases in this section.</div>
+                <div className="px-4 py-5 text-sm text-slate-400">{emptyLabel}</div>
               ) : (
-                <table className={`${showCustomerColumn ? "min-w-[1120px]" : "min-w-[1080px]"} w-full table-fixed`}>
+                <table className={`${showCustomerColumn ? "min-w-[1180px]" : "min-w-[1100px]"} w-full table-fixed`}>
               <colgroup>
-                <col className={showCustomerColumn ? "w-[19%]" : "w-[25%]"} />
-                {showCustomerColumn ? <col className="w-[17%]" /> : null}
-                {showGmmColumn ? <col className="w-[8%]" /> : null}
-                <col className={showCustomerColumn ? "w-[15%]" : "w-[14%]"} />
-                <col className={showCustomerColumn ? "w-[15%]" : "w-[15%]"} />
-                <col className={showCustomerColumn ? "w-[14%]" : "w-[14%]"} />
+                <col className={showCustomerColumn ? "w-[18%]" : "w-[23%]"} />
+                {showCustomerColumn ? <col className="w-[15%]" /> : null}
+                {showGmmColumn ? <col className="w-[7%]" /> : null}
+                <col className="w-[14%]" />
+                <col className={showCustomerColumn ? "w-[13%]" : "w-[14%]"} />
+                <col className="w-[15%]" />
                 <col className="w-[6%]" />
-                <col className={showCustomerColumn ? "w-[9%]" : "w-[9%]"} />
-                <col className={showCustomerColumn ? "w-[9%]" : "w-[8%]"} />
+                <col className={showCustomerColumn ? "w-[9.5%]" : "w-[10.5%]"} />
+                <col className={showCustomerColumn ? "w-[9.5%]" : "w-[10.5%]"} />
               </colgroup>
               <thead>
-                <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-400">
+                <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.14em] text-slate-400">
                   {sortableColumns.map((column) => renderSortHeader(column.key, column.label))}
                 </tr>
               </thead>
               <tbody>
                 {visibleItems.map((item) => (
-                  <tr key={item.onboardingPlanId} className="border-b border-white/10 last:border-b-0">
-                    <td className="px-4 py-3 align-middle">
+                  <tr key={item.onboardingPlanId} className="border-b border-white/10 transition hover:bg-white/[0.025] last:border-b-0">
+                    <td className="px-3 py-3 align-middle">
                       <div className="min-w-0">
                         <button
                           className="truncate text-left text-sm font-medium text-white underline decoration-white/20 underline-offset-4 transition hover:text-blue-200 hover:decoration-blue-200"
@@ -1436,17 +1418,17 @@ function DashboardTable({
                       </div>
                     </td>
                     {showCustomerColumn ? (
-                      <td className="px-4 py-3 align-middle text-sm text-slate-300">
+                      <td className="px-3 py-3 align-middle text-sm text-slate-300">
                         <span className="block truncate">{item.customerName ?? "Not provided"}</span>
                       </td>
                     ) : null}
                     {showGmmColumn ? (
-                      <td className="px-4 py-3 align-middle text-sm text-slate-300">{getGmmLabel(item.isGmmPartner)}</td>
+                      <td className="px-3 py-3 align-middle text-sm text-slate-300">{getGmmLabel(item.isGmmPartner)}</td>
                     ) : null}
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">
+                    <td className="px-3 py-3 align-middle text-sm text-slate-300">
                       <span className="block truncate">{item.currentStage}</span>
                     </td>
-                    <td className="px-4 py-3 align-middle">
+                    <td className="px-3 py-3 align-middle">
                       <div className="min-w-[110px]">
                         <p className="text-sm font-medium text-white">{item.progress}%</p>
                         <div className="mt-2 h-1.5 rounded-full bg-white/10">
@@ -1457,14 +1439,16 @@ function DashboardTable({
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 align-middle">
-                      <Badge status={getStatusTone(item)}>{getWaitingLabel(item)}</Badge>
+                    <td className="px-3 py-3 align-middle">
+                      <Badge className="whitespace-nowrap px-2.5 py-1 text-[10px] tracking-[0.12em]" status={getStatusTone(item)}>
+                        {getWaitingLabel(item)}
+                      </Badge>
                     </td>
-                    <td className="px-4 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
-                    <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-300">
+                    <td className="px-3 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
+                    <td className="whitespace-nowrap px-3 py-3 align-middle text-sm text-slate-300">
                       {formatCompactTableDate(item.enrollmentDateRaw ?? item.enrollmentDate ?? item.lastActivityRaw ?? item.lastActivity)}
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 align-middle text-sm text-slate-300">
+                    <td className="whitespace-nowrap px-3 py-3 align-middle text-sm text-slate-300">
                       {formatCompactTableDate(item.lastActivityRaw ?? item.lastActivity)}
                     </td>
                   </tr>
@@ -1476,7 +1460,7 @@ function DashboardTable({
           </div>
 
           {items.length > 0 ? (
-            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <p className="text-sm text-slate-400">
                 {showFullResults
                   ? `Showing all ${items.length} matching ${items.length === 1 ? "case" : "cases"}.`
@@ -2599,57 +2583,45 @@ export function InternalDashboard({
     panelMode === "enroll" || ((panelMode === "preview" || panelMode === "edit" || panelMode === "oidc" || panelMode === "delete" || panelMode === "rollback") && !!selectedCase);
 
   return (
-    <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-5">
-      <section className="min-w-0 grid gap-4">
-        <Card className="border-white/10 bg-[#101a2d] px-4 py-4 md:px-5">
+    <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-4">
+      <section className="min-w-0 grid gap-3">
+        <Card className="border-white/10 bg-[#101a2d] p-4 md:p-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
-            <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:gap-4">
-              <KzeroLogo
-                className="w-fit shrink-0"
-                imageClassName="h-auto w-[176px] md:w-[188px]"
-                surface="dark"
-              />
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              <KzeroLogo className="shrink-0" />
               <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl font-semibold text-white">Sales Engineer Dashboard</h2>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
-                    Admin
-                  </span>
-                </div>
+                <h1 className="text-2xl font-semibold tracking-tight text-white">Sales Engineer Dashboard</h1>
                 <p className="mt-1 text-sm text-slate-300">Manage MSP Onboarding</p>
               </div>
             </div>
-            <div className="flex flex-col items-stretch gap-3 xl:min-w-[520px] xl:max-w-[620px] xl:items-end">
-              <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-[#0a1424] p-1.5">
-                  <Button
-                    className="relative h-10 px-4"
-                    onClick={() => setIsNotificationDrawerOpen(true)}
-                    variant="outline"
-                  >
-                    <Bell className="mr-2 h-4 w-4" />
-                    Notifications
-                    {unreadNotificationCount > 0 ? (
-                      <span className="ml-2 inline-flex min-w-6 items-center justify-center rounded-full bg-blue-400 px-1.5 py-0.5 text-[11px] font-semibold text-slate-950">
-                        {unreadNotificationCount}
-                      </span>
-                    ) : null}
-                  </Button>
-                  <Button className="h-10 px-4" onClick={() => setIsReportOpen(true)} variant="outline">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Reports
-                  </Button>
-                  <Link href="/">
-                    <Button className="h-10 px-4" variant="outline">
-                      Back to Main Page
-                    </Button>
-                  </Link>
-                </div>
-                <Button className="h-10 whitespace-nowrap px-4" onClick={openEnroll}>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Enroll MSP
-                </Button>
-              </div>
+            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+              <Link
+                className="inline-flex h-10 items-center px-2 text-sm font-medium text-slate-400 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                href="/"
+              >
+                Back to Main Page
+              </Link>
+              <Button
+                className="relative h-10 rounded-xl px-3.5"
+                onClick={() => setIsNotificationDrawerOpen(true)}
+                variant="outline"
+              >
+                <Bell className="mr-2 h-4 w-4" />
+                Notifications
+                {unreadNotificationCount > 0 ? (
+                  <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-blue-400 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950">
+                    {unreadNotificationCount}
+                  </span>
+                ) : null}
+              </Button>
+              <Button className="h-10 rounded-xl px-3.5" onClick={() => setIsReportOpen(true)} variant="outline">
+                <FileText className="mr-2 h-4 w-4" />
+                Reports
+              </Button>
+              <Button className="h-10 whitespace-nowrap rounded-xl px-4" onClick={openEnroll}>
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Enroll MSP
+              </Button>
             </div>
           </div>
         </Card>
@@ -2720,59 +2692,59 @@ export function InternalDashboard({
 
             {!showBlockingServerError ? (
               <>
-                <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                    <Building2 className="h-5 w-5" />
-                  </div>
+                <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-300">Total Cases</p>
-                    <p className="mt-1 text-3xl font-semibold text-white">{onboardingCases.length}</p>
+                    <p className="text-xs font-medium text-slate-400">Total Cases</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{onboardingCases.length}</p>
+                  </div>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <Building2 className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-400/15 text-blue-200">
-                    <Gauge className="h-5 w-5" />
-                  </div>
+              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-300">In Progress</p>
-                    <p className="mt-1 text-3xl font-semibold text-white">{inProgressMspCases.length + inProgressCustomerCases.length}</p>
+                    <p className="text-xs font-medium text-slate-400">In Progress</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{inProgressMspCases.length + inProgressCustomerCases.length}</p>
+                  </div>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-400/15 text-blue-200">
+                    <Gauge className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200">
-                    <TimerReset className="h-5 w-5" />
-                  </div>
+              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-300">Waiting on MSP</p>
-                    <p className="mt-1 text-3xl font-semibold text-white">{waitingOnMsp}</p>
+                    <p className="text-xs font-medium text-slate-400">Waiting on MSP</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{waitingOnMsp}</p>
+                  </div>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/15 text-cyan-200">
+                    <TimerReset className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/15 text-amber-200">
-                    <Clock3 className="h-5 w-5" />
-                  </div>
+              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-300">Waiting on KZero</p>
-                    <p className="mt-1 text-3xl font-semibold text-white">{waitingOnKZero}</p>
+                    <p className="text-xs font-medium text-slate-400">Waiting on KZero</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{waitingOnKZero}</p>
+                  </div>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-200">
+                    <Clock3 className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/10 bg-[#101a2d] px-4 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-200">
-                    <Gauge className="h-5 w-5" />
-                  </div>
+              <Card className="col-span-2 border-white/10 bg-[#101a2d] p-3.5 lg:col-span-1">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-300">Completed</p>
-                    <p className="mt-1 text-3xl font-semibold text-white">{completedMspCases.length + completedCustomerCases.length}</p>
+                    <p className="text-xs font-medium text-slate-400">Completed</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{completedMspCases.length + completedCustomerCases.length}</p>
+                  </div>
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-200">
+                    <Gauge className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
@@ -2793,16 +2765,16 @@ export function InternalDashboard({
               </Card>
             ) : (
               <>
-                <Card className="border-white/10 bg-[#101a2d]">
-                  <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:items-end xl:gap-6">
-                    <div className="min-w-0 xl:max-w-xl">
-                      <label className="block text-xs uppercase tracking-[0.22em] text-slate-400" htmlFor="msp-search">
+                <Card className="border-white/10 bg-[#101a2d] p-4">
+                  <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.4fr)] xl:items-end xl:gap-5">
+                    <div className="min-w-0">
+                      <label className="block text-xs font-medium text-slate-400" htmlFor="msp-search">
                         Search Cases
                       </label>
                       <div className="relative mt-2">
                         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                         <input
-                          className="h-11 w-full rounded-2xl border border-white/10 bg-[#0a1424] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60"
+                          className="h-10 w-full rounded-xl border border-white/10 bg-[#0a1424] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/15"
                           id="msp-search"
                           onChange={(event) => setSearchQuery(event.target.value)}
                           placeholder="Search MSP name, customer name, email, tenant, or stage"
@@ -2812,10 +2784,10 @@ export function InternalDashboard({
                       </div>
                     </div>
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                        {quickFilters.map((filterOption) => (
+                      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap xl:justify-end">
+                        {quickFilters.map((filterOption, filterIndex) => (
                           <Button
-                            className="h-10 whitespace-nowrap px-3 sm:px-4"
+                            className={`h-10 whitespace-nowrap rounded-xl px-3 sm:px-4 ${filterIndex === 0 ? "col-span-2 sm:col-auto" : ""}`}
                             key={filterOption.value}
                             onClick={() => setQuickFilter(filterOption.value)}
                             variant={quickFilter === filterOption.value ? "default" : "outline"}
@@ -4276,6 +4248,8 @@ export function InternalDashboard({
           .report-print-root {
             background: #ffffff !important;
             color: #0f172a !important;
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
           }
 
           .report-page-break {
