@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 
 export function PortalShell({
@@ -28,6 +29,7 @@ export function PortalShell({
         </div>
         {showActions ? (
           <div className="flex flex-wrap gap-3">
+            <ThemeToggle />
             <Link href="/">
               <Button variant="outline">Overview</Button>
             </Link>

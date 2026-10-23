@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
   CircleAlert,
@@ -13,6 +14,7 @@ import {
 import { GuidePreviewModal } from "@/components/guide-preview-modal";
 import { TaskGuideAccess } from "@/components/task-guide-access";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,6 +22,7 @@ import { DocumentsReviewCard } from "@/components/documents-review-card";
 import { getTaskGuides, type TaskGuide } from "@/lib/guide-previews";
 import type { PlanBundle, Task } from "@/lib/mock-data";
 import { users } from "@/lib/mock-data";
+import { getTaskTimeEstimate } from "@/lib/onboarding-time-estimates";
 
 const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
@@ -213,6 +216,14 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
         ? "complete"
         : "waiting_on_msp"
     : "complete";
+  const currentTaskTimeEstimate = currentTask ? getTaskTimeEstimate(currentTask.id, "next-action") : null;
+  const isCustomerPlan = bundle.plan.tenantType === "customer";
+  const portalHeading = isCustomerPlan
+    ? bundle.plan.customerName ?? bundle.plan.title
+    : bundle.organization.name;
+  const portalSubtitle = isCustomerPlan
+    ? `Managed by ${bundle.plan.mspName ?? bundle.organization.name} through KZero Passwordless.`
+    : "KZero Passwordless NFR onboarding workspace";
   const phaseGroups = bundle.phases.map((phase) => ({
     phase,
     tasks: orderedTasks.filter((task) => task.phaseId === phase.id)
@@ -272,28 +283,6 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
       ? "After kickoff, you'll add backup admins and invite your MSP users."
       : `${followingTask.title} (${formatTaskOwnerLabelShort(followingTask.owner)})`
     : "This completes the current onboarding milestone.";
-  const currentStepLabel = currentTask
-    ? isBookingTask(currentTask)
-      ? "Book kickoff call"
-      : currentTask.title
-    : "Onboarding complete";
-  const currentOwnerLabel = currentTask
-    ? currentTask.owner === "kzero_se"
-      ? "KZero"
-      : currentTask.owner === "shared"
-        ? "Your team and KZero"
-        : "Your team"
-    : "Complete";
-  const currentStatusLabel = currentTask
-    ? isBlocked
-      ? "Blocked"
-      : formatTaskStatusLabel(currentTask.status)
-    : "Complete";
-  const afterThisLabel = followingTask
-    ? currentTask && isBookingTask(currentTask)
-      ? "Import Your Passwords"
-      : followingTask.title
-    : "Complete onboarding milestone";
   const tabs: { id: PlanTab; label: string }[] = [
     { id: "overview", label: "Overview" },
     { id: "tasks", label: "Tasks" },
@@ -357,29 +346,52 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
     return true;
   }
 
+  function goToCurrentTask() {
+    if (!currentTask) {
+      return;
+    }
+
+    setActiveTab("tasks");
+    window.setTimeout(() => {
+      const taskElement = document.getElementById(`task-${currentTask.id}`);
+      taskElement?.scrollIntoView({ behavior: "smooth", block: "center" });
+      taskElement?.focus({ preventScroll: true });
+    }, 50);
+  }
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 md:px-6 md:py-6">
-      <header className="rounded-[1.7rem] border border-border bg-surface/95 px-4 py-4 shadow-panel md:px-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
+      <header className="rounded-[1.7rem] border border-border bg-surface/95 px-4 py-4 shadow-panel md:px-5 md:py-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] lg:items-center lg:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] xl:gap-10">
+          <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6 lg:gap-10">
             <KzeroLogo className="shrink-0" />
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-info">
-                  {bundle.plan.tenantType.toUpperCase()} plan
-                </p>
-              </div>
-              <h1 className="mt-1 text-2xl font-semibold text-foreground md:text-3xl">{bundle.plan.title}</h1>
-              <p className="mt-1 text-sm text-secondary">{bundle.organization.name} - KZero Passwordless onboarding workspace</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-info">
+                {isCustomerPlan ? "Customer Plan" : "NFR Plan"}
+              </p>
+              <h1 className="mt-2 break-words text-2xl font-semibold leading-tight text-foreground">{portalHeading}</h1>
+              <p className="mt-1.5 text-sm leading-5 text-secondary">{portalSubtitle}</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Link href="/">
-              <Button variant="outline" className="h-9 px-4">
-                Overview
-              </Button>
-            </Link>
+          <div className="flex min-w-0 flex-col gap-3 lg:items-end">
+            <div className="w-full max-w-[320px]">
+              <div className="flex items-center justify-between text-xs font-medium text-muted">
+                <span>{completedCount} of {orderedTasks.length} {orderedTasks.length === 1 ? "task" : "tasks"} completed</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="mt-2 h-2 rounded-full bg-subtle">
+                <div className="h-2 rounded-full bg-primary" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ThemeToggle className="h-9 w-9" />
+              <Link href="/">
+                <Button variant="outline" className="h-9 px-4">
+                  Home
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>
@@ -404,92 +416,43 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
 
       <main className="mt-5 grid gap-5">
         <div className="grid gap-5 lg:grid-cols-12">
-          <section className="grid gap-5 lg:col-span-8">
-            <Card className="border-border bg-accent p-5 md:p-6">
-              <div className="grid gap-5 md:grid-cols-[1.2fr_0.8fr] md:items-start">
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.26em] text-info">
+          <section className="grid gap-5 lg:col-span-12">
+            <Card className="border-border bg-surface p-5 md:p-6 lg:col-span-12">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center lg:gap-8">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-info">
                     <span>{currentPhase?.title ?? "Onboarding complete"}</span>
                     <span className="text-muted-subtle">/</span>
-                    <span>Current Action</span>
+                    <span>Your Next Action</span>
                   </div>
-                  <div className="space-y-2">
-                    <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-foreground md:text-[2.6rem]">
-                      {yourNextAction}
-                    </h2>
-                    <p className="max-w-2xl text-sm leading-7 text-info">
-                      {yourNextActionDetail}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-3">
-                    {currentTask && isBookingTask(currentTask) ? (
-                      <>
-                        <a
-                          className={buttonVariants({ variant: "default" })}
-                          href={BOOKING_URL}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          {getMeetingButtonLabel(currentTask)}
-                        </a>
-                        <Button onClick={() => markTaskComplete(currentTask.id)} variant="outline">
-                          Mark Complete
-                        </Button>
-                      </>
-                    ) : null}
-                    {currentTask && isDocumentationTask(currentTask) ? (
-                      <Button onClick={() => markTaskComplete(currentTask.id)}>Mark documentation distributed</Button>
-                    ) : null}
-                    {currentTask && isAppSubmissionTask(currentTask) && submittedApps.length > 0 ? (
-                      <Button onClick={() => markTaskComplete(currentTask.id)}>Mark SaaS app step complete</Button>
-                    ) : null}
-                    {currentTask && !isBookingTask(currentTask) && !isDocumentationTask(currentTask) && !isAppSubmissionTask(currentTask) && canMarkActiveTaskComplete(currentTask) ? (
-                      <Button onClick={() => markTaskComplete(currentTask.id)}>Mark complete</Button>
-                    ) : null}
-                    {currentTask && isKZeroOwnedTask(currentTask) ? (
-                      <Button variant="outline" onClick={() => markTaskComplete(currentTask.id)}>
-                        Advance KZero step
-                      </Button>
-                    ) : null}
-                    {!currentTask ? (
-                      <Button variant="outline" onClick={resetPlanState}>
-                        Restart plan
-                      </Button>
-                    ) : null}
-                  </div>
-                  {currentTask && isKZeroOwnedTask(currentTask) ? (
-                    <p className="text-sm text-warning">
-                      This step is owned by KZero and cannot be completed by the MSP in production.
-                    </p>
-                  ) : null}
+                  <h2 className="mt-3 max-w-3xl text-xl font-semibold leading-tight text-foreground md:text-2xl">
+                    {yourNextAction}
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-secondary">{yourNextActionDetail}</p>
+                  <p className="mt-3 text-xs text-muted">
+                    <span className="font-medium text-secondary">Owner:</span>{" "}
+                    {currentTask ? formatTaskOwnerLabel(currentTask.owner) : "Complete"}
+                  </p>
                 </div>
 
-                <div className="rounded-[1.4rem] border border-border bg-surface-secondary/70 p-4 text-sm">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted">At a Glance</p>
-                  <div className="mt-4 grid gap-3">
-                    <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
-                      <p className="text-muted">Current Step</p>
-                      <p className="text-right font-medium text-foreground">{currentStepLabel}</p>
+                <div className="flex flex-col items-start gap-3 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                  {currentTaskTimeEstimate ? (
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-secondary">
+                      <Clock3 className="h-3.5 w-3.5 text-info" aria-hidden="true" />
+                      <span>{currentTaskTimeEstimate}</span>
                     </div>
-                    <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
-                      <p className="text-muted">Owner</p>
-                      <p className="text-right font-medium text-foreground">{currentOwnerLabel}</p>
-                    </div>
-                    <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
-                      <p className="text-muted">Status</p>
-                      <p className="text-right font-medium text-foreground">{currentStatusLabel}</p>
-                    </div>
-                    <div className="flex items-start justify-between gap-4">
-                      <p className="text-muted">After This</p>
-                      <p className="text-right font-medium text-foreground">{afterThisLabel}</p>
-                    </div>
-                    {currentTask && isBlocked ? (
-                      <div className="rounded-2xl border border-warning-border/60 bg-warning-surface px-4 py-3 text-secondary">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-warning">Blocked</p>
-                        <p className="mt-2">{actionStatusReason}</p>
-                      </div>
-                    ) : null}
-                  </div>
+                  ) : null}
+                  <Badge status={currentStatusBadge}>
+                    {currentTask ? formatTaskStatusLabel(currentTask.status) : "Complete"}
+                  </Badge>
+                  {currentTask ? (
+                    <Button className="h-10 w-full rounded-xl px-4 sm:w-auto lg:w-full" onClick={goToCurrentTask}>
+                      Go to Task
+                      <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  ) : (
+                    <Button variant="outline" onClick={resetPlanState}>Restart plan</Button>
+                  )}
                 </div>
               </div>
             </Card>
@@ -689,7 +652,12 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                 : "locked";
 
                             return (
-                              <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskStateClass(taskViewState, task)}`}>
+                              <div
+                                key={task.id}
+                                className={`rounded-[1.2rem] border p-4 ${taskStateClass(taskViewState, task)}`}
+                                id={`task-${task.id}`}
+                                tabIndex={isActive ? -1 : undefined}
+                              >
                                 {taskViewState === "complete" ? (
                                   <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                                     <div className="min-w-0">

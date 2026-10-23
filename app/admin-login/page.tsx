@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { submitAdminLogin } from "@/app/admin-login/actions";
 import { AdminLoginSubmit } from "@/components/admin-login-submit";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
 
 export default async function AdminLoginPage({
@@ -17,8 +18,9 @@ export default async function AdminLoginPage({
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[500px] items-center px-4 py-5 sm:px-6 sm:py-8">
       <main className="w-full">
         <Card className="border-border bg-surface p-6 shadow-panel sm:p-8">
-          <div>
+          <div className="flex items-start justify-between gap-4">
             <KzeroLogo priority />
+            <ThemeToggle />
           </div>
 
           <div className="mt-7">

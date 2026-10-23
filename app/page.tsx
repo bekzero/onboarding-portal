@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -28,12 +29,15 @@ export default function HomePage() {
       <header className="border-b border-border bg-surface/90">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 md:px-10">
           <KzeroLogo className="shrink-0" imageClassName="w-[168px] sm:w-[180px]" priority />
-          <Link
-            className="rounded-lg px-2 py-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            href="/admin-login"
-          >
-            Admin Sign In
-          </Link>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <Link
+              className="rounded-lg px-2 py-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              href="/admin-login"
+            >
+              Admin Sign In
+            </Link>
+          </div>
         </div>
       </header>
 

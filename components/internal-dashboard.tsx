@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { DocumentsReviewCard } from "@/components/documents-review-card";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -2595,6 +2596,7 @@ export function InternalDashboard({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+              <ThemeToggle />
               <Link
                 className="inline-flex h-10 items-center px-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 href="/"

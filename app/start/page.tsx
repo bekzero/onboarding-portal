@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -129,7 +130,7 @@ export default function StartPage() {
       <header className="border-b border-border bg-surface/90">
         <div className="mx-auto flex w-full max-w-7xl flex-col items-start gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 md:px-10">
           <KzeroLogo className="shrink-0" imageClassName="w-[168px] sm:w-[180px]" priority />
-          <nav className="flex w-full items-center justify-between gap-4 sm:w-auto sm:justify-end" aria-label="Portal navigation">
+          <nav className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end" aria-label="Portal navigation">
             <Link
               className="inline-flex items-center rounded-lg py-2 text-sm font-medium text-secondary transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               href="/"
@@ -138,11 +139,12 @@ export default function StartPage() {
               Back to Home
             </Link>
             <Link
-              className="rounded-lg py-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="ml-auto rounded-lg py-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:ml-0"
               href="/admin-login"
             >
               Admin Sign In
             </Link>
+            <ThemeToggle />
           </nav>
         </div>
       </header>

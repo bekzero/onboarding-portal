@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
@@ -31,7 +32,10 @@ export function AdminSessionUnavailable() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-8">
       <Card className="w-full border-warning-border/60 bg-surface px-6 py-7">
-        <KzeroLogo />
+        <div className="flex items-start justify-between gap-4">
+          <KzeroLogo />
+          <ThemeToggle />
+        </div>
         <h1 className="mt-6 text-2xl font-semibold text-foreground">
           Zoho embedded view could not access the admin session.
         </h1>

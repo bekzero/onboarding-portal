@@ -14,6 +14,7 @@ import { GuidePreviewModal } from "@/components/guide-preview-modal";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { PortalTourModal, type PortalTourStep } from "@/components/portal-tour-modal";
 import { TaskGuideAccess } from "@/components/task-guide-access";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -620,28 +621,23 @@ export function PlanView({
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 md:px-6 md:py-5">
-      <header className="rounded-3xl border border-border bg-surface/95 p-4 shadow-panel md:px-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-8">
-          <div className="flex min-w-0 flex-col items-start gap-5 sm:flex-row sm:gap-6 lg:gap-10 xl:flex-1">
+      <header className="rounded-3xl border border-border bg-surface/95 p-4 shadow-panel md:px-5 md:py-5">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] lg:items-center lg:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] xl:gap-10">
+          <div className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6 lg:gap-10">
             <KzeroLogo className="shrink-0" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-border bg-hover px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-info">
                   {formatPlanTypeLabel(bundle.plan.tenantType)}
                 </span>
-                {isCustomerPlan && bundle.plan.customerName ? (
-                  <span className="rounded-full border border-border bg-hover px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-secondary">
-                    Customer: {bundle.plan.customerName}
-                  </span>
-                ) : null}
               </div>
-              <h1 className="mt-2 break-words text-2xl font-semibold tracking-tight text-foreground">{portalHeading}</h1>
-              <p className="mt-1 text-sm text-secondary">{portalSubtitle}</p>
+              <h1 className="mt-2 break-words text-2xl font-semibold leading-tight tracking-tight text-foreground">{portalHeading}</h1>
+              <p className="mt-1.5 text-sm leading-5 text-secondary">{portalSubtitle}</p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 xl:shrink-0 xl:items-end">
-            <div className="w-full min-w-[250px] max-w-[320px]">
+          <div className="flex min-w-0 flex-col gap-3 lg:items-end">
+            <div className="w-full max-w-[320px]">
               <div className="flex items-center justify-between text-xs font-medium text-muted">
                 <span>{completedTasks} of {orderedTasks.length} {orderedTasks.length === 1 ? "task" : "tasks"} completed</span>
                 <span>{bundle.plan.progress}%</span>
@@ -653,7 +649,8 @@ export function PlanView({
                 />
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <ThemeToggle className="h-9 w-9" />
               <Button className="h-9 px-4" onClick={openTour} variant="outline">
                 Portal Tour
               </Button>
@@ -688,46 +685,37 @@ export function PlanView({
       <main className="mt-4 grid gap-4">
         <div>
           <section className="grid gap-4">
-            <Card className="border-border bg-surface p-4 md:p-5">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+            <Card className="border-border bg-surface p-5 md:p-6">
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center lg:gap-8">
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-info">
                     <span>{safeNextStepPhase?.title ?? "Kickoff"}</span>
                     <span className="text-muted-subtle">/</span>
                     <span>Your Next Action</span>
                   </div>
+                  <h2 className="mt-3 max-w-3xl text-xl font-semibold leading-tight text-foreground md:text-2xl">
+                    {currentStepLabel}
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-secondary">{yourNextActionDetail}</p>
+                  <p className="mt-3 text-xs text-muted">
+                    <span className="font-medium text-secondary">Owner:</span> {currentOwnerLabel}
+                  </p>
+                </div>
+
+                <div className="flex flex-col items-start gap-3 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
                   {currentTaskTimeEstimate ? (
                     <div className="flex items-center gap-1.5 text-xs font-medium text-secondary">
                       <Clock3 className="h-3.5 w-3.5 text-info" aria-hidden="true" />
                       <span>{currentTaskTimeEstimate}</span>
                     </div>
                   ) : null}
-                </div>
-                <div>
-                  <div>
-                    <div className="space-y-3">
-                      <div className="space-y-3">
-                        <h2 className="max-w-3xl text-xl font-semibold leading-tight text-foreground md:text-2xl">
-                          {currentStepLabel}
-                        </h2>
-                        <p className="max-w-3xl text-sm leading-6 text-secondary">{yourNextActionDetail}</p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="rounded-full border border-border bg-hover px-2.5 py-1 text-secondary">
-                          {currentOwnerLabel}
-                        </span>
-                        <span className="rounded-full border border-border bg-hover px-2.5 py-1 text-secondary">
-                          {currentStatusLabel}
-                        </span>
-                      </div>
-                      {!isPlanComplete ? (
-                        <Button className="h-10 w-fit rounded-xl px-4" onClick={goToCurrentTask}>
-                          Go to Task
-                          <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
+                  <Badge status={nextTask.status}>{currentStatusLabel}</Badge>
+                  {!isPlanComplete ? (
+                    <Button className="h-10 w-full rounded-xl px-4 sm:w-auto lg:w-full" onClick={goToCurrentTask}>
+                      Go to Task
+                      <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </Card>
