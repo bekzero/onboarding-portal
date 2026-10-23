@@ -37,7 +37,7 @@ export function KzeroLogo({
         alt="KZero Passwordless"
         className={cn(
           "block h-auto w-[180px] max-w-full",
-          surface === "dark" && "brightness-0 invert",
+          surface === "dark" ? "theme-logo-on-surface" : "theme-logo-light-surface",
           imageClassName
         )}
         height={logo.height}

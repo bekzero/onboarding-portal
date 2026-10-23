@@ -11,6 +11,7 @@ import {
   Mail
 } from "lucide-react";
 import { GuidePreviewModal } from "@/components/guide-preview-modal";
+import { TaskGuideAccess } from "@/components/task-guide-access";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -124,18 +125,18 @@ function getStorageKey(planId: string) {
 
 function taskStateClass(taskState: TaskViewState, task: Task) {
   if (taskState === "locked") {
-    return "border-white/8 bg-[#0b1423]/70";
+    return "border-border bg-surface-secondary/70";
   }
 
   if (taskState === "complete") {
-    return "border-emerald-400/18 bg-emerald-400/[0.05]";
+    return "border-success-border/60 bg-success-surface";
   }
 
   if (isKZeroOwnedTask(task)) {
-    return "border-amber-400/22 bg-amber-400/[0.05]";
+    return "border-warning-border/60 bg-warning-surface";
   }
 
-  return "border-blue-400/18 bg-blue-400/[0.05]";
+  return "border-info-border/60 bg-info-surface";
 }
 
 function isMeaningfulComment(body: string) {
@@ -358,18 +359,18 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 md:px-6 md:py-6">
-      <header className="rounded-[1.7rem] border border-white/10 bg-[#101c31]/90 px-4 py-4 shadow-panel md:px-5">
+      <header className="rounded-[1.7rem] border border-border bg-surface/95 px-4 py-4 shadow-panel md:px-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <KzeroLogo className="shrink-0" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-100/80">
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-info">
                   {bundle.plan.tenantType.toUpperCase()} plan
                 </p>
               </div>
-              <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{bundle.plan.title}</h1>
-              <p className="mt-1 text-sm text-slate-300">{bundle.organization.name} - KZero Passwordless onboarding workspace</p>
+              <h1 className="mt-1 text-2xl font-semibold text-foreground md:text-3xl">{bundle.plan.title}</h1>
+              <p className="mt-1 text-sm text-secondary">{bundle.organization.name} - KZero Passwordless onboarding workspace</p>
             </div>
           </div>
 
@@ -390,8 +391,8 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
             aria-pressed={activeTab === tab.id}
             className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
               activeTab === tab.id
-                ? "border-primary/40 bg-primary/15 text-white"
-                : "border-white/10 bg-[#0d1627] text-slate-300 hover:border-white/20 hover:text-white"
+                ? "border-primary/40 bg-primary/15 text-foreground"
+                : "border-border bg-surface text-secondary hover:border-border-strong hover:text-foreground"
             }`}
             onClick={() => setActiveTab(tab.id)}
             type="button"
@@ -404,19 +405,19 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
       <main className="mt-5 grid gap-5">
         <div className="grid gap-5 lg:grid-cols-12">
           <section className="grid gap-5 lg:col-span-8">
-            <Card className="border-white/10 bg-[linear-gradient(135deg,#223c78_0%,#101c31_54%,#09111d_100%)] p-5 md:p-6">
+            <Card className="border-border bg-accent p-5 md:p-6">
               <div className="grid gap-5 md:grid-cols-[1.2fr_0.8fr] md:items-start">
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.26em] text-blue-100/80">
+                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.26em] text-info">
                     <span>{currentPhase?.title ?? "Onboarding complete"}</span>
-                    <span className="text-slate-500">/</span>
+                    <span className="text-muted-subtle">/</span>
                     <span>Current Action</span>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-white md:text-[2.6rem]">
+                    <h2 className="max-w-3xl text-3xl font-semibold leading-tight text-foreground md:text-[2.6rem]">
                       {yourNextAction}
                     </h2>
-                    <p className="max-w-2xl text-sm leading-7 text-blue-100/78">
+                    <p className="max-w-2xl text-sm leading-7 text-info">
                       {yourNextActionDetail}
                     </p>
                   </div>
@@ -457,34 +458,34 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                     ) : null}
                   </div>
                   {currentTask && isKZeroOwnedTask(currentTask) ? (
-                    <p className="text-sm text-amber-100/85">
+                    <p className="text-sm text-warning">
                       This step is owned by KZero and cannot be completed by the MSP in production.
                     </p>
                   ) : null}
                 </div>
 
-                <div className="rounded-[1.4rem] border border-white/10 bg-[#0a1424]/70 p-4 text-sm">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">At a Glance</p>
+                <div className="rounded-[1.4rem] border border-border bg-surface-secondary/70 p-4 text-sm">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted">At a Glance</p>
                   <div className="mt-4 grid gap-3">
-                    <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-                      <p className="text-slate-400">Current Step</p>
-                      <p className="text-right font-medium text-white">{currentStepLabel}</p>
+                    <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
+                      <p className="text-muted">Current Step</p>
+                      <p className="text-right font-medium text-foreground">{currentStepLabel}</p>
                     </div>
-                    <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-                      <p className="text-slate-400">Owner</p>
-                      <p className="text-right font-medium text-white">{currentOwnerLabel}</p>
+                    <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
+                      <p className="text-muted">Owner</p>
+                      <p className="text-right font-medium text-foreground">{currentOwnerLabel}</p>
                     </div>
-                    <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-3">
-                      <p className="text-slate-400">Status</p>
-                      <p className="text-right font-medium text-white">{currentStatusLabel}</p>
+                    <div className="flex items-start justify-between gap-4 border-b border-border pb-3">
+                      <p className="text-muted">Status</p>
+                      <p className="text-right font-medium text-foreground">{currentStatusLabel}</p>
                     </div>
                     <div className="flex items-start justify-between gap-4">
-                      <p className="text-slate-400">After This</p>
-                      <p className="text-right font-medium text-white">{afterThisLabel}</p>
+                      <p className="text-muted">After This</p>
+                      <p className="text-right font-medium text-foreground">{afterThisLabel}</p>
                     </div>
                     {currentTask && isBlocked ? (
-                      <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-slate-200">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-amber-200">Blocked</p>
+                      <div className="rounded-2xl border border-warning-border/60 bg-warning-surface px-4 py-3 text-secondary">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-warning">Blocked</p>
                         <p className="mt-2">{actionStatusReason}</p>
                       </div>
                     ) : null}
@@ -495,54 +496,54 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
 
             {activeTab === "overview" ? (
               <div className="grid gap-5 lg:grid-cols-2">
-                <Card className="border-white/10 bg-[#101a2d] p-4">
+                <Card className="border-border bg-surface p-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Workflow Status</p>
-                      <h3 className="mt-1 text-2xl font-semibold text-white">{currentOwnerState}</h3>
+                      <p className="text-xs uppercase tracking-[0.22em] text-muted">Workflow Status</p>
+                      <h3 className="mt-1 text-2xl font-semibold text-foreground">{currentOwnerState}</h3>
                     </div>
                     <Badge status={currentStatusBadge}>
                       {currentTask ? formatTaskStatusLabel(currentTask.status) : "Complete"}
                     </Badge>
                   </div>
-                  <div className="mt-4 h-2 rounded-full bg-white/10">
+                  <div className="mt-4 h-2 rounded-full bg-subtle">
                     <div
                       className="h-2 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
                       style={{ width: `${progress}%` }}
                     />
                   </div>
                   <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
-                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                      <p className="text-slate-400">Done</p>
-                      <p className="mt-1 font-semibold text-white">{completedCount}</p>
+                    <div className="rounded-xl bg-surface-secondary px-3 py-2">
+                      <p className="text-muted">Done</p>
+                      <p className="mt-1 font-semibold text-foreground">{completedCount}</p>
                     </div>
-                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                      <p className="text-slate-400">Current</p>
-                      <p className="mt-1 font-semibold text-white">{currentTask ? 1 : 0}</p>
+                    <div className="rounded-xl bg-surface-secondary px-3 py-2">
+                      <p className="text-muted">Current</p>
+                      <p className="mt-1 font-semibold text-foreground">{currentTask ? 1 : 0}</p>
                     </div>
-                    <div className="rounded-xl bg-[#0a1424] px-3 py-2">
-                      <p className="text-slate-400">Apps</p>
-                      <p className="mt-1 font-semibold text-white">{submittedApps.length}</p>
+                    <div className="rounded-xl bg-surface-secondary px-3 py-2">
+                      <p className="text-muted">Apps</p>
+                      <p className="mt-1 font-semibold text-foreground">{submittedApps.length}</p>
                     </div>
                   </div>
                 </Card>
 
-                <Card className="border-white/10 bg-[#101a2d] p-4">
+                <Card className="border-border bg-surface p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                       <Mail className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-lg font-semibold text-white">KZero Contact</h3>
-                      <p className="mt-1 text-sm text-slate-300">Your Sales Engineer for this onboarding plan.</p>
+                      <h3 className="text-lg font-semibold text-foreground">KZero Contact</h3>
+                      <p className="mt-1 text-sm text-secondary">Your Sales Engineer for this onboarding plan.</p>
                     </div>
                   </div>
-                  <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-[#0a1424] p-4">
+                  <div className="mt-4 rounded-[1.2rem] border border-border bg-surface-secondary p-4">
                     <div className="grid gap-4">
                       <div>
-                        <p className="font-medium text-white">{kzeroContact?.name ?? "Ben Eakin"}</p>
-                        <p className="mt-1 text-sm text-slate-300">KZero Sales Engineer</p>
-                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:b.eakin@kzero.com">
+                        <p className="font-medium text-foreground">{kzeroContact?.name ?? "Ben Eakin"}</p>
+                        <p className="mt-1 text-sm text-secondary">KZero Sales Engineer</p>
+                        <a className="mt-1 block text-sm text-info hover:text-info" href="mailto:b.eakin@kzero.com">
                           b.eakin@kzero.com
                         </a>
                         <a
@@ -554,15 +555,15 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                           Book Meeting
                         </a>
                       </div>
-                      <div className="border-t border-white/10 pt-4">
-                        <p className="font-medium text-white">KZero Support</p>
-                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:support@kzero.com">
+                      <div className="border-t border-border pt-4">
+                        <p className="font-medium text-foreground">KZero Support</p>
+                        <a className="mt-1 block text-sm text-info hover:text-info" href="mailto:support@kzero.com">
                           support@kzero.com
                         </a>
                       </div>
-                      <div className="border-t border-white/10 pt-4">
-                        <p className="font-medium text-white">KZero Sales Team</p>
-                        <a className="mt-1 block text-sm text-blue-200 hover:text-blue-100" href="mailto:partners@kzero.com">
+                      <div className="border-t border-border pt-4">
+                        <p className="font-medium text-foreground">KZero Sales Team</p>
+                        <a className="mt-1 block text-sm text-info hover:text-info" href="mailto:partners@kzero.com">
                           partners@kzero.com
                         </a>
                       </div>
@@ -570,11 +571,11 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                   </div>
                 </Card>
 
-                <Card className="border-white/10 bg-[#101a2d] p-4 lg:col-span-2">
+                <Card className="border-border bg-surface p-4 lg:col-span-2">
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div>
-                      <h3 className="text-lg font-semibold text-white">{actionStatusHeading}</h3>
-                      <p className="mt-1 text-sm text-slate-300">
+                      <h3 className="text-lg font-semibold text-foreground">{actionStatusHeading}</h3>
+                      <p className="mt-1 text-sm text-secondary">
                         {currentTask && isKZeroOwnedTask(currentTask)
                           ? "KZero is moving the current step forward."
                           : "Here is the clearest view of what needs attention right now."}
@@ -593,33 +594,33 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What to Do</p>
-                      <p className="mt-2 text-sm leading-6 text-white">{actionStatusMessage}</p>
+                    <div className="rounded-[1.1rem] border border-border bg-surface-secondary p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted">What to Do</p>
+                      <p className="mt-2 text-sm leading-6 text-foreground">{actionStatusMessage}</p>
                     </div>
-                    <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Why It Matters</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">{actionStatusReason}</p>
+                    <div className="rounded-[1.1rem] border border-border bg-surface-secondary p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted">Why It Matters</p>
+                      <p className="mt-2 text-sm leading-6 text-secondary">{actionStatusReason}</p>
                     </div>
-                    <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-400">What Happens Next</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">{whatHappensNext}</p>
+                    <div className="rounded-[1.1rem] border border-border bg-surface-secondary p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted">What Happens Next</p>
+                      <p className="mt-2 text-sm leading-6 text-secondary">{whatHappensNext}</p>
                     </div>
                   </div>
 
-                  <div className="mt-4 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Latest Updates</p>
+                  <div className="mt-4 rounded-[1.1rem] border border-border bg-surface-secondary p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted">Latest Updates</p>
                     {meaningfulComments.length > 0 ? (
                       <div className="mt-3 grid gap-3">
                         {meaningfulComments.slice(0, 2).map((comment) => (
-                          <div key={comment.id} className="rounded-[1rem] border border-white/10 bg-[#08111f] p-3.5 text-sm text-slate-300">
-                            <p className="font-medium text-white">{comment.author}</p>
+                          <div key={comment.id} className="rounded-[1rem] border border-border bg-input p-3.5 text-sm text-secondary">
+                            <p className="font-medium text-foreground">{comment.author}</p>
                             <p className="mt-2 leading-6">{comment.body}</p>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <div className="mt-3 rounded-[1rem] border border-dashed border-white/10 bg-[#08111f] p-3.5 text-sm text-slate-400">
+                      <div className="mt-3 rounded-[1rem] border border-dashed border-border bg-input p-3.5 text-sm text-muted">
                         <p>No updates yet.</p>
                         <p className="mt-1">Updates from your team or KZero will appear here.</p>
                       </div>
@@ -630,16 +631,16 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
             ) : null}
 
             {activeTab === "tasks" && currentTask && isKZeroOwnedTask(currentTask) ? (
-              <Card className="border-amber-400/20 bg-[linear-gradient(135deg,rgba(245,158,11,0.08),rgba(59,130,246,0.06))] p-4">
+              <Card className="border-warning-border/60 bg-warning-surface p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/12 text-amber-200">
+                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-warning-surface text-warning">
                       <Clock3 className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-amber-200">KZero is working on this</p>
-                      <p className="mt-1 text-lg font-semibold text-white">{currentTask.title}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-300">{currentTask.description}</p>
+                      <p className="text-xs uppercase tracking-[0.24em] text-warning">KZero is working on this</p>
+                      <p className="mt-1 text-lg font-semibold text-foreground">{currentTask.title}</p>
+                      <p className="mt-1 text-sm leading-6 text-secondary">{currentTask.description}</p>
                     </div>
                   </div>
                   <Badge status="waiting_on_kzero">KZero is working on this</Badge>
@@ -648,20 +649,20 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
             ) : null}
 
             {activeTab === "tasks" ? (
-            <Card className="border-white/10 bg-[#101a2d] p-5">
+            <Card className="border-border bg-surface p-5">
               <div className="mb-5 flex items-start gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
                   <CalendarDays className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold text-white">Guided Onboarding Steps</h3>
-                  <p className="text-sm text-slate-300">Complete each step in order to unlock the next part of the rollout.</p>
+                  <h3 className="text-xl font-semibold text-foreground">Guided Onboarding Steps</h3>
+                  <p className="text-sm text-secondary">Complete each step in order to unlock the next part of the rollout.</p>
                 </div>
               </div>
 
               <div className="grid gap-4">
                 {phaseGroups.map(({ phase, tasks }, phaseIndex) => (
-                  <div key={phase.id} className="rounded-[1.4rem] border border-white/10 bg-[#0d1627] p-4">
+                  <div key={phase.id} className="rounded-[1.4rem] border border-border bg-surface p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
                         {phaseIndex + 1}
@@ -669,10 +670,10 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                           <div>
-                            <h4 className="text-lg font-semibold text-white">{phase.title}</h4>
-                            <p className="text-sm text-slate-300">{phase.description}</p>
+                            <h4 className="text-lg font-semibold text-foreground">{phase.title}</h4>
+                            <p className="text-sm text-secondary">{phase.description}</p>
                           </div>
-                          <p className="text-sm text-slate-400">{tasks.length} steps</p>
+                          <p className="text-sm text-muted">{tasks.length} steps</p>
                         </div>
 
                         <div className="mt-4 grid gap-3">
@@ -690,86 +691,70 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                             return (
                               <div key={task.id} className={`rounded-[1.2rem] border p-4 ${taskStateClass(taskViewState, task)}`}>
                                 {taskViewState === "complete" ? (
-                                  <div className="flex items-center justify-between gap-3">
+                                  <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
                                     <div className="min-w-0">
-                                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-emerald-200">
+                                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-success">
                                         <CheckCircle2 className="h-4 w-4" />
                                         <span>Complete</span>
                                       </div>
-                                      <div className="mt-2 flex flex-wrap items-center gap-3">
-                                        <p className="text-base font-semibold text-white">{task.title}</p>
-                                        {guides.length > 0 ? (
-                                          <button
-                                            className="text-sm font-medium text-blue-200 transition hover:text-blue-100"
-                                            onClick={() => setGuidePreview({ guides, stepName: task.title })}
-                                            type="button"
-                                          >
-                                            {guides.length > 1 ? "View Guides" : "View Guide"}
-                                          </button>
-                                        ) : null}
-                                      </div>
+                                      <p className="mt-2 text-base font-semibold text-foreground">{task.title}</p>
                                     </div>
-                                    <p className="text-sm text-slate-300">{formatTaskOwnerLabel(task.owner)}</p>
+                                    <div className="flex w-full shrink-0 flex-col items-start gap-2 sm:w-auto sm:items-end">
+                                      <p className="text-sm text-secondary">{formatTaskOwnerLabel(task.owner)}</p>
+                                      <TaskGuideAccess
+                                        guides={guides}
+                                        onOpenGuide={(guide) => setGuidePreview({ guides: [guide], stepName: task.title })}
+                                      />
+                                    </div>
                                   </div>
                                 ) : null}
 
                                 {taskViewState === "locked" ? (
                                   <div className="flex items-center justify-between gap-3">
                                     <div className="min-w-0">
-                                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-400">
+                                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
                                         <Lock className="h-4 w-4" />
                                         <span>Locked</span>
                                       </div>
-                                      <p className="mt-2 text-base font-semibold text-white">{task.title}</p>
-                                      <p className="mt-1 text-sm text-slate-400">Complete previous step to unlock.</p>
+                                      <p className="mt-2 text-base font-semibold text-foreground">{task.title}</p>
+                                      <p className="mt-1 text-sm text-muted">Complete previous step to unlock.</p>
                                     </div>
                                   </div>
                                 ) : null}
 
                                 {taskViewState === "active" ? (
                                   <div className="grid gap-4">
-                                    <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-slate-300">
+                                    <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-secondary">
                                       <span>{formatWorkflowOwnerLabel(isKZeroOwnedTask(task))}</span>
-                                      <span className="text-slate-600">/</span>
+                                      <span className="text-muted">/</span>
                                       <span>{formatTaskOwnerLabel(task.owner)}</span>
                                     </div>
                                     <div>
-                                      <div className="flex flex-wrap items-center gap-3">
-                                        <h5 className="text-lg font-semibold text-white">{task.title}</h5>
-                                        {guides.length > 0 ? (
-                                          <button
-                                            className="text-sm font-medium text-blue-200 transition hover:text-blue-100"
-                                            onClick={() => setGuidePreview({ guides, stepName: task.title })}
-                                            type="button"
-                                          >
-                                            Preview Guide
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                      <p className="mt-2 text-sm leading-6 text-slate-300">{task.description}</p>
+                                      <h5 className="text-lg font-semibold text-foreground">{task.title}</h5>
+                                      <p className="mt-2 text-sm leading-6 text-secondary">{task.description}</p>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-4 text-sm text-slate-300">
+                                    <div className="flex flex-wrap items-center gap-4 text-sm text-secondary">
                                       {task.dueLabel ? (
                                         <div className="flex items-center gap-2">
-                                          <CalendarDays className="h-4 w-4 text-blue-200" />
+                                          <CalendarDays className="h-4 w-4 text-info" />
                                           <span>{task.dueLabel}</span>
                                         </div>
                                       ) : null}
                                       {isKZeroOwnedTask(task) ? (
-                                        <div className="flex items-center gap-2 text-amber-100/85">
-                                          <CircleAlert className="h-4 w-4 text-amber-200" />
+                                        <div className="flex items-center gap-2 text-warning">
+                                          <CircleAlert className="h-4 w-4 text-warning" />
                                           <span>{formatWaitingLabel(true)}</span>
                                         </div>
                                       ) : null}
                                     </div>
 
                                     {isAppSubmissionTask(task) ? (
-                                      <div className="grid gap-4 rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-4">
+                                      <div className="grid gap-4 rounded-[1.1rem] border border-border bg-surface-secondary p-4">
                                         <div className="grid gap-3 md:grid-cols-2">
-                                          <label className="grid gap-2 text-sm text-slate-300">
+                                          <label className="grid gap-2 text-sm text-secondary">
                                             <span>App name</span>
                                             <input
-                                              className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2 text-white outline-none placeholder:text-slate-500"
+                                              className="rounded-xl border border-border bg-input px-3 py-2 text-foreground outline-none placeholder:text-muted-subtle"
                                               onChange={(event) =>
                                                 setFormState((current) => ({ ...current, name: event.target.value }))
                                               }
@@ -777,10 +762,10 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                               value={formState.name}
                                             />
                                           </label>
-                                          <label className="grid gap-2 text-sm text-slate-300">
+                                          <label className="grid gap-2 text-sm text-secondary">
                                             <span>Login URL</span>
                                             <input
-                                              className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2 text-white outline-none placeholder:text-slate-500"
+                                              className="rounded-xl border border-border bg-input px-3 py-2 text-foreground outline-none placeholder:text-muted-subtle"
                                               onChange={(event) =>
                                                 setFormState((current) => ({ ...current, loginUrl: event.target.value }))
                                               }
@@ -791,10 +776,10 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                           </label>
                                         </div>
                                         <div className="grid gap-3 md:grid-cols-[0.5fr_1.5fr]">
-                                          <label className="grid gap-2 text-sm text-slate-300">
+                                          <label className="grid gap-2 text-sm text-secondary">
                                             <span>Priority</span>
                                             <select
-                                              className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2 text-white outline-none"
+                                              className="rounded-xl border border-border bg-input px-3 py-2 text-foreground outline-none"
                                               onChange={(event) =>
                                                 setFormState((current) => ({
                                                   ...current,
@@ -808,10 +793,10 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                               <option>Low</option>
                                             </select>
                                           </label>
-                                          <label className="grid gap-2 text-sm text-slate-300">
+                                          <label className="grid gap-2 text-sm text-secondary">
                                             <span>Notes</span>
                                             <textarea
-                                              className="min-h-[88px] rounded-xl border border-white/10 bg-[#08111f] px-3 py-2 text-white outline-none placeholder:text-slate-500"
+                                              className="min-h-[88px] rounded-xl border border-border bg-input px-3 py-2 text-foreground outline-none placeholder:text-muted-subtle"
                                               onChange={(event) =>
                                                 setFormState((current) => ({ ...current, notes: event.target.value }))
                                               }
@@ -831,11 +816,10 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
                                       </div>
                                     ) : null}
 
-                                    {guides.length > 0 ? (
-                                      <Button onClick={() => setGuidePreview({ guides, stepName: task.title })} variant="outline">
-                                        {guides.length > 1 ? "View Guides" : "View Guide"}
-                                      </Button>
-                                    ) : null}
+                                    <TaskGuideAccess
+                                      guides={guides}
+                                      onOpenGuide={(guide) => setGuidePreview({ guides: [guide], stepName: task.title })}
+                                    />
 
                                     {isBookingTask(task) ? (
                                       <div className="flex flex-wrap gap-3">
@@ -885,22 +869,22 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
             ) : null}
 
             {activeTab === "apps" ? (
-              <Card className="border-white/10 bg-[#101a2d] p-4">
-                <h3 className="text-lg font-semibold text-white">Submitted SaaS Apps</h3>
+              <Card className="border-border bg-surface p-4">
+                <h3 className="text-lg font-semibold text-foreground">Submitted SaaS Apps</h3>
                 <div className="mt-4 grid gap-3">
                   {submittedApps.length === 0 ? (
-                    <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-3.5 py-4 text-sm text-slate-400">
+                    <div className="rounded-[1.1rem] border border-dashed border-border bg-surface-secondary px-3.5 py-4 text-sm text-muted">
                       No SaaS apps submitted yet.
                     </div>
                   ) : null}
                   {submittedApps.map((app) => (
-                    <div key={app.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
+                    <div key={app.id} className="rounded-[1.1rem] border border-border bg-surface-secondary p-3.5">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="font-medium text-white">{app.name}</p>
-                        <span className="text-[11px] uppercase tracking-[0.2em] text-slate-300">{app.priority}</span>
+                        <p className="font-medium text-foreground">{app.name}</p>
+                        <span className="text-[11px] uppercase tracking-[0.2em] text-secondary">{app.priority}</span>
                       </div>
-                      <p className="mt-2 text-sm text-slate-300">{app.loginUrl}</p>
-                      {app.notes ? <p className="mt-2 text-sm text-slate-400">{app.notes}</p> : null}
+                      <p className="mt-2 text-sm text-secondary">{app.loginUrl}</p>
+                      {app.notes ? <p className="mt-2 text-sm text-muted">{app.notes}</p> : null}
                     </div>
                   ))}
                 </div>
@@ -925,12 +909,12 @@ export function DemoPlanView({ bundle }: { bundle: PlanBundle }) {
             ) : null}
 
             {activeTab === "activity" && meaningfulComments.length > 0 ? (
-              <Card className="border-white/10 bg-[#101a2d] p-4">
-                <h3 className="text-lg font-semibold text-white">Activity</h3>
+              <Card className="border-border bg-surface p-4">
+                <h3 className="text-lg font-semibold text-foreground">Activity</h3>
                 <div className="mt-4 grid gap-3">
                   {meaningfulComments.map((comment) => (
-                    <div key={comment.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5 text-sm text-slate-300">
-                      <p className="font-medium text-white">{comment.author}</p>
+                    <div key={comment.id} className="rounded-[1.1rem] border border-border bg-surface-secondary p-3.5 text-sm text-secondary">
+                      <p className="font-medium text-foreground">{comment.author}</p>
                       <p className="mt-2 leading-6">{comment.body}</p>
                     </div>
                   ))}

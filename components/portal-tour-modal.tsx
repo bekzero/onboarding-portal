@@ -104,19 +104,19 @@ export function PortalTourModal({
   const isLastStep = currentStep === steps.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4 md:p-6">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-overlay/80 p-4 md:p-6">
       <Card
         aria-labelledby="portal-tour-title"
         aria-modal="true"
-        className="w-full max-w-2xl border-white/10 bg-[#101c31] shadow-panel"
+        className="w-full max-w-2xl border-border bg-surface shadow-panel"
         role="dialog"
       >
         <div ref={panelRef}>
-          <div className="border-b border-white/10 bg-[linear-gradient(135deg,#223c78_0%,#101c31_58%,#09111d_100%)] px-5 py-5 md:px-6">
+          <div className="border-b border-border bg-accent px-5 py-5 md:px-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-blue-100/80">Portal Tour</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white md:text-[2rem]" id="portal-tour-title">
+              <p className="text-xs uppercase tracking-[0.24em] text-info">Portal Tour</p>
+              <h2 className="mt-2 text-2xl font-semibold text-foreground md:text-[2rem]" id="portal-tour-title">
                 {step.title}
               </h2>
             </div>
@@ -126,7 +126,7 @@ export function PortalTourModal({
           </div>
 
           <div className="mt-5 flex items-center justify-between gap-4">
-            <p className="text-sm text-blue-100/80">
+            <p className="text-sm text-info">
               Step {currentStep + 1} of {steps.length}
             </p>
             <div className="flex flex-1 items-center gap-2 pl-4">
@@ -134,7 +134,7 @@ export function PortalTourModal({
                 <span
                   aria-hidden="true"
                   className={`h-1.5 flex-1 rounded-full ${
-                    index <= currentStep ? "bg-gradient-to-r from-blue-400 to-cyan-300" : "bg-white/10"
+                    index <= currentStep ? "bg-gradient-to-r from-blue-400 to-cyan-300" : "bg-subtle"
                   }`}
                   key={tourStep.title}
                 />
@@ -144,12 +144,12 @@ export function PortalTourModal({
           </div>
 
           <div className="px-5 py-6 md:px-6">
-            <div className="rounded-[1.35rem] border border-white/10 bg-[#0a1424] p-5">
-              <p className="text-base leading-7 text-slate-200">{step.body}</p>
+            <div className="rounded-[1.35rem] border border-border bg-surface-secondary p-5">
+              <p className="text-base leading-7 text-secondary">{step.body}</p>
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-white/10 bg-[#101c31] px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+          <div className="flex flex-col gap-3 border-t border-border bg-surface px-5 py-4 md:flex-row md:items-center md:justify-between md:px-6">
             <Button onClick={onSkip} variant="outline">
               Skip Tour
             </Button>

@@ -17,11 +17,11 @@ export function PortalShell({
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 md:px-10">
       <header className="mb-10 flex flex-col gap-4 rounded-[2rem] border border-border bg-card/80 px-6 py-5 shadow-panel md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-200">{eyebrow}</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-info">{eyebrow}</p>
           <div className="mt-2 flex items-center gap-3">
             <KzeroLogo className="shrink-0" />
             <div>
-              <h1 className="text-2xl font-semibold text-white">{title}</h1>
+              <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
               <p className="text-sm text-muted">KZero Passwordless onboarding workspace</p>
             </div>
           </div>

@@ -1315,7 +1315,7 @@ function DashboardTable({
         {onSortChange ? (
           <button
             className={`inline-flex items-center gap-1.5 transition ${
-              isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
+              isActive ? "text-foreground" : "text-muted hover:text-secondary"
             }`}
             onClick={() => onSortChange(column)}
             type="button"
@@ -1335,26 +1335,26 @@ function DashboardTable({
   }
 
   return (
-    <Card className="overflow-hidden border-white/10 bg-[#101a2d] p-0">
-      <div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between md:px-5">
+    <Card className="overflow-hidden border-border bg-surface p-0">
+      <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between md:px-5">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="text-lg font-semibold text-white">{title}</h2>
-            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-300">
+            <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+            <span className="rounded-full border border-border bg-hover px-2.5 py-1 text-xs font-medium text-secondary">
               {items.length} {items.length === 1 ? countLabel.slice(0, -1) || countLabel : countLabel}
             </span>
             {waitingOnMspCount > 0 ? (
-              <span className="rounded-full border border-amber-400/20 bg-amber-400/[0.08] px-2.5 py-1 text-xs font-medium text-amber-100">
+              <span className="rounded-full border border-warning-border/60 bg-warning-surface px-2.5 py-1 text-xs font-medium text-warning">
                 Waiting on MSP: {waitingOnMspCount}
               </span>
             ) : null}
             {waitingOnKzeroCount > 0 ? (
-              <span className="rounded-full border border-fuchsia-400/20 bg-fuchsia-400/[0.08] px-2.5 py-1 text-xs font-medium text-fuchsia-100">
+              <span className="rounded-full border border-info-border/60 bg-info-surface px-2.5 py-1 text-xs font-medium text-info">
                 KZero Action Required: {waitingOnKzeroCount}
               </span>
             ) : null}
             {completedCount > 0 && waitingOnMspCount === 0 && waitingOnKzeroCount === 0 ? (
-              <span className="rounded-full border border-emerald-400/20 bg-emerald-400/[0.08] px-2.5 py-1 text-xs font-medium text-emerald-100">
+              <span className="rounded-full border border-success-border/60 bg-success-surface px-2.5 py-1 text-xs font-medium text-success">
                 Complete: {completedCount}
               </span>
             ) : null}
@@ -1374,16 +1374,16 @@ function DashboardTable({
 
       {!isExpanded ? (
         <div className="px-4 py-3 md:px-5">
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-muted">
             {items.length === 0 ? emptyLabel : `Expand to view ${items.length} ${items.length === 1 ? "case" : "cases"}.`}
           </p>
         </div>
       ) : (
         <div className="p-3 md:p-4">
-          <div className="overflow-hidden rounded-xl border border-white/10 bg-[#0a1424]">
+          <div className="overflow-hidden rounded-xl border border-border bg-surface-secondary">
             <div className="overflow-x-auto">
               {items.length === 0 ? (
-                <div className="px-4 py-5 text-sm text-slate-400">{emptyLabel}</div>
+                <div className="px-4 py-5 text-sm text-muted">{emptyLabel}</div>
               ) : (
                 <table className={`${showCustomerColumn ? "min-w-[1180px]" : "min-w-[1100px]"} w-full table-fixed`}>
               <colgroup>
@@ -1398,40 +1398,40 @@ function DashboardTable({
                 <col className={showCustomerColumn ? "w-[9.5%]" : "w-[10.5%]"} />
               </colgroup>
               <thead>
-                <tr className="border-b border-white/10 text-left text-[11px] uppercase tracking-[0.14em] text-slate-400">
+                <tr className="border-b border-border text-left text-[11px] uppercase tracking-[0.14em] text-muted">
                   {sortableColumns.map((column) => renderSortHeader(column.key, column.label))}
                 </tr>
               </thead>
               <tbody>
                 {visibleItems.map((item) => (
-                  <tr key={item.onboardingPlanId} className="border-b border-white/10 transition hover:bg-white/[0.025] last:border-b-0">
+                  <tr key={item.onboardingPlanId} className="border-b border-border transition hover:bg-hover/50 last:border-b-0">
                     <td className="px-3 py-3 align-middle">
                       <div className="min-w-0">
                         <button
-                          className="truncate text-left text-sm font-medium text-white underline decoration-white/20 underline-offset-4 transition hover:text-blue-200 hover:decoration-blue-200"
+                          className="truncate text-left text-sm font-medium text-foreground underline decoration-white/20 underline-offset-4 transition hover:text-info hover:decoration-blue-200"
                           onClick={() => onView(item)}
                           type="button"
                         >
                           {item.mspName}
                         </button>
-                        <p className="mt-1 truncate text-xs text-slate-400">{item.primaryContactEmail}</p>
+                        <p className="mt-1 truncate text-xs text-muted">{item.primaryContactEmail}</p>
                       </div>
                     </td>
                     {showCustomerColumn ? (
-                      <td className="px-3 py-3 align-middle text-sm text-slate-300">
+                      <td className="px-3 py-3 align-middle text-sm text-secondary">
                         <span className="block truncate">{item.customerName ?? "Not provided"}</span>
                       </td>
                     ) : null}
                     {showGmmColumn ? (
-                      <td className="px-3 py-3 align-middle text-sm text-slate-300">{getGmmLabel(item.isGmmPartner)}</td>
+                      <td className="px-3 py-3 align-middle text-sm text-secondary">{getGmmLabel(item.isGmmPartner)}</td>
                     ) : null}
-                    <td className="px-3 py-3 align-middle text-sm text-slate-300">
+                    <td className="px-3 py-3 align-middle text-sm text-secondary">
                       <span className="block truncate">{item.currentStage}</span>
                     </td>
                     <td className="px-3 py-3 align-middle">
                       <div className="min-w-[110px]">
-                        <p className="text-sm font-medium text-white">{item.progress}%</p>
-                        <div className="mt-2 h-1.5 rounded-full bg-white/10">
+                        <p className="text-sm font-medium text-foreground">{item.progress}%</p>
+                        <div className="mt-2 h-1.5 rounded-full bg-subtle">
                           <div
                             className="h-1.5 rounded-full bg-gradient-to-r from-blue-400 to-cyan-300"
                             style={{ width: `${item.progress}%` }}
@@ -1444,11 +1444,11 @@ function DashboardTable({
                         {getWaitingLabel(item)}
                       </Badge>
                     </td>
-                    <td className="px-3 py-3 align-middle text-sm text-slate-300">{item.submittedSaasAppCount}</td>
-                    <td className="whitespace-nowrap px-3 py-3 align-middle text-sm text-slate-300">
+                    <td className="px-3 py-3 align-middle text-sm text-secondary">{item.submittedSaasAppCount}</td>
+                    <td className="whitespace-nowrap px-3 py-3 align-middle text-sm text-secondary">
                       {formatCompactTableDate(item.enrollmentDateRaw ?? item.enrollmentDate ?? item.lastActivityRaw ?? item.lastActivity)}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-3 align-middle text-sm text-slate-300">
+                    <td className="whitespace-nowrap px-3 py-3 align-middle text-sm text-secondary">
                       {formatCompactTableDate(item.lastActivityRaw ?? item.lastActivity)}
                     </td>
                   </tr>
@@ -1461,7 +1461,7 @@ function DashboardTable({
 
           {items.length > 0 ? (
             <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-muted">
                 {showFullResults
                   ? `Showing all ${items.length} matching ${items.length === 1 ? "case" : "cases"}.`
                   : hasHiddenRows
@@ -2585,18 +2585,18 @@ export function InternalDashboard({
   return (
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-4">
       <section className="min-w-0 grid gap-3">
-        <Card className="border-white/10 bg-[#101a2d] p-4 md:p-5">
+        <Card className="border-border bg-surface p-4 md:p-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
               <KzeroLogo className="shrink-0" />
               <div className="min-w-0">
-                <h1 className="text-2xl font-semibold tracking-tight text-white">Sales Engineer Dashboard</h1>
-                <p className="mt-1 text-sm text-slate-300">Manage MSP Onboarding</p>
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sales Engineer Dashboard</h1>
+                <p className="mt-1 text-sm text-secondary">Manage MSP Onboarding</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 xl:justify-end">
               <Link
-                className="inline-flex h-10 items-center px-2 text-sm font-medium text-slate-400 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex h-10 items-center px-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 href="/"
               >
                 Back to Main Page
@@ -2609,7 +2609,7 @@ export function InternalDashboard({
                 <Bell className="mr-2 h-4 w-4" />
                 Notifications
                 {unreadNotificationCount > 0 ? (
-                  <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-blue-400 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950">
+                  <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
                     {unreadNotificationCount}
                   </span>
                 ) : null}
@@ -2627,27 +2627,27 @@ export function InternalDashboard({
         </Card>
 
         {isLoading ? (
-          <Card className="border-white/10 bg-[#101a2d] px-5 py-8">
-            <p className="text-base font-medium text-white">Loading MSPs...</p>
-            <p className="mt-2 text-sm text-slate-300">Pulling the latest enrolled MSP records from the server.</p>
+          <Card className="border-border bg-surface px-5 py-8">
+            <p className="text-base font-medium text-foreground">Loading MSPs...</p>
+            <p className="mt-2 text-sm text-secondary">Pulling the latest enrolled MSP records from the server.</p>
           </Card>
         ) : (
           <>
             {showBlockingServerError ? (
-              <Card className="border-red-400/20 bg-red-400/[0.06] px-5 py-6">
+              <Card className="border-danger-border/60 bg-danger-surface px-5 py-6">
                 {serverErrorKind === "unauthorized" ? (
                   <>
-                    <p className="text-base font-medium text-white">
+                    <p className="text-base font-medium text-foreground">
                       {isEmbedded
                         ? "Zoho embedded view could not access the admin session."
                         : "Admin session unavailable. Open the dashboard in a new tab or sign in again."}
                     </p>
                     {isEmbedded ? (
                       <>
-                        <p className="mt-2 text-sm text-red-100/90">
+                        <p className="mt-2 text-sm text-danger">
                           Admin session unavailable. Open the dashboard in a new tab or sign in again.
                         </p>
-                        <p className="mt-2 text-sm text-slate-300">
+                        <p className="mt-2 text-sm text-secondary">
                           Some browsers block third-party cookies in embedded apps. Opening the dashboard in a new tab
                           uses the normal first-party session.
                         </p>
@@ -2662,13 +2662,13 @@ export function InternalDashboard({
                   </>
                 ) : (
                   <>
-                    <p className="text-base font-medium text-white">
+                    <p className="text-base font-medium text-foreground">
                       {serverErrorKind === "network"
                         ? "Network error. The admin dashboard API could not be reached."
                         : "The admin dashboard API returned an error."}
                     </p>
                     {serverErrorMessage ? (
-                      <p className="mt-2 text-sm text-red-100/90">Error: {serverErrorMessage}</p>
+                      <p className="mt-2 text-sm text-danger">Error: {serverErrorMessage}</p>
                     ) : null}
                   </>
                 )}
@@ -2676,16 +2676,16 @@ export function InternalDashboard({
             ) : null}
 
             {isUsingFallback && serverErrorMessage ? (
-              <Card className="border-amber-400/20 bg-amber-400/[0.06] px-4 py-3">
-                <p className="text-sm text-amber-100">{serverErrorMessage}</p>
+              <Card className="border-warning-border/60 bg-warning-surface px-4 py-3">
+                <p className="text-sm text-warning">{serverErrorMessage}</p>
               </Card>
             ) : null}
 
             {hasServerError && useServerData ? (
-              <Card className="border-red-400/20 bg-red-400/[0.06] px-4 py-3">
-                <p className="text-sm text-red-100">{SERVER_API_UNAVAILABLE_MESSAGE}</p>
+              <Card className="border-danger-border/60 bg-danger-surface px-4 py-3">
+                <p className="text-sm text-danger">{SERVER_API_UNAVAILABLE_MESSAGE}</p>
                 {serverErrorMessage ? (
-                  <p className="mt-1 text-xs text-red-100/80">Error: {serverErrorMessage}</p>
+                  <p className="mt-1 text-xs text-danger">Error: {serverErrorMessage}</p>
                 ) : null}
               </Card>
             ) : null}
@@ -2693,57 +2693,57 @@ export function InternalDashboard({
             {!showBlockingServerError ? (
               <>
                 <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+              <Card className="border-border bg-surface p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium text-slate-400">Total Cases</p>
-                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{onboardingCases.length}</p>
+                    <p className="text-xs font-medium text-muted">Total Cases</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-foreground">{onboardingCases.length}</p>
                   </div>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
                     <Building2 className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+              <Card className="border-border bg-surface p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium text-slate-400">In Progress</p>
-                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{inProgressMspCases.length + inProgressCustomerCases.length}</p>
+                    <p className="text-xs font-medium text-muted">In Progress</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-foreground">{inProgressMspCases.length + inProgressCustomerCases.length}</p>
                   </div>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-400/15 text-blue-200">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info-surface text-info">
                     <Gauge className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+              <Card className="border-border bg-surface p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium text-slate-400">Waiting on MSP</p>
-                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{waitingOnMsp}</p>
+                    <p className="text-xs font-medium text-muted">Waiting on MSP</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-foreground">{waitingOnMsp}</p>
                   </div>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/15 text-cyan-200">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-info-surface text-info">
                     <TimerReset className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="border-white/10 bg-[#101a2d] p-3.5">
+              <Card className="border-border bg-surface p-3.5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium text-slate-400">Waiting on KZero</p>
-                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{waitingOnKZero}</p>
+                    <p className="text-xs font-medium text-muted">Waiting on KZero</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-foreground">{waitingOnKZero}</p>
                   </div>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-400/15 text-amber-200">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning-surface text-warning">
                     <Clock3 className="h-4 w-4" />
                   </div>
                 </div>
               </Card>
-              <Card className="col-span-2 border-white/10 bg-[#101a2d] p-3.5 lg:col-span-1">
+              <Card className="col-span-2 border-border bg-surface p-3.5 lg:col-span-1">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium text-slate-400">Completed</p>
-                    <p className="mt-1 text-2xl font-semibold leading-none text-white">{completedMspCases.length + completedCustomerCases.length}</p>
+                    <p className="text-xs font-medium text-muted">Completed</p>
+                    <p className="mt-1 text-2xl font-semibold leading-none text-foreground">{completedMspCases.length + completedCustomerCases.length}</p>
                   </div>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-200">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success-surface text-success">
                     <Gauge className="h-4 w-4" />
                   </div>
                 </div>
@@ -2751,9 +2751,9 @@ export function InternalDashboard({
                 </section>
 
                 {onboardingCases.length === 0 ? (
-              <Card className="border-white/10 bg-[#101a2d] px-5 py-8">
-                <h3 className="text-lg font-semibold text-white">No onboarding cases yet.</h3>
-                <p className="mt-2 text-sm text-slate-300">
+              <Card className="border-border bg-surface px-5 py-8">
+                <h3 className="text-lg font-semibold text-foreground">No onboarding cases yet.</h3>
+                <p className="mt-2 text-sm text-secondary">
                   Add your first onboarding case to start tracking rollout progress and OIDC readiness.
                 </p>
                 <div className="mt-4">
@@ -2765,16 +2765,16 @@ export function InternalDashboard({
               </Card>
             ) : (
               <>
-                <Card className="border-white/10 bg-[#101a2d] p-4">
+                <Card className="border-border bg-surface p-4">
                   <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(320px,0.9fr)_minmax(0,1.4fr)] xl:items-end xl:gap-5">
                     <div className="min-w-0">
-                      <label className="block text-xs font-medium text-slate-400" htmlFor="msp-search">
+                      <label className="block text-xs font-medium text-muted" htmlFor="msp-search">
                         Search Cases
                       </label>
                       <div className="relative mt-2">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-subtle" />
                         <input
-                          className="h-10 w-full rounded-xl border border-white/10 bg-[#0a1424] pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/15"
+                          className="h-10 w-full rounded-xl border border-border bg-surface-secondary pl-10 pr-4 text-sm text-foreground outline-none transition placeholder:text-muted-subtle focus:border-primary focus:ring-2 focus:ring-primary/20"
                           id="msp-search"
                           onChange={(event) => setSearchQuery(event.target.value)}
                           placeholder="Search MSP name, customer name, email, tenant, or stage"
@@ -2864,12 +2864,12 @@ export function InternalDashboard({
                   title="MSPs First Customer - Complete"
                 />
 
-                <Card className="border-white/10 bg-[#101a2d]" id="onboarding-flow-reference">
-                  <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
+                <Card className="border-border bg-surface" id="onboarding-flow-reference">
+                  <div className="flex flex-col gap-4 border-b border-border px-4 py-4 md:flex-row md:items-center md:justify-between md:px-5">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Onboarding Flow Reference</p>
-                      <h3 className="mt-2 text-2xl font-semibold text-white">Onboarding Flow Reference</h3>
-                      <p className="mt-1 text-sm text-slate-300">
+                      <p className="text-xs uppercase tracking-[0.22em] text-muted">Onboarding Flow Reference</p>
+                      <h3 className="mt-2 text-2xl font-semibold text-foreground">Onboarding Flow Reference</h3>
+                      <p className="mt-1 text-sm text-secondary">
                         Review the full KZero Passwordless MSP onboarding flow without opening an individual case.
                       </p>
                     </div>
@@ -2881,46 +2881,46 @@ export function InternalDashboard({
                   {isFlowReferenceOpen ? (
                     <div className="grid gap-4 px-4 py-4 md:px-5 md:py-5">
                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stage Count</p>
-                          <p className="mt-2 text-2xl font-semibold text-white">5 Stages</p>
-                          <p className="mt-1 text-sm text-slate-300">From kickoff through the first customer pilot.</p>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-4">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Stage Count</p>
+                          <p className="mt-2 text-2xl font-semibold text-foreground">5 Stages</p>
+                          <p className="mt-1 text-sm text-secondary">From kickoff through the first customer pilot.</p>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">MSP-Owned Setup</p>
-                          <p className="mt-2 text-2xl font-semibold text-white">Stages 1-2</p>
-                          <p className="mt-1 text-sm text-slate-300">The onboarding owner and team complete the initial NFR setup work.</p>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-4">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">MSP-Owned Setup</p>
+                          <p className="mt-2 text-2xl font-semibold text-foreground">Stages 1-2</p>
+                          <p className="mt-1 text-sm text-secondary">The onboarding owner and team complete the initial NFR setup work.</p>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">KZero Passwordless Review Points</p>
-                          <p className="mt-2 text-2xl font-semibold text-white">Stages 3-4</p>
-                          <p className="mt-1 text-sm text-slate-300">KZero Passwordless reviews apps, uploads guidance, and supports implementation.</p>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-4">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">KZero Passwordless Review Points</p>
+                          <p className="mt-2 text-2xl font-semibold text-foreground">Stages 3-4</p>
+                          <p className="mt-1 text-sm text-secondary">KZero Passwordless reviews apps, uploads guidance, and supports implementation.</p>
                         </div>
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">First Customer Pilot</p>
-                          <p className="mt-2 text-2xl font-semibold text-white">Stage 5</p>
-                          <p className="mt-1 text-sm text-slate-300">Apply the validated onboarding process to the first customer rollout.</p>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-4">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">First Customer Pilot</p>
+                          <p className="mt-2 text-2xl font-semibold text-foreground">Stage 5</p>
+                          <p className="mt-1 text-sm text-secondary">Apply the validated onboarding process to the first customer rollout.</p>
                         </div>
                       </div>
 
                       <div className="grid gap-3">
                         {flowReferenceStages.map((stage, index) => (
-                          <div key={stage.id} className="rounded-2xl border border-white/10 bg-[#0a1424]">
+                          <div key={stage.id} className="rounded-2xl border border-border bg-surface-secondary">
                             <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
                               <div className="flex min-w-0 items-start gap-4">
-                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-sm font-semibold text-slate-200">
+                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-hover text-sm font-semibold text-secondary">
                                   {index + 1}
                                 </span>
                                 <div className="min-w-0">
-                                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Stage {index + 1}</p>
-                                  <h4 className="mt-1 text-xl font-semibold text-white">{stage.title}</h4>
-                                  <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{stage.purpose}</p>
+                                  <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Stage {index + 1}</p>
+                                  <h4 className="mt-1 text-xl font-semibold text-foreground">{stage.title}</h4>
+                                  <p className="mt-2 max-w-3xl text-sm leading-6 text-secondary">{stage.purpose}</p>
                                 </div>
                               </div>
 
                               <div className="flex flex-col gap-3 lg:min-w-[340px] lg:max-w-[420px] lg:items-end">
                                 <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                                  <span className="rounded-full border border-white/10 bg-[#08111f] px-3 py-1.5 text-xs font-medium text-slate-200">
+                                  <span className="rounded-full border border-border bg-input px-3 py-1.5 text-xs font-medium text-secondary">
                                     {stage.tasks.length} {stage.tasks.length === 1 ? "Task" : "Tasks"}
                                   </span>
                                   {stage.ownerLabels.map((ownerLabel) => (
@@ -2929,7 +2929,7 @@ export function InternalDashboard({
                                     </Badge>
                                   ))}
                                 </div>
-                                <p className="text-sm text-slate-300 lg:text-right">{stage.ownerSummary}</p>
+                                <p className="text-sm text-secondary lg:text-right">{stage.ownerSummary}</p>
                                 <div className="lg:self-end">
                                   <Button onClick={() => toggleFlowStageDetails(stage.id)} variant="outline">
                                     {expandedFlowStageId === stage.id ? "Hide Details" : "Show Details"}
@@ -2939,20 +2939,20 @@ export function InternalDashboard({
                             </div>
 
                             {expandedFlowStageId === stage.id ? (
-                              <div className="border-t border-white/10 px-4 py-4">
+                              <div className="border-t border-border px-4 py-4">
                                 <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
                                   <div>
-                                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Key Tasks</p>
+                                    <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Key Tasks</p>
                                     <ol className="mt-3 grid gap-2">
                                       {stage.tasks.map((task, taskIndex) => (
-                                        <li key={task.title} className="flex items-start gap-3 rounded-xl border border-white/10 bg-[#08111f] px-3 py-3">
-                                          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/5 text-xs font-semibold text-slate-300">
+                                        <li key={task.title} className="flex items-start gap-3 rounded-xl border border-border bg-input px-3 py-3">
+                                          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-hover text-xs font-semibold text-secondary">
                                             {taskIndex + 1}
                                           </span>
                                           <div className="min-w-0">
-                                            <p className="text-sm font-medium text-slate-100">{task.title}</p>
+                                            <p className="text-sm font-medium text-foreground">{task.title}</p>
                                             {task.description ? (
-                                              <p className="mt-1 text-sm leading-6 text-slate-300">{task.description}</p>
+                                              <p className="mt-1 text-sm leading-6 text-secondary">{task.description}</p>
                                             ) : null}
                                           </div>
                                         </li>
@@ -2961,15 +2961,15 @@ export function InternalDashboard({
                                   </div>
 
                                   <div className="grid gap-4">
-                                    <div className="rounded-xl border border-white/10 bg-[#08111f] px-4 py-4">
-                                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Moves Forward When</p>
-                                      <p className="mt-2 text-sm leading-6 text-slate-300">{stage.movesForwardWhen}</p>
+                                    <div className="rounded-xl border border-border bg-input px-4 py-4">
+                                      <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Moves Forward When</p>
+                                      <p className="mt-2 text-sm leading-6 text-secondary">{stage.movesForwardWhen}</p>
                                     </div>
 
                                     {stage.kzeroActionRequired ? (
-                                      <div className="rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-4">
-                                        <p className="text-xs uppercase tracking-[0.18em] text-amber-200">KZero Passwordless Action</p>
-                                        <p className="mt-2 text-sm leading-6 text-amber-50/90">{stage.kzeroActionRequired}</p>
+                                      <div className="rounded-xl border border-warning-border/60 bg-warning-surface px-4 py-4">
+                                        <p className="text-xs uppercase tracking-[0.18em] text-warning">KZero Passwordless Action</p>
+                                        <p className="mt-2 text-sm leading-6 text-warning">{stage.kzeroActionRequired}</p>
                                       </div>
                                     ) : null}
                                   </div>
@@ -2991,25 +2991,25 @@ export function InternalDashboard({
       </section>
 
       {isNotificationDrawerOpen ? (
-        <div className="fixed inset-0 z-40 flex justify-end bg-slate-950/70 p-0 md:p-4">
-          <div className="flex h-full w-full max-w-[460px] flex-col border-l border-white/10 bg-[#101a2d] shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4 md:px-5">
+        <div className="fixed inset-0 z-40 flex justify-end bg-overlay/70 p-0 md:p-4">
+          <div className="flex h-full w-full max-w-[460px] flex-col border-l border-border bg-surface shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-4 md:px-5">
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Notifications</p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">Notifications</h3>
-                <p className="mt-1 text-sm text-slate-300">MSP activity appears here when onboarding steps are completed.</p>
+                <p className="text-xs uppercase tracking-[0.22em] text-muted">Notifications</p>
+                <h3 className="mt-2 text-2xl font-semibold text-foreground">Notifications</h3>
+                <p className="mt-1 text-sm text-secondary">MSP activity appears here when onboarding steps are completed.</p>
               </div>
               <Button aria-label="Close notifications" className="h-9 px-2.5" onClick={() => setIsNotificationDrawerOpen(false)} variant="outline">
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
-            <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-5">
+            <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-5">
               <div>
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-secondary">
                   {unreadNotificationCount > 0 ? `${unreadNotificationCount} unread` : "All caught up"}
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-subtle">
                   {browserNotificationPermission === "granted"
                     ? "Browser alerts enabled"
                     : "Enable browser alerts to see new MSP activity outside the dashboard."}
@@ -3029,17 +3029,17 @@ export function InternalDashboard({
 
             <div className="flex-1 overflow-y-auto px-4 py-4 md:px-5">
               {isLoadingNotifications ? (
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-4 text-sm text-slate-300">
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-4 text-sm text-secondary">
                   Loading notifications...
                 </div>
               ) : notificationErrorMessage ? (
-                <div className="rounded-2xl border border-red-400/20 bg-red-400/[0.06] px-4 py-4 text-sm text-red-100">
+                <div className="rounded-2xl border border-danger-border/60 bg-danger-surface px-4 py-4 text-sm text-danger">
                   {notificationErrorMessage}
                 </div>
               ) : notifications.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-[#0a1424] px-4 py-5">
-                  <p className="text-base font-semibold text-white">No Notifications Yet</p>
-                  <p className="mt-2 text-sm text-slate-400">
+                <div className="rounded-2xl border border-dashed border-border bg-surface-secondary px-4 py-5">
+                  <p className="text-base font-semibold text-foreground">No Notifications Yet</p>
+                  <p className="mt-2 text-sm text-muted">
                     MSP activity will appear here when onboarding steps are completed.
                   </p>
                 </div>
@@ -3050,22 +3050,22 @@ export function InternalDashboard({
                       key={notification.id}
                       className={`rounded-2xl border px-4 py-4 ${
                         notification.isRead
-                          ? "border-white/10 bg-[#0a1424]"
-                          : "border-blue-400/20 bg-blue-400/[0.08]"
+                          ? "border-border bg-surface-secondary"
+                          : "border-info-border/60 bg-info-surface"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-white">
+                            <p className="text-sm font-semibold text-foreground">
                               {notification.mspName} completed: {notification.taskTitle}
                             </p>
                             <Badge status={notification.isRead ? "in_progress" : "waiting_on_kzero"}>
                               {notification.isRead ? "Read" : "Unread"}
                             </Badge>
                           </div>
-                          <p className="mt-2 text-sm text-slate-300">Completed in {notification.stage}</p>
-                          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-slate-500">
+                          <p className="mt-2 text-sm text-secondary">Completed in {notification.stage}</p>
+                          <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-subtle">
                             {formatNotificationTimestamp(notification.createdAt)}
                           </p>
                         </div>
@@ -3134,9 +3134,9 @@ export function InternalDashboard({
       ) : null}
 
       {isModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 p-4 md:p-6">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-overlay/80 p-4 md:p-6">
           <Card
-            className={`w-full overflow-hidden border-white/10 bg-[#101a2d] ${
+            className={`w-full overflow-hidden border-border bg-surface ${
               panelMode === "preview"
                 ? "flex max-h-[95vh] max-w-[1040px] flex-col md:max-h-[90vh]"
                 : panelMode === "edit" || panelMode === "enroll"
@@ -3146,9 +3146,9 @@ export function InternalDashboard({
                 : "max-h-[95vh] max-w-[520px] overflow-y-auto md:max-h-[90vh]"
             }`}
           >
-            <div className={`shrink-0 flex items-start justify-between gap-4 border-b border-white/10 bg-[#101a2d] px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "rollback") ? "sticky top-0 z-20" : panelMode === "edit" || panelMode === "enroll" ? "z-10" : "mb-5"}`}>
+            <div className={`shrink-0 flex items-start justify-between gap-4 border-b border-border bg-surface px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "rollback") ? "sticky top-0 z-20" : panelMode === "edit" || panelMode === "enroll" ? "z-10" : "mb-5"}`}>
               <div>
-                <p className="text-xs uppercase tracking-[0.24em] text-blue-200">
+                <p className="text-xs uppercase tracking-[0.24em] text-info">
                   {panelMode === "preview"
                     ? "Case preview"
                     : panelMode === "edit"
@@ -3161,10 +3161,10 @@ export function InternalDashboard({
                         ? "Configure OIDC"
                         : "Enroll MSP"}
                 </p>
-                <h3 className="mt-2 text-2xl font-semibold text-white">
+                <h3 className="mt-2 text-2xl font-semibold text-foreground">
                   {panelMode === "enroll" ? "Enroll MSP" : selectedCase?.mspName}
                 </h3>
-                <p className="mt-1 text-sm text-slate-300">
+                <p className="mt-1 text-sm text-secondary">
                   {panelMode === "enroll"
                     ? "Create a new MSP onboarding case with access, stage, and reporting details."
                     : panelMode === "preview"
@@ -3178,7 +3178,7 @@ export function InternalDashboard({
                         : getAccessLabel(selectedCase!)}
                 </p>
                 {(panelMode === "preview" || panelMode === "edit") && selectedCase ? (
-                  <div className="mt-3 flex flex-wrap gap-3 text-sm text-slate-300">
+                  <div className="mt-3 flex flex-wrap gap-3 text-sm text-secondary">
                     <span>Plan Type: {formatDashboardPlanTypeLabel(selectedCase.startingPlanType)}</span>
                     {selectedCase.customerName && isCustomerPlanCase(selectedCase) ? (
                       <span>Customer: {selectedCase.customerName}</span>
@@ -3204,11 +3204,11 @@ export function InternalDashboard({
 
             {panelMode === "preview" && selectedCase ? (
               <>
-                <div className="sticky top-[89px] z-10 border-b border-white/10 bg-[#101a2d]/95 px-4 py-4 backdrop-blur md:px-6">
+                <div className="sticky top-[89px] z-10 border-b border-border bg-surface/95 px-4 py-4 backdrop-blur md:px-6">
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Case Actions</p>
-                      <p className="mt-1 text-sm text-slate-300">
+                      <p className="text-xs uppercase tracking-[0.22em] text-muted">Case Actions</p>
+                      <p className="mt-1 text-sm text-secondary">
                         {canOpenPortalAsAdmin
                           ? "Advance, update, or open this onboarding case with admin access."
                           : "Advance or update this MSP case from here."}
@@ -3239,7 +3239,7 @@ export function InternalDashboard({
                         </Button>
                         {isCaseActionsMenuOpen ? (
                           <div
-                            className="mt-2 grid gap-2 rounded-2xl border border-white/10 bg-[#0a1424] p-2 sm:absolute sm:right-0 sm:mt-2 sm:min-w-[220px] sm:shadow-xl"
+                            className="mt-2 grid gap-2 rounded-2xl border border-border bg-surface-secondary p-2 sm:absolute sm:right-0 sm:mt-2 sm:min-w-[220px] sm:shadow-xl"
                             role="menu"
                           >
                             <Button
@@ -3277,7 +3277,7 @@ export function InternalDashboard({
                               Configure OIDC
                             </Button>
                             <Button
-                              className="justify-start border-red-400/30 text-red-100 hover:bg-red-400/10"
+                              className="justify-start border-danger-border/60 text-danger hover:bg-danger-surface"
                               onClick={() => {
                                 setIsCaseActionsMenuOpen(false);
                                 openDelete(selectedCase);
@@ -3293,7 +3293,7 @@ export function InternalDashboard({
                     </div>
                   </div>
                   {!canOpenPortalAsAdmin ? (
-                    <p className="mt-3 text-xs text-slate-400">
+                    <p className="mt-3 text-xs text-muted">
                       Open Onboarding Case is available for server-backed MSP records and uses admin-authenticated portal access.
                     </p>
                   ) : null}
@@ -3303,32 +3303,32 @@ export function InternalDashboard({
                   <div className="grid gap-6 px-4 py-4 pb-10 md:px-6 md:py-6 md:pb-12">
                     <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
                       <div className="grid gap-4">
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current Stage</p>
-                          <p className="mt-2 text-lg font-semibold text-white">{selectedCase.currentStage}</p>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-muted">Current Stage</p>
+                          <p className="mt-2 text-lg font-semibold text-foreground">{selectedCase.currentStage}</p>
                           {selectedCase.customerName && isCustomerPlanCase(selectedCase) ? (
-                            <p className="mt-2 text-sm text-slate-300">Customer: {selectedCase.customerName}</p>
+                            <p className="mt-2 text-sm text-secondary">Customer: {selectedCase.customerName}</p>
                           ) : null}
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Current Active Task</p>
+                          <p className="text-xs uppercase tracking-[0.22em] text-muted">Current Active Task</p>
                             <Badge status={getStatusTone(selectedCase)}>{getPreviewTaskStatusLabel(selectedCase)}</Badge>
                           </div>
-                          <p className="mt-3 text-lg font-semibold text-white">{selectedCase.activeTaskTitle ?? "No active task"}</p>
-                          <p className="mt-2 text-sm leading-6 text-slate-300">{getNextStepDescription(selectedCase)}</p>
+                          <p className="mt-3 text-lg font-semibold text-foreground">{selectedCase.activeTaskTitle ?? "No active task"}</p>
+                          <p className="mt-2 text-sm leading-6 text-secondary">{getNextStepDescription(selectedCase)}</p>
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
-                          <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Who Owns The Next Action</p>
-                            <p className="mt-2 text-base font-semibold text-white">{getActiveTaskOwnerLabel(selectedCase)}</p>
-                            <p className="mt-2 text-sm text-slate-300">{getNextActionHeading(selectedCase)}</p>
+                          <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                            <p className="text-xs uppercase tracking-[0.22em] text-muted">Who Owns The Next Action</p>
+                            <p className="mt-2 text-base font-semibold text-foreground">{getActiveTaskOwnerLabel(selectedCase)}</p>
+                            <p className="mt-2 text-sm text-secondary">{getNextActionHeading(selectedCase)}</p>
                           </div>
-                          <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">What Happens Next</p>
-                            <p className="mt-2 text-sm leading-6 text-slate-300">
+                          <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                            <p className="text-xs uppercase tracking-[0.22em] text-muted">What Happens Next</p>
+                            <p className="mt-2 text-sm leading-6 text-secondary">
                               {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
                                 ? "The plan stays with the MSP until the current onboarding step is completed."
                                 : "The case can move forward as soon as the current KZero step is completed."}
@@ -3336,13 +3336,13 @@ export function InternalDashboard({
                           </div>
                         </div>
 
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-muted">
                             {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
                               ? "What The MSP Needs To Do"
                               : "What KZero Needs To Do"}
                           </p>
-                          <p className="mt-2 text-sm leading-6 text-slate-300">
+                          <p className="mt-2 text-sm leading-6 text-secondary">
                             {selectedCase.activeTaskOwner === "msp" || selectedCase.status === "waiting_on_msp"
                               ? getMspNeedsToDoLabel(selectedCase)
                               : getNextStepDescription(selectedCase)}
@@ -3350,27 +3350,27 @@ export function InternalDashboard({
                         </div>
 
                         {selectedCase.firstCustomerPilot ? (
-                          <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                            <p className="text-xs uppercase tracking-[0.22em] text-slate-400">First Customer Pilot</p>
-                            <p className="mt-2 text-lg font-semibold text-white">{selectedCase.firstCustomerPilot.customerAlias}</p>
+                          <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                            <p className="text-xs uppercase tracking-[0.22em] text-muted">First Customer Pilot</p>
+                            <p className="mt-2 text-lg font-semibold text-foreground">{selectedCase.firstCustomerPilot.customerAlias}</p>
                             <div className="mt-4 grid gap-4 md:grid-cols-2">
                               <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Target Timing</p>
-                                <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.targetRolloutTiming}</p>
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Target Timing</p>
+                                <p className="mt-1 text-sm text-secondary">{selectedCase.firstCustomerPilot.targetRolloutTiming}</p>
                               </div>
                               <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Estimated Users</p>
-                                <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.estimatedUserCount ?? "Not provided"}</p>
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Estimated Users</p>
+                                <p className="mt-1 text-sm text-secondary">{selectedCase.firstCustomerPilot.estimatedUserCount ?? "Not provided"}</p>
                               </div>
                               <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer Admin</p>
-                                <p className="mt-1 text-sm text-slate-200">
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Customer Admin</p>
+                                <p className="mt-1 text-sm text-secondary">
                                   {selectedCase.firstCustomerPilot.adminContactName ?? selectedCase.firstCustomerPilot.adminContactEmail ?? "Not provided"}
                                 </p>
                               </div>
                               <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Notes</p>
-                                <p className="mt-1 text-sm text-slate-200">{selectedCase.firstCustomerPilot.notes ?? "No notes yet"}</p>
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Notes</p>
+                                <p className="mt-1 text-sm text-secondary">{selectedCase.firstCustomerPilot.notes ?? "No notes yet"}</p>
                               </div>
                             </div>
                           </div>
@@ -3378,54 +3378,54 @@ export function InternalDashboard({
                       </div>
 
                       <div className="grid gap-4">
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Summary</p>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.22em] text-muted">Summary</p>
                           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Plan Type</p>
-                              <p className="mt-1 text-sm text-slate-200">{formatDashboardPlanTypeLabel(selectedCase.startingPlanType)}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Plan Type</p>
+                              <p className="mt-1 text-sm text-secondary">{formatDashboardPlanTypeLabel(selectedCase.startingPlanType)}</p>
                             </div>
                             {selectedCase.customerName && isCustomerPlanCase(selectedCase) ? (
                               <div>
-                                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Customer Name</p>
-                                <p className="mt-1 text-sm text-slate-200">{selectedCase.customerName}</p>
+                                <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Customer Name</p>
+                                <p className="mt-1 text-sm text-secondary">{selectedCase.customerName}</p>
                               </div>
                             ) : null}
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Progress</p>
-                              <p className="mt-1 text-lg font-semibold text-white">{selectedCase.progress}%</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Progress</p>
+                              <p className="mt-1 text-lg font-semibold text-foreground">{selectedCase.progress}%</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Waiting Status</p>
-                              <p className="mt-1 text-sm text-slate-200">{getWaitingLabel(selectedCase)}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Waiting Status</p>
+                              <p className="mt-1 text-sm text-secondary">{getWaitingLabel(selectedCase)}</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Access Mode</p>
-                              <p className="mt-1 text-sm text-slate-200">{getAccessLabel(selectedCase)}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Access Mode</p>
+                              <p className="mt-1 text-sm text-secondary">{getAccessLabel(selectedCase)}</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">GMM Partner</p>
-                              <p className="mt-1 text-sm text-slate-200">{getGmmLabel(selectedCase.isGmmPartner)}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">GMM Partner</p>
+                              <p className="mt-1 text-sm text-secondary">{getGmmLabel(selectedCase.isGmmPartner)}</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">OIDC Status</p>
-                              <p className="mt-1 text-sm text-slate-200">{getOidcStatusLabel(selectedCase)}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">OIDC Status</p>
+                              <p className="mt-1 text-sm text-secondary">{getOidcStatusLabel(selectedCase)}</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tenant Realm</p>
-                              <p className="mt-1 text-sm text-slate-200">{selectedCase.tenantName ?? "Not configured"}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Tenant Realm</p>
+                              <p className="mt-1 text-sm text-secondary">{selectedCase.tenantName ?? "Not configured"}</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sales Engineer</p>
-                              <p className="mt-1 text-sm text-slate-200">{SALES_ENGINEER_NAME}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Sales Engineer</p>
+                              <p className="mt-1 text-sm text-secondary">{SALES_ENGINEER_NAME}</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Enrollment Date</p>
-                              <p className="mt-1 text-sm text-slate-200">{selectedCase.enrollmentDate ?? selectedCase.lastActivity}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Enrollment Date</p>
+                              <p className="mt-1 text-sm text-secondary">{selectedCase.enrollmentDate ?? selectedCase.lastActivity}</p>
                             </div>
                             <div>
-                              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Last Activity</p>
-                              <p className="mt-1 text-sm text-slate-200">{selectedCase.lastActivity}</p>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Last Activity</p>
+                              <p className="mt-1 text-sm text-secondary">{selectedCase.lastActivity}</p>
                             </div>
                           </div>
                         </div>
@@ -3433,27 +3433,27 @@ export function InternalDashboard({
                     </div>
 
                     <div className="grid gap-4 lg:grid-cols-3">
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
                         <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-white">Submitted Apps</p>
-                          <span className="text-xs uppercase tracking-[0.2em] text-slate-400">{selectedCase.submittedSaasAppCount}</span>
+                          <p className="text-sm font-semibold text-foreground">Submitted Apps</p>
+                          <span className="text-xs uppercase tracking-[0.2em] text-muted">{selectedCase.submittedSaasAppCount}</span>
                         </div>
                         <div className="mt-3 grid gap-2">
                           {selectedCaseApps.length > 0 ? (
                             selectedCaseApps.slice(0, 4).map((app) => (
-                              <div key={app.id} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
-                                <p className="text-sm text-white">{app.name}</p>
-                                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">{app.status.replaceAll("_", " ")}</p>
+                              <div key={app.id} className="rounded-xl border border-border bg-input px-3 py-2.5">
+                                <p className="text-sm text-foreground">{app.name}</p>
+                                <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted">{app.status.replaceAll("_", " ")}</p>
                                 {"priority" in app && app.priority ? (
-                                  <p className="mt-1 text-xs text-slate-400">Priority: {app.priority}</p>
+                                  <p className="mt-1 text-xs text-muted">Priority: {app.priority}</p>
                                 ) : null}
                                 {"loginUrl" in app && app.loginUrl ? (
-                                  <p className="mt-1 break-all text-xs text-slate-400">{app.loginUrl}</p>
+                                  <p className="mt-1 break-all text-xs text-muted">{app.loginUrl}</p>
                                 ) : null}
                               </div>
                             ))
                           ) : (
-                            <p className="text-sm text-slate-300">
+                            <p className="text-sm text-secondary">
                               {selectedCase.submittedSaasAppCount > 0
                                 ? `${selectedCase.submittedSaasAppCount} apps submitted for review.`
                                 : "No SaaS apps submitted yet."}
@@ -3463,13 +3463,13 @@ export function InternalDashboard({
                       </div>
 
                       {selectedCaseComments.length > 0 ? (
-                        <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                          <p className="text-sm font-semibold text-white">Notes / Activity</p>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                          <p className="text-sm font-semibold text-foreground">Notes / Activity</p>
                           <div className="mt-3 grid gap-2">
                             {selectedCaseComments.slice(0, 3).map((comment) => (
-                              <div key={comment.id} className="rounded-xl border border-white/10 bg-[#08111f] px-3 py-2.5">
-                                <p className="text-sm font-medium text-white">{comment.author}</p>
-                                <p className="mt-1 text-sm leading-6 text-slate-300">{comment.body}</p>
+                              <div key={comment.id} className="rounded-xl border border-border bg-input px-3 py-2.5">
+                                <p className="text-sm font-medium text-foreground">{comment.author}</p>
+                                <p className="mt-1 text-sm leading-6 text-secondary">{comment.body}</p>
                               </div>
                             ))}
                           </div>
@@ -3497,23 +3497,23 @@ export function InternalDashboard({
 
             {panelMode === "delete" && selectedCase ? (
               <div className="grid gap-4">
-                <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4">
+                <div className="rounded-2xl border border-warning-border/60 bg-warning-surface p-4">
                   <div className="flex items-start gap-3">
-                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-400/12 text-amber-200">
+                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-warning-surface text-warning">
                       <AlertTriangle className="h-5 w-5" />
                     </div>
                     <div>
-                      <h4 className="text-lg font-semibold text-white">Delete this MSP?</h4>
-                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                      <h4 className="text-lg font-semibold text-foreground">Delete this MSP?</h4>
+                      <p className="mt-2 text-sm leading-6 text-secondary">
                         This removes the MSP record, onboarding plan, progress, and OIDC config.
                       </p>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP</p>
-                  <p className="mt-2 text-white">{selectedCase.mspName}</p>
-                  <p className="mt-1 text-sm text-slate-300">{selectedCase.primaryContactEmail}</p>
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted">MSP</p>
+                  <p className="mt-2 text-foreground">{selectedCase.mspName}</p>
+                  <p className="mt-1 text-sm text-secondary">{selectedCase.primaryContactEmail}</p>
                 </div>
                 <div className="flex gap-3">
                   <Button className="flex-1" disabled={isDeleting} onClick={handleDeleteMsp}>
@@ -3530,23 +3530,23 @@ export function InternalDashboard({
               <>
                 <div className="max-h-[calc(95vh-11rem)] overflow-y-auto px-4 py-4 pb-28 md:max-h-[calc(90vh-12rem)] md:px-6 md:py-6 md:pb-32">
                   <div className="grid gap-5">
-                    <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.08] px-5 py-4">
+                    <div className="rounded-2xl border border-warning-border/60 bg-warning-surface px-5 py-4">
                       <div className="flex items-start gap-3">
-                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
+                        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
                         <div>
-                          <p className="text-sm font-semibold text-white">Rollback will reopen the selected step.</p>
-                          <p className="mt-2 text-sm leading-6 text-amber-50/90">
+                          <p className="text-sm font-semibold text-foreground">Rollback will reopen the selected step.</p>
+                          <p className="mt-2 text-sm leading-6 text-warning">
                             This will reopen the selected step, lock later steps, and recalculate the onboarding case status.
                           </p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
+                    <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
                       <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                         <div>
-                          <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Select Step To Reopen</p>
-                          <h4 className="mt-2 text-lg font-semibold text-white">Choose the exact onboarding step to make current again.</h4>
+                          <p className="text-xs uppercase tracking-[0.22em] text-muted">Select Step To Reopen</p>
+                          <h4 className="mt-2 text-lg font-semibold text-foreground">Choose the exact onboarding step to make current again.</h4>
                         </div>
                         {currentRollbackTaskId ? (
                           <Button className="h-10 px-4" onClick={() => setRollbackTaskId(currentRollbackTaskId)} variant="outline">
@@ -3557,12 +3557,12 @@ export function InternalDashboard({
 
                       <div className="mt-5 grid gap-4">
                         {rollbackStageOptions.map((stage, stageIndex) => (
-                          <div key={stage.id} className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-4">
+                          <div key={stage.id} className="rounded-2xl border border-border bg-input px-4 py-4">
                             <div className="flex flex-wrap items-center gap-3">
-                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
+                              <span className="rounded-full border border-border bg-hover px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-secondary">
                                 Stage {stageIndex + 1}
                               </span>
-                              <h5 className="text-base font-semibold text-white">{stage.title}</h5>
+                              <h5 className="text-base font-semibold text-foreground">{stage.title}</h5>
                             </div>
                             <div className="mt-4 grid gap-3">
                               {stage.tasks.map((task) => {
@@ -3574,8 +3574,8 @@ export function InternalDashboard({
                                     key={task.id}
                                     className={`rounded-2xl border px-4 py-4 text-left transition ${
                                       isSelected
-                                        ? "border-blue-400/60 bg-blue-400/10"
-                                        : "border-white/10 bg-[#0a1424] hover:border-white/20"
+                                        ? "border-primary bg-info-surface"
+                                        : "border-border bg-surface-secondary hover:border-border-strong"
                                     }`}
                                     onClick={() => setRollbackTaskId(task.id)}
                                     type="button"
@@ -3583,20 +3583,20 @@ export function InternalDashboard({
                                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                       <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-semibold text-white">{task.title}</p>
+                                          <p className="text-sm font-semibold text-foreground">{task.title}</p>
                                           {isCurrentTask ? (
-                                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-300">
+                                            <span className="rounded-full border border-border bg-hover px-2 py-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-secondary">
                                               Current Active Step
                                             </span>
                                           ) : null}
                                         </div>
-                                        <p className="mt-2 text-sm leading-6 text-slate-300">{task.description}</p>
+                                        <p className="mt-2 text-sm leading-6 text-secondary">{task.description}</p>
                                       </div>
                                       <span
                                         className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
                                           isSelected
-                                            ? "border-blue-300 bg-blue-300 text-slate-950"
-                                            : "border-white/15 text-slate-400"
+                                            ? "border-primary bg-primary text-primary-foreground"
+                                            : "border-border-strong text-muted"
                                         }`}
                                       >
                                         {isSelected ? "•" : ""}
@@ -3611,7 +3611,7 @@ export function InternalDashboard({
                       </div>
 
                       {rollbackErrorMessage ? (
-                        <div className="mt-4 rounded-2xl border border-red-400/25 bg-red-400/[0.08] px-4 py-3 text-sm text-red-100">
+                        <div className="mt-4 rounded-2xl border border-danger-border/60 bg-danger-surface px-4 py-3 text-sm text-danger">
                           {rollbackErrorMessage}
                         </div>
                       ) : null}
@@ -3619,7 +3619,7 @@ export function InternalDashboard({
                   </div>
                 </div>
 
-                <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:flex-row md:justify-end md:px-6">
+                <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-border bg-surface px-4 py-4 md:flex-row md:justify-end md:px-6">
                   <Button
                     className="md:min-w-[180px]"
                     disabled={!rollbackTaskId || isApplyingRollback || !canRollbackCase}
@@ -3639,21 +3639,21 @@ export function InternalDashboard({
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-28 md:px-6 md:py-6 md:pb-32">
                   <div className="grid gap-5">
                     <div className="grid gap-5 lg:grid-cols-2">
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP Account</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">MSP Account</p>
                         <div className="mt-4 grid gap-4">
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>MSP Name</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) => setEditState((current) => (current ? { ...current, mspName: event.target.value } : current))}
                               value={editState.mspName}
                             />
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Primary Contact Email</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) => (current ? { ...current, primaryContactEmail: event.target.value } : current))
                               }
@@ -3661,14 +3661,14 @@ export function InternalDashboard({
                               value={editState.primaryContactEmail}
                             />
                           </label>
-                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Assigned Sales Engineer</p>
-                            <p className="mt-2 text-sm text-white">{SALES_ENGINEER_NAME}</p>
+                          <div className="rounded-2xl border border-border bg-input px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Assigned Sales Engineer</p>
+                            <p className="mt-2 text-sm text-foreground">{SALES_ENGINEER_NAME}</p>
                           </div>
-                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-sm text-slate-300">
+                          <label className="flex items-center gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
                             <input
                               checked={editState.isGmmPartner}
-                              className="h-4 w-4 rounded border-white/10 bg-[#08111f]"
+                              className="h-4 w-4 rounded border-border bg-input"
                               onChange={(event) =>
                                 setEditState((current) => (current ? { ...current, isGmmPartner: event.target.checked } : current))
                               }
@@ -3679,13 +3679,13 @@ export function InternalDashboard({
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Onboarding Status</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">Onboarding Status</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                          <label className="grid gap-2 text-sm text-secondary md:col-span-2">
                             <span>Plan Type</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) =>
                                   current ? { ...current, startingPlanType: event.target.value as TenantType } : current
@@ -3701,10 +3701,10 @@ export function InternalDashboard({
                             </select>
                           </label>
                           {editState.startingPlanType === "customer" ? (
-                            <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                            <label className="grid gap-2 text-sm text-secondary md:col-span-2">
                               <span>Customer Name</span>
                               <input
-                                className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                                className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                                 onChange={(event) =>
                                   setEditState((current) => (current ? { ...current, customerName: event.target.value } : current))
                                 }
@@ -3712,10 +3712,10 @@ export function InternalDashboard({
                               />
                             </label>
                           ) : null}
-                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                          <label className="grid gap-2 text-sm text-secondary md:col-span-2">
                             <span>Current Stage</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) =>
                                   current ? { ...current, currentStage: event.target.value } : current
@@ -3730,10 +3730,10 @@ export function InternalDashboard({
                               ))}
                             </select>
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Status</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) =>
                                   current ? { ...current, status: event.target.value as OnboardingCase["status"] } : current
@@ -3748,10 +3748,10 @@ export function InternalDashboard({
                               ))}
                             </select>
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Enrollment Date</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) => (current ? { ...current, enrollmentDate: event.target.value } : current))
                               }
@@ -3759,10 +3759,10 @@ export function InternalDashboard({
                               value={editState.enrollmentDate}
                             />
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Last Activity</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) => (current ? { ...current, lastActivity: event.target.value } : current))
                               }
@@ -3770,10 +3770,10 @@ export function InternalDashboard({
                               value={editState.lastActivity}
                             />
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Progress</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               max={100}
                               min={0}
                               onChange={(event) =>
@@ -3790,13 +3790,13 @@ export function InternalDashboard({
                     </div>
 
                     <div className="grid gap-5 lg:grid-cols-2">
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access & Tenant</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">Access & Tenant</p>
                         <div className="mt-4 grid gap-4">
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Access Mode</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) =>
                                   current
@@ -3813,27 +3813,27 @@ export function InternalDashboard({
                               ))}
                             </select>
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Tenant Realm</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEditState((current) => (current ? { ...current, tenantName: event.target.value } : current))
                               }
                               value={editState.tenantName}
                             />
                           </label>
-                          <p className="text-xs leading-5 text-slate-400">Use the exact KZero Passwordless tenant realm casing for OIDC.</p>
+                          <p className="text-xs leading-5 text-muted">Use the exact KZero Passwordless tenant realm casing for OIDC.</p>
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Reporting Details</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">Reporting Details</p>
                         <div className="mt-4 grid gap-4">
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Submitted Apps</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               min={0}
                               onChange={(event) =>
                                 setEditState((current) =>
@@ -3844,9 +3844,9 @@ export function InternalDashboard({
                               value={editState.submittedSaasAppCount}
                             />
                           </label>
-                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Current Waiting Status</p>
-                            <p className="mt-2 text-sm text-white">
+                          <div className="rounded-2xl border border-border bg-input px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Current Waiting Status</p>
+                            <p className="mt-2 text-sm text-foreground">
                               {STATUS_OPTIONS.find((option) => option.value === editState.status)?.label ?? "In Progress"}
                             </p>
                           </div>
@@ -3856,7 +3856,7 @@ export function InternalDashboard({
                   </div>
                 </div>
 
-                <div className="shrink-0 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:px-6">
+                <div className="shrink-0 border-t border-border bg-surface px-4 py-4 md:px-6">
                   <div className="flex flex-col gap-3 md:flex-row md:justify-end">
                     <Button className="md:min-w-[180px]" onClick={handleSaveEdit}>
                       Save MSP Details
@@ -3871,41 +3871,41 @@ export function InternalDashboard({
 
             {panelMode === "oidc" && selectedCase && oidcState ? (
               <div className="grid gap-4">
-                <label className="grid gap-2 text-sm text-slate-300">
+                <label className="grid gap-2 text-sm text-secondary">
                   <span>Tenant name / realm</span>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-muted">
                     KZero tenant / realm names are case-sensitive. Enter the tenant exactly as it appears in KZero.
                   </span>
                   <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    className="rounded-2xl border border-border bg-surface-secondary px-4 py-3 text-foreground outline-none"
                     onChange={(event) => setOidcState((current) => (current ? { ...current, tenantName: event.target.value } : current))}
                     value={oidcState.tenantName}
                   />
                 </label>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">App slug</p>
-                    <p className="mt-2 text-sm text-white">{selectedCase.mspSlug}</p>
+                  <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted">App slug</p>
+                    <p className="mt-2 text-sm text-foreground">{selectedCase.mspSlug}</p>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">KZero realm</p>
-                    <p className="mt-2 text-sm text-white">
+                  <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted">KZero realm</p>
+                    <p className="mt-2 text-sm text-foreground">
                       {oidcState.tenantName.trim() || "Enter the tenant name exactly as it appears in KZero."}
                     </p>
                   </div>
                 </div>
-                <label className="grid gap-2 text-sm text-slate-300">
+                <label className="grid gap-2 text-sm text-secondary">
                   <span>OIDC client ID</span>
                   <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    className="rounded-2xl border border-border bg-surface-secondary px-4 py-3 text-foreground outline-none"
                     onChange={(event) => setOidcState((current) => (current ? { ...current, clientId: event.target.value } : current))}
                     value={oidcState.clientId}
                   />
                 </label>
-                <label className="grid gap-2 text-sm text-slate-300">
+                <label className="grid gap-2 text-sm text-secondary">
                   <span>OIDC client secret</span>
                   <input
-                    className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3 text-white outline-none"
+                    className="rounded-2xl border border-border bg-surface-secondary px-4 py-3 text-foreground outline-none"
                     onChange={(event) =>
                       setOidcState((current) => (current ? { ...current, clientSecret: event.target.value } : current))
                     }
@@ -3914,56 +3914,56 @@ export function InternalDashboard({
                     value={oidcState.clientSecret}
                   />
                 </label>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Issuer preview</p>
-                  <p className="mt-2 text-sm text-white">{issuerPreview ?? "Enter the tenant name to preview the issuer."}</p>
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted">Issuer preview</p>
+                  <p className="mt-2 text-sm text-foreground">{issuerPreview ?? "Enter the tenant name to preview the issuer."}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Discovery preview</p>
-                  <p className="mt-2 break-all text-sm text-white">
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted">Discovery preview</p>
+                  <p className="mt-2 break-all text-sm text-foreground">
                     {issuerPreview
                       ? `${issuerPreview}/.well-known/openid-configuration`
                       : "Enter the tenant name to preview the discovery endpoint."}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Authorization URL preview</p>
-                  <p className="mt-2 break-all text-sm text-white">
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted">Authorization URL preview</p>
+                  <p className="mt-2 break-all text-sm text-foreground">
                     {authUrlPreview ?? "Enter the tenant name to preview the authorization endpoint."}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Token URL preview</p>
-                  <p className="mt-2 break-all text-sm text-white">
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted">Token URL preview</p>
+                  <p className="mt-2 break-all text-sm text-foreground">
                     {tokenUrlPreview ?? "Enter the tenant name to preview the token endpoint."}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">UserInfo URL preview</p>
-                  <p className="mt-2 break-all text-sm text-white">
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted">UserInfo URL preview</p>
+                  <p className="mt-2 break-all text-sm text-foreground">
                     {userInfoUrlPreview ?? "Enter the tenant name to preview the user info endpoint."}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Logout URL preview</p>
-                  <p className="mt-2 break-all text-sm text-white">
+                <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted">Logout URL preview</p>
+                  <p className="mt-2 break-all text-sm text-foreground">
                     {logoutUrlPreview ?? "Enter the tenant name to preview the logout endpoint."}
                   </p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Redirect URI</p>
-                    <p className="mt-2 break-all text-sm text-white">{PRODUCTION_REDIRECT_URI}</p>
+                  <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted">Redirect URI</p>
+                    <p className="mt-2 break-all text-sm text-foreground">{PRODUCTION_REDIRECT_URI}</p>
                   </div>
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Local redirect URI</p>
-                    <p className="mt-2 break-all text-sm text-white">{LOCAL_REDIRECT_URI}</p>
+                  <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted">Local redirect URI</p>
+                    <p className="mt-2 break-all text-sm text-foreground">{LOCAL_REDIRECT_URI}</p>
                   </div>
                 </div>
                 {selectedCase.oidcClientSecretConfigured ? (
-                  <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-4 py-3">
-                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Stored client secret</p>
-                    <p className="mt-2 text-sm text-white">********</p>
+                  <div className="rounded-2xl border border-border bg-surface-secondary px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.22em] text-muted">Stored client secret</p>
+                    <p className="mt-2 text-sm text-foreground">********</p>
                   </div>
                 ) : null}
                 <div className="flex gap-3">
@@ -3982,21 +3982,21 @@ export function InternalDashboard({
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-28 md:px-6 md:py-6 md:pb-32">
                   <div className="grid gap-5">
                     <div className="grid gap-5 lg:grid-cols-2">
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">MSP Account</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">MSP Account</p>
                         <div className="mt-4 grid gap-4">
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>MSP Name</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) => setEnrollmentState((current) => ({ ...current, mspName: event.target.value }))}
                               value={enrollmentState.mspName}
                             />
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Primary Contact Email</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEnrollmentState((current) => ({ ...current, primaryContactEmail: event.target.value }))
                               }
@@ -4004,14 +4004,14 @@ export function InternalDashboard({
                               value={enrollmentState.primaryContactEmail}
                             />
                           </label>
-                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Assigned Sales Engineer</p>
-                            <p className="mt-2 text-sm text-white">{SALES_ENGINEER_NAME}</p>
+                          <div className="rounded-2xl border border-border bg-input px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Assigned Sales Engineer</p>
+                            <p className="mt-2 text-sm text-foreground">{SALES_ENGINEER_NAME}</p>
                           </div>
-                          <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-sm text-slate-300">
+                          <label className="flex items-center gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
                             <input
                               checked={enrollmentState.isGmmPartner}
-                              className="h-4 w-4 rounded border-white/10 bg-[#08111f]"
+                              className="h-4 w-4 rounded border-border bg-input"
                               onChange={(event) =>
                                 setEnrollmentState((current) => ({ ...current, isGmmPartner: event.target.checked }))
                               }
@@ -4022,13 +4022,13 @@ export function InternalDashboard({
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Access & Tenant</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">Access & Tenant</p>
                         <div className="mt-4 grid gap-4">
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Access Mode</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEnrollmentState((current) => ({
                                   ...current,
@@ -4044,20 +4044,20 @@ export function InternalDashboard({
                               ))}
                             </select>
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Tenant Name / Realm</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) => setEnrollmentState((current) => ({ ...current, tenantName: event.target.value }))}
                               value={enrollmentState.tenantName}
                             />
                           </label>
-                          <p className="text-xs leading-5 text-slate-400">
+                          <p className="text-xs leading-5 text-muted">
                             Use the exact KZero Passwordless tenant realm casing for OIDC.
                           </p>
-                          <div className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">OIDC Configuration</p>
-                            <p className="mt-2 text-sm text-white">
+                          <div className="rounded-2xl border border-border bg-input px-4 py-3">
+                            <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">OIDC Configuration</p>
+                            <p className="mt-2 text-sm text-foreground">
                               {enrollmentState.accessMode === "oidc"
                                 ? "Configure the client ID and secret from the Configure OIDC action after enrollment."
                                 : "Temporary access is selected by default. You can configure KZero OIDC later."}
@@ -4068,13 +4068,13 @@ export function InternalDashboard({
                     </div>
 
                     <div className="grid gap-5 lg:grid-cols-2">
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Onboarding Status</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">Onboarding Status</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                          <label className="grid gap-2 text-sm text-secondary md:col-span-2">
                             <span>Current Stage</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) => setEnrollmentState((current) => ({ ...current, currentStage: event.target.value }))}
                               value={enrollmentState.currentStage}
                             >
@@ -4085,10 +4085,10 @@ export function InternalDashboard({
                               ))}
                             </select>
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Status</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEnrollmentState((current) => ({
                                   ...current,
@@ -4104,19 +4104,19 @@ export function InternalDashboard({
                               ))}
                             </select>
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Enrollment Date</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) => setEnrollmentState((current) => ({ ...current, enrollmentDate: event.target.value }))}
                               type="date"
                               value={enrollmentState.enrollmentDate}
                             />
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Last Activity</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) => setEnrollmentState((current) => ({ ...current, lastActivity: event.target.value }))}
                               type="date"
                               value={enrollmentState.lastActivity}
@@ -4125,13 +4125,13 @@ export function InternalDashboard({
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-white/10 bg-[#0a1424] px-5 py-4">
-                        <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Reporting Details</p>
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-xs uppercase tracking-[0.22em] text-muted">Reporting Details</p>
                         <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                          <label className="grid gap-2 text-sm text-secondary md:col-span-2">
                             <span>Plan Type</span>
                             <select
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
                                 setEnrollmentState((current) => ({
                                   ...current,
@@ -4148,19 +4148,19 @@ export function InternalDashboard({
                             </select>
                           </label>
                           {enrollmentState.startingPlanType === "customer" ? (
-                            <label className="grid gap-2 text-sm text-slate-300 md:col-span-2">
+                            <label className="grid gap-2 text-sm text-secondary md:col-span-2">
                               <span>Customer Name</span>
                               <input
-                                className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                                className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                                 onChange={(event) => setEnrollmentState((current) => ({ ...current, customerName: event.target.value }))}
                                 value={enrollmentState.customerName}
                               />
                             </label>
                           ) : null}
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Progress %</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               max={100}
                               min={0}
                               onChange={(event) =>
@@ -4173,10 +4173,10 @@ export function InternalDashboard({
                               value={enrollmentState.progress}
                             />
                           </label>
-                          <label className="grid gap-2 text-sm text-slate-300">
+                          <label className="grid gap-2 text-sm text-secondary">
                             <span>Submitted Apps</span>
                             <input
-                              className="rounded-2xl border border-white/10 bg-[#08111f] px-4 py-3 text-white outline-none"
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               min={0}
                               onChange={(event) =>
                                 setEnrollmentState((current) => ({
@@ -4194,7 +4194,7 @@ export function InternalDashboard({
                   </div>
                 </div>
 
-                <div className="shrink-0 border-t border-white/10 bg-[#101a2d] px-4 py-4 md:px-6">
+                <div className="shrink-0 border-t border-border bg-surface px-4 py-4 md:px-6">
                   <div className="flex flex-col gap-3 md:flex-row md:justify-end">
                     <Button className="md:min-w-[180px]" onClick={handleEnroll}>
                       Save MSP Details

@@ -126,19 +126,19 @@ export default function StartPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-white/10 bg-[#0b1526]/90">
+      <header className="border-b border-border bg-surface/90">
         <div className="mx-auto flex w-full max-w-7xl flex-col items-start gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 md:px-10">
           <KzeroLogo className="shrink-0" imageClassName="w-[168px] sm:w-[180px]" priority />
           <nav className="flex w-full items-center justify-between gap-4 sm:w-auto sm:justify-end" aria-label="Portal navigation">
             <Link
-              className="inline-flex items-center rounded-lg py-2 text-sm font-medium text-slate-300 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="inline-flex items-center rounded-lg py-2 text-sm font-medium text-secondary transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               href="/"
             >
               <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
               Back to Home
             </Link>
             <Link
-              className="rounded-lg py-2 text-sm font-medium text-slate-400 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="rounded-lg py-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               href="/admin-login"
             >
               Admin Sign In
@@ -148,23 +148,23 @@ export default function StartPage() {
       </header>
 
       <main className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6 sm:py-10">
-        <Card className="w-full max-w-[540px] border-white/10 bg-[#101a2d] p-6 shadow-panel sm:p-8">
+        <Card className="w-full max-w-[540px] border-border bg-surface p-6 shadow-panel sm:p-8">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-white">Find Your Onboarding Plan</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">Find Your Onboarding Plan</h1>
+            <p className="mt-2 text-sm leading-6 text-secondary">
               Enter the name provided by your KZero Passwordless Sales Engineer to continue.
             </p>
           </div>
 
           <form className="mt-6" onSubmit={handleContinue}>
-            <label className="block text-sm font-medium text-slate-200" htmlFor="tenant-name">
+            <label className="block text-sm font-medium text-secondary" htmlFor="tenant-name">
               MSP, Customer, or Tenant Name
             </label>
             <input
               aria-describedby={error ? "tenant-name-error tenant-name-help" : "tenant-name-help"}
               aria-invalid={Boolean(error)}
               autoComplete="organization"
-              className="mt-2 h-12 w-full rounded-xl border border-white/15 bg-[#08111f] px-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/25 sm:text-base"
+              className="mt-2 h-12 w-full rounded-xl border border-border-strong bg-input px-4 text-sm text-foreground outline-none transition placeholder:text-muted-subtle focus:border-primary focus:ring-2 focus:ring-primary/25 sm:text-base"
               id="tenant-name"
               name="tenantName"
               onChange={(event) => {
@@ -177,12 +177,12 @@ export default function StartPage() {
             />
 
             {error ? (
-              <p className="mt-2 text-sm leading-5 text-amber-200" id="tenant-name-error" role="alert">
+              <p className="mt-2 text-sm leading-5 text-warning" id="tenant-name-error" role="alert">
                 {error}
               </p>
             ) : null}
 
-            <p className="mt-2 text-xs leading-5 text-slate-400" id="tenant-name-help">
+            <p className="mt-2 text-xs leading-5 text-muted" id="tenant-name-help">
               For an MSP NFR Plan, enter your MSP name. For a Customer Plan, enter the customer name.
             </p>
 
@@ -196,7 +196,7 @@ export default function StartPage() {
             </Button>
           </form>
 
-          <p className="mt-6 border-t border-white/10 pt-5 text-sm leading-6 text-slate-400">
+          <p className="mt-6 border-t border-border pt-5 text-sm leading-6 text-muted">
             Not sure which name to enter? Contact your KZero Passwordless Sales Engineer.
           </p>
         </Card>

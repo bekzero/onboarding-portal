@@ -195,15 +195,15 @@ export function DocumentsReviewCard({
   }
 
   return (
-    <Card className="border-white/10 bg-[#101a2d] p-4">
+    <Card className="border-border bg-surface p-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
             <FileText className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white">{title}</h3>
-            <p className="text-sm text-slate-300">{subtitle ?? getSubtitle(planType)}</p>
+            <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+            <p className="text-sm text-secondary">{subtitle ?? getSubtitle(planType)}</p>
           </div>
         </div>
 
@@ -221,45 +221,45 @@ export function DocumentsReviewCard({
               <Upload className="mr-2 h-4 w-4" />
               {isUploading ? "Uploading..." : "Upload Documents"}
             </Button>
-            <p className="max-w-md text-xs text-slate-400">{acceptedTypesLabel}</p>
+            <p className="max-w-md text-xs text-muted">{acceptedTypesLabel}</p>
           </div>
         ) : null}
       </div>
 
       {errorMessage ? (
-        <div className="mt-4 rounded-[1.1rem] border border-amber-400/20 bg-amber-400/[0.06] px-4 py-3 text-sm text-amber-100">
+        <div className="mt-4 rounded-[1.1rem] border border-warning-border/60 bg-warning-surface px-4 py-3 text-sm text-warning">
           {errorMessage}
         </div>
       ) : null}
 
       <div className="mt-4 grid gap-3">
         {isLoading ? (
-          <div className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] px-4 py-4 text-sm text-slate-300">
+          <div className="rounded-[1.1rem] border border-border bg-surface-secondary px-4 py-4 text-sm text-secondary">
             Loading documents...
           </div>
         ) : null}
 
         {!isLoading && documents.length === 0 ? (
-          <div className="rounded-[1.1rem] border border-dashed border-white/10 bg-[#0a1424] px-4 py-4">
-            <p className="text-base font-semibold text-white">{emptyStateTitle}</p>
-            <p className="mt-2 text-sm text-slate-400">{getEmptyStateBody(planType)}</p>
+          <div className="rounded-[1.1rem] border border-dashed border-border bg-surface-secondary px-4 py-4">
+            <p className="text-base font-semibold text-foreground">{emptyStateTitle}</p>
+            <p className="mt-2 text-sm text-muted">{getEmptyStateBody(planType)}</p>
           </div>
         ) : null}
 
         {!isLoading
           ? documents.map((document) => (
-              <div key={document.id} className="rounded-[1.1rem] border border-white/10 bg-[#0a1424] p-3.5">
+              <div key={document.id} className="rounded-[1.1rem] border border-border bg-surface-secondary p-3.5">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       {document.fileType.toLowerCase().includes("image") ? (
-                        <ImageIcon className="h-4 w-4 shrink-0 text-slate-400" />
+                        <ImageIcon className="h-4 w-4 shrink-0 text-muted" />
                       ) : (
-                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
+                        <FileText className="h-4 w-4 shrink-0 text-muted" />
                       )}
-                      <p className="truncate font-medium text-white">{document.fileName}</p>
+                      <p className="truncate font-medium text-foreground">{document.fileName}</p>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-300">
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-secondary">
                       <span>Type: {document.fileType}</span>
                       <span>Size: {formatDocumentSize(document.fileSize)}</span>
                       <span>Uploaded: {formatUploadedDate(document.createdAt)}</span>

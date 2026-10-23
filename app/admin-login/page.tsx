@@ -16,24 +16,24 @@ export default async function AdminLoginPage({
   return (
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[500px] items-center px-4 py-5 sm:px-6 sm:py-8">
       <main className="w-full">
-        <Card className="border-white/10 bg-[#101a2d] p-6 shadow-panel sm:p-8">
+        <Card className="border-border bg-surface p-6 shadow-panel sm:p-8">
           <div>
             <KzeroLogo priority />
           </div>
 
           <div className="mt-7">
-            <h1 className="text-3xl font-semibold tracking-tight text-white">Admin Portal</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-300">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground">Admin Portal</h1>
+            <p className="mt-2 text-sm leading-6 text-secondary">
               Sign in to manage MSP and customer onboarding.
             </p>
 
             <form action={submitAdminLogin} className="mt-6 grid gap-4">
-              <label className="grid gap-2 text-sm font-medium text-slate-200" htmlFor="admin-access-code">
+              <label className="grid gap-2 text-sm font-medium text-secondary" htmlFor="admin-access-code">
                 <span>Admin Access Code</span>
                 <input
                   autoComplete="current-password"
                   autoFocus
-                  className="h-12 w-full rounded-xl border border-white/15 bg-[#08111f] px-4 text-base text-white outline-none transition placeholder:text-slate-500 focus:border-primary focus:ring-2 focus:ring-primary/25"
+                  className="h-12 w-full rounded-xl border border-border-strong bg-input px-4 text-base text-foreground outline-none transition placeholder:text-muted-subtle focus:border-primary focus:ring-2 focus:ring-primary/25"
                   id="admin-access-code"
                   name="password"
                   placeholder="Enter your access code"
@@ -43,7 +43,7 @@ export default async function AdminLoginPage({
               </label>
 
               {hasSignInError ? (
-                <p className="text-sm leading-5 text-amber-200" role="alert">
+                <p className="text-sm leading-5 text-warning" role="alert">
                   We couldn&apos;t sign you in. Verify your access code or contact the portal administrator.
                 </p>
               ) : null}
@@ -51,16 +51,16 @@ export default async function AdminLoginPage({
               <AdminLoginSubmit />
             </form>
 
-            <div className="mt-6 flex items-center gap-2 border-t border-white/10 pt-5 text-xs text-slate-400">
-              <ShieldCheck className="h-4 w-4 shrink-0 text-blue-300" aria-hidden="true" />
+            <div className="mt-6 flex items-center gap-2 border-t border-border pt-5 text-xs text-muted">
+              <ShieldCheck className="h-4 w-4 shrink-0 text-info" aria-hidden="true" />
               <p>Authorized KZero Passwordless personnel only</p>
             </div>
           </div>
         </Card>
 
-        <p className="mt-4 text-center text-sm text-slate-400">
+        <p className="mt-4 text-center text-sm text-muted">
           MSP partner?{" "}
-          <Link className="font-medium text-blue-200 transition hover:text-blue-100" href="/start">
+          <Link className="font-medium text-info transition hover:text-info" href="/start">
             Go to your onboarding portal
           </Link>
         </p>

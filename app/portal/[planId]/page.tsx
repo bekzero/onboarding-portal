@@ -17,9 +17,9 @@ export default async function PortalPlanPage({
   if (!isDatabasePersistenceConfigured()) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-10">
-        <Card className="w-full border-white/10 bg-[#101a2d] p-6">
-          <h1 className="text-2xl font-semibold text-white">This onboarding case could not be opened.</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-300">
+        <Card className="w-full border-border bg-surface p-6">
+          <h1 className="text-2xl font-semibold text-foreground">This onboarding case could not be opened.</h1>
+          <p className="mt-3 text-sm leading-6 text-secondary">
             The onboarding portal is temporarily unavailable because server-side persistence is not configured.
           </p>
           <div className="mt-5">
@@ -37,9 +37,9 @@ export default async function PortalPlanPage({
   if (!bundle) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-10">
-        <Card className="w-full border-white/10 bg-[#101a2d] p-6">
-          <h1 className="text-2xl font-semibold text-white">This onboarding case could not be opened.</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-300">
+        <Card className="w-full border-border bg-surface p-6">
+          <h1 className="text-2xl font-semibold text-foreground">This onboarding case could not be opened.</h1>
+          <p className="mt-3 text-sm leading-6 text-secondary">
             The requested onboarding case could not be found or is no longer available.
           </p>
           <div className="mt-5">

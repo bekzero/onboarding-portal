@@ -23,20 +23,20 @@ export function AdminSessionUnavailable() {
   if (isEmbedded === null || !isEmbedded) {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-8">
-        <p className="text-sm text-slate-300">Checking admin session...</p>
+        <p className="text-sm text-secondary">Checking admin session...</p>
       </div>
     );
   }
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center px-6 py-8">
-      <Card className="w-full border-amber-400/20 bg-[#101a2d] px-6 py-7">
+      <Card className="w-full border-warning-border/60 bg-surface px-6 py-7">
         <KzeroLogo />
-        <h1 className="mt-6 text-2xl font-semibold text-white">
+        <h1 className="mt-6 text-2xl font-semibold text-foreground">
           Zoho embedded view could not access the admin session.
         </h1>
-        <p className="mt-3 text-sm leading-6 text-slate-200">{ADMIN_SESSION_UNAVAILABLE_MESSAGE}</p>
-        <p className="mt-2 text-sm leading-6 text-slate-400">
+        <p className="mt-3 text-sm leading-6 text-secondary">{ADMIN_SESSION_UNAVAILABLE_MESSAGE}</p>
+        <p className="mt-2 text-sm leading-6 text-muted">
           Some browsers block third-party cookies in embedded apps. Opening the dashboard in a new tab uses the normal
           first-party session.
         </p>
