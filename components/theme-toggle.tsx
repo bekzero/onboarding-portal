@@ -8,18 +8,18 @@ type Theme = "dark" | "light";
 const THEME_STORAGE_KEY = "kzero-color-theme";
 
 function getDocumentTheme(): Theme {
-  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
 export function ThemeToggle({ className }: { className?: string }) {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const [theme, setTheme] = useState<Theme>("light");
 
   useEffect(() => {
     setTheme(getDocumentTheme());
 
     function handleStorage(event: StorageEvent) {
       if (event.key !== THEME_STORAGE_KEY) return;
-      const nextTheme = event.newValue === "light" ? "light" : "dark";
+      const nextTheme = event.newValue === "dark" ? "dark" : "light";
       document.documentElement.dataset.theme = nextTheme;
       setTheme(nextTheme);
     }
