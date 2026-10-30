@@ -10,7 +10,7 @@ export default async function PortalPlanPage({
 }: {
   params: Promise<{ planId: string }>;
 }) {
-  await requirePortalUserOrAdmin();
+  const sessionUser = await requirePortalUserOrAdmin();
 
   const { planId } = await params;
 
@@ -52,5 +52,7 @@ export default async function PortalPlanPage({
     );
   }
 
-  return <PlanView bundle={bundle} />;
+  const isAdminView = sessionUser.roles.some((role) => ["admin", "sales_engineer", "/admin", "/sales_engineer"].includes(role));
+
+  return <PlanView bundle={bundle} isAdminView={isAdminView} />;
 }

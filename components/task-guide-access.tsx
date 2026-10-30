@@ -7,10 +7,12 @@ import { getGuideAccessLabel, type TaskGuide } from "@/lib/guide-previews";
 
 export function TaskGuideAccess({
   guides,
-  onOpenGuide
+  onOpenGuide,
+  tourTarget
 }: {
   guides: TaskGuide[];
   onOpenGuide: (guide: TaskGuide) => void;
+  tourTarget?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const menuId = useId();
@@ -55,7 +57,12 @@ export function TaskGuideAccess({
 
   if (guides.length === 1) {
     return (
-      <Button className="h-9 rounded-xl px-3.5" onClick={() => onOpenGuide(guides[0])} variant="outline">
+      <Button
+        className="h-9 rounded-xl px-3.5"
+        data-tour={tourTarget}
+        onClick={() => onOpenGuide(guides[0])}
+        variant="outline"
+      >
         {label}
       </Button>
     );
@@ -67,7 +74,11 @@ export function TaskGuideAccess({
   }
 
   return (
-    <div className={isOpen ? "relative w-[min(22rem,calc(100vw-9rem))] md:w-80" : "relative w-auto"} ref={containerRef}>
+    <div
+      className={isOpen ? "relative w-[min(22rem,calc(100vw-9rem))] md:w-80" : "relative w-auto"}
+      data-tour={tourTarget}
+      ref={containerRef}
+    >
       <Button
         aria-controls={menuId}
         aria-expanded={isOpen}

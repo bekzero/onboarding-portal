@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -26,46 +26,7 @@ import { getPhaseTimeEstimate, getTaskTimeEstimate } from "@/lib/onboarding-time
 
 const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
-const TOUR_STORAGE_KEY_PREFIX = "kzero-onboarding-tour-seen:";
-
-const PORTAL_TOUR_STEPS: PortalTourStep[] = [
-  {
-    title: "Welcome to Your KZero Passwordless Onboarding Workspace",
-    body: "This portal guides your team through tenant setup, SaaS app review, SSO rollout, and your first customer pilot."
-  },
-  {
-    title: "Start With Your Status",
-    body: "The Status view shows overall progress and whether the next step belongs to your team or KZero Passwordless."
-  },
-  {
-    title: "Complete Work in Tasks",
-    body: "The Tasks view is where your team completes onboarding steps. Each phase unlocks as the previous required work is completed."
-  },
-  {
-    title: "Focus on Your Next Action",
-    body: "The next action summary shows what to do now and takes you directly to the task where work is completed."
-  },
-  {
-    title: "Use Built-In Guides",
-    body: "Some tasks include guide previews from the KZero Passwordless Partner Portal. Open the full guide when you need detailed instructions."
-  },
-  {
-    title: "Submit SaaS Applications",
-    body: "Use the Apps view when the plan asks your team to submit SaaS applications for KZero Passwordless review."
-  },
-  {
-    title: "Review Shared Documents",
-    body: "Use Documents to review onboarding materials, implementation plans, and rollout files shared during the engagement."
-  },
-  {
-    title: "When KZero Passwordless Is Working",
-    body: "Some steps are owned by your KZero Passwordless Sales Engineer. When that happens, no action is needed from your team until the next step is ready."
-  },
-  {
-    title: "You’re Ready to Continue",
-    body: "Use Tasks to complete your active work. You can relaunch this tour anytime from the portal header."
-  }
-];
+const TOUR_STORAGE_KEY_PREFIX = "kzero-onboarding-tour:v2:";
 
 type GuidePreviewState = {
   guides: TaskGuide[];
@@ -309,10 +270,22 @@ function hasRequiredFirstCustomerPilotDetails(pilot: Pick<FirstCustomerPilotForm
 
 type PlanTab = "overview" | "tasks" | "apps" | "documents" | "activity";
 
+type PlanTourStep = PortalTourStep & {
+  phaseId?: string;
+  tab?: PlanTab;
+};
+
+type TourWorkspaceSnapshot = {
+  activeTab: PlanTab;
+  expandedPhaseIds: string[];
+};
+
 export function PlanView({
-  bundle: initialBundle
+  bundle: initialBundle,
+  isAdminView = false
 }: {
   bundle: PlanBundle;
+  isAdminView?: boolean;
 }) {
   const [activeTab, setActiveTab] = useState<PlanTab>(() =>
     initialBundle.plan.progress >= 100 ? "overview" : "tasks"
@@ -330,6 +303,8 @@ export function PlanView({
   const [tourOpen, setTourOpen] = useState(false);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [expandedPhaseIds, setExpandedPhaseIds] = useState<string[]>([]);
+  const tourWorkspaceSnapshotRef = useRef<TourWorkspaceSnapshot | null>(null);
+  const tourAutoStartCheckedRef = useRef(false);
   const orderedTasks = bundle.plan.taskIds
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
@@ -347,6 +322,17 @@ export function PlanView({
     phase,
     tasks: bundle.tasks.filter((task) => task.phaseId === phase.id)
   }));
+  const availablePhaseIds = new Set<string>();
+  let previousPhasesComplete = true;
+  phaseTasks.forEach(({ phase, tasks }) => {
+    if (previousPhasesComplete) {
+      availablePhaseIds.add(phase.id);
+    }
+    previousPhasesComplete = previousPhasesComplete && tasks.every((task) => task.status === "complete");
+  });
+  const guideTourTask = orderedTasks.find(
+    (task) => availablePhaseIds.has(task.phaseId) && getTaskGuides(task.title).length > 0
+  );
   const kzeroContact = users.find((user) => user.role === "sales_engineer");
   const isKZeroOwnedCurrentTask = !isPlanComplete && nextTask.owner === "kzero_se";
   const isKickoffBookingTask = isBookingTask(nextTask.title);
@@ -417,6 +403,86 @@ export function PlanView({
     { id: "documents", label: "Documents" },
     ...(meaningfulComments.length > 0 ? [{ id: "activity" as const, label: "Activity" }] : [])
   ];
+  const welcomeDescription = isCustomerPlan
+    ? `This is the KZero Passwordless onboarding plan for ${portalHeading}, managed by ${bundle.plan.mspName ?? bundle.organization.name}. Here you can follow assigned tasks, track progress, and access resources throughout deployment.`
+    : "This is your KZero Passwordless onboarding plan. Here you can follow your assigned tasks, track progress, and access resources throughout deployment.";
+  const tourSteps: PlanTourStep[] = [
+    {
+      body: welcomeDescription,
+      id: "welcome",
+      target: '[data-tour="plan-identity"]',
+      title: "Welcome to Your Onboarding Workspace"
+    },
+    {
+      body: "See how much of your onboarding plan you've completed. Your progress updates as tasks are completed.",
+      id: "progress",
+      target: '[data-tour="plan-progress"]',
+      title: "Track Your Progress"
+    },
+    {
+      body: "Use these tabs to review your progress, complete onboarding tasks, submit applications, and access supporting documents.",
+      id: "navigation",
+      target: '[data-tour="portal-navigation"]',
+      title: "Navigate Your Workspace"
+    },
+    {
+      body: "This section highlights the next activity requiring attention, who owns it, and its estimated duration. Select Go to Task to jump directly to the relevant checklist item.",
+      id: "next-action",
+      target: '[data-tour="next-action"]',
+      title: "Know What to Do Next"
+    },
+    {
+      body: "Your onboarding plan is organized into five stages. Complete the available tasks to advance through the process. Upcoming stages unlock as earlier stages are completed.",
+      id: "phases",
+      tab: "tasks",
+      target: '[data-tour="phase-checklist"]',
+      title: "Follow Your Onboarding Plan"
+    }
+  ];
+
+  if (!isPlanComplete) {
+    tourSteps.push({
+      body: "Each task explains what you need to do. Review the instructions and use the available action when you're ready. Completed tasks remain available for reference.",
+      id: "active-task",
+      phaseId: nextTask.phaseId,
+      tab: "tasks",
+      target: '[data-tour="active-task"]',
+      title: "Complete Your Tasks"
+    });
+  }
+
+  if (guideTourTask) {
+    tourSteps.push({
+      body: "Tasks may include guides and instructions from KZero Passwordless. Open these resources whenever you need help completing a step.",
+      id: "guides",
+      phaseId: guideTourTask.phaseId,
+      tab: "tasks",
+      target: '[data-tour="task-guide"]',
+      title: "Find Helpful Guides"
+    });
+  }
+
+  tourSteps.push(
+    {
+      body: "Use this section to submit the SaaS applications you'd like KZero Passwordless to review for SSO compatibility. Include login URLs and useful notes where available.",
+      id: "apps",
+      tab: "apps",
+      target: '[data-tour="apps-submission"]',
+      title: "Submit Your Applications"
+    },
+    {
+      body: "Access onboarding plans, implementation resources, and documents shared during the process. You can also upload supporting files where permitted.",
+      id: "documents",
+      tab: "documents",
+      target: '[data-tour="documents-area"]',
+      title: "Manage Your Documents"
+    },
+    {
+      body: "You're ready to get started. Return to your current task to continue onboarding. You can reopen this tour at any time using Portal Tour.",
+      id: "ready",
+      title: "Ready to Begin"
+    }
+  );
   const tourStorageKey = `${TOUR_STORAGE_KEY_PREFIX}${bundle.plan.id}`;
 
   useEffect(() => {
@@ -428,50 +494,124 @@ export function PlanView({
   }, [bundle.apps]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (tourAutoStartCheckedRef.current || isAdminView) {
       return;
     }
+    tourAutoStartCheckedRef.current = true;
 
-    const hasSeenTour = window.localStorage.getItem(tourStorageKey) === "true";
+    let hasSeenTour = false;
+    try {
+      hasSeenTour = window.localStorage.getItem(tourStorageKey) === "true";
+    } catch {
+      // Restricted storage should not prevent the tour from being used in the current session.
+    }
+
     if (hasSeenTour) {
       return;
     }
 
-    setTourStepIndex(0);
-    setTourOpen(true);
-  }, [tourStorageKey]);
+    const timer = window.setTimeout(() => {
+      tourWorkspaceSnapshotRef.current = {
+        activeTab,
+        expandedPhaseIds: [...expandedPhaseIds]
+      };
+      setTourStepIndex(0);
+      setTourOpen(true);
+    }, 350);
 
-  function markTourSeen() {
-    if (typeof window === "undefined") {
+    return () => window.clearTimeout(timer);
+  }, [activeTab, expandedPhaseIds, isAdminView, tourStorageKey]);
+
+  const currentTourStep = tourSteps[tourStepIndex];
+
+  useEffect(() => {
+    if (!tourOpen || !currentTourStep) {
       return;
     }
 
-    window.localStorage.setItem(tourStorageKey, "true");
+    if (currentTourStep.tab) {
+      setActiveTab(currentTourStep.tab);
+    }
+
+    if (currentTourStep.phaseId) {
+      setExpandedPhaseIds((current) =>
+        current.includes(currentTourStep.phaseId as string)
+          ? current
+          : [...current, currentTourStep.phaseId as string]
+      );
+    }
+  }, [currentTourStep?.id, tourOpen]);
+
+  function markTourSeen() {
+    if (isAdminView) {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(tourStorageKey, "true");
+    } catch {
+      // The tour still closes normally when storage is restricted.
+    }
   }
 
   function openTour() {
+    tourWorkspaceSnapshotRef.current = {
+      activeTab,
+      expandedPhaseIds: [...expandedPhaseIds]
+    };
     setTourStepIndex(0);
     setTourOpen(true);
   }
 
-  function skipTour() {
+  function closeTourAndRestoreWorkspace() {
     markTourSeen();
+    const snapshot = tourWorkspaceSnapshotRef.current;
+    if (snapshot) {
+      setActiveTab(snapshot.activeTab);
+      setExpandedPhaseIds(snapshot.expandedPhaseIds);
+    }
+    tourWorkspaceSnapshotRef.current = null;
     setTourOpen(false);
     setTourStepIndex(0);
   }
 
   function finishTour() {
     markTourSeen();
+    tourWorkspaceSnapshotRef.current = null;
     setTourOpen(false);
     setTourStepIndex(0);
+    setActiveTab("tasks");
+
+    if (!isPlanComplete) {
+      setExpandedPhaseIds((current) =>
+        current.includes(nextTask.phaseId) ? current : [...current, nextTask.phaseId]
+      );
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const target = document.querySelector<HTMLElement>(
+          isPlanComplete ? '[data-tour="phase-checklist"]' : '[data-tour="active-task"]'
+        );
+        target?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "center"
+        });
+        target?.focus({ preventScroll: true });
+      });
+    });
   }
 
   function goToNextTourStep() {
-    setTourStepIndex((current) => Math.min(current + 1, PORTAL_TOUR_STEPS.length - 1));
+    setTourStepIndex((current) => Math.min(current + 1, tourSteps.length - 1));
   }
 
   function goToPreviousTourStep() {
     setTourStepIndex((current) => Math.max(current - 1, 0));
+  }
+
+  function skipMissingTourTarget() {
+    setTourStepIndex((current) => Math.min(current + 1, tourSteps.length - 1));
   }
 
   function goToTab(targetTab: PlanTab) {
@@ -623,7 +763,10 @@ export function PlanView({
     <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-4 md:px-6 md:py-5">
       <header className="rounded-3xl border border-border bg-surface/95 p-4 shadow-panel md:px-5 md:py-5">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(240px,300px)] lg:items-center lg:gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] xl:gap-10">
-          <div className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6 lg:gap-10">
+          <div
+            className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:items-center sm:gap-6 lg:gap-10"
+            data-tour="plan-identity"
+          >
             <KzeroLogo className="shrink-0" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
@@ -637,7 +780,7 @@ export function PlanView({
           </div>
 
           <div className="flex min-w-0 flex-col gap-3 lg:items-end">
-            <div className="w-full max-w-[320px]">
+            <div className="w-full max-w-[320px]" data-tour="plan-progress">
               <div className="flex items-center justify-between text-xs font-medium text-muted">
                 <span>{completedTasks} of {orderedTasks.length} {orderedTasks.length === 1 ? "task" : "tasks"} completed</span>
                 <span>{bundle.plan.progress}%</span>
@@ -664,7 +807,7 @@ export function PlanView({
         </div>
       </header>
 
-      <nav className="mt-4 flex flex-wrap gap-2" aria-label="Portal sections">
+      <nav className="mt-4 flex flex-wrap gap-2" aria-label="Portal sections" data-tour="portal-navigation">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -685,7 +828,7 @@ export function PlanView({
       <main className="mt-4 grid gap-4">
         <div>
           <section className="grid gap-4">
-            <Card className="border-border bg-surface p-5 md:p-6">
+            <Card className="border-border bg-surface p-5 md:p-6" data-tour="next-action">
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center lg:gap-8">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-info">
@@ -846,7 +989,7 @@ export function PlanView({
 
             {activeTab === "tasks" ? (
               <Card className="border-border bg-surface p-4 md:p-5">
-                <div className="mb-4 flex items-start gap-3">
+                <div className="mb-4 flex items-start gap-3" data-tour="phase-checklist" tabIndex={-1}>
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
                     <ListChecks className="h-4 w-4" />
                   </div>
@@ -945,7 +1088,11 @@ export function PlanView({
                                         isCurrentTask ? "ring-1 ring-primary/40" : ""
                                       } ${taskToneClass}`}
                                     >
-                                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                      <div
+                                        className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"
+                                        data-tour={isCurrentTask ? "active-task" : undefined}
+                                        tabIndex={isCurrentTask ? -1 : undefined}
+                                      >
                                         <div className="min-w-0">
                                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs uppercase tracking-[0.2em] text-muted">
                                             <span>Owner: {formatTaskOwnerLabel(task.owner)}</span>
@@ -984,6 +1131,7 @@ export function PlanView({
                                             <TaskGuideAccess
                                               guides={guides}
                                               onOpenGuide={(guide) => setGuidePreview({ guides: [guide], stepName: task.title })}
+                                              tourTarget={task.id === guideTourTask?.id ? "task-guide" : undefined}
                                             />
                                           ) : null}
                                           {isCurrentTask && isSaasSubmissionTask(task.title) ? (
@@ -1141,7 +1289,7 @@ export function PlanView({
                   tabIndex={-1}
                 >
                   <div className="flex flex-col gap-4">
-                    <div>
+                    <div data-tour="apps-submission" tabIndex={-1}>
                       <p className="text-xs uppercase tracking-[0.2em] text-muted">Submit App For Review</p>
                       <p className="mt-2 text-sm text-secondary">
                         Add each SaaS application you want KZero Passwordless to review for SSO readiness.
@@ -1229,6 +1377,7 @@ export function PlanView({
                 downloadUrlBase={`/api/portal/plans/${bundle.plan.id}/documents`}
                 listUrl={`/api/portal/plans/${bundle.plan.id}/documents`}
                 planType={bundle.plan.tenantType}
+                tourTarget="documents-area"
                 uploadUrl={`/api/portal/plans/${bundle.plan.id}/documents`}
               />
             ) : null}
@@ -1254,11 +1403,13 @@ export function PlanView({
       <PortalTourModal
         currentStep={tourStepIndex}
         onBack={goToPreviousTourStep}
+        onClose={closeTourAndRestoreWorkspace}
         onFinish={finishTour}
         onNext={goToNextTourStep}
-        onSkip={skipTour}
+        onSkip={closeTourAndRestoreWorkspace}
+        onTargetMissing={skipMissingTourTarget}
         open={tourOpen}
-        steps={PORTAL_TOUR_STEPS}
+        steps={tourSteps}
       />
 
       <GuidePreviewModal guidePreview={guidePreview} onClose={() => setGuidePreview(null)} />

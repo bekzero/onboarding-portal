@@ -23,6 +23,7 @@ type DocumentsReviewCardProps = {
   planType: "nfr" | "customer";
   subtitle?: string;
   title?: string;
+  tourTarget?: string;
   uploadUrl?: string;
 };
 
@@ -81,6 +82,7 @@ export function DocumentsReviewCard({
   planType,
   subtitle,
   title = "Documents for Review",
+  tourTarget,
   uploadUrl
 }: DocumentsReviewCardProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -196,7 +198,11 @@ export function DocumentsReviewCard({
 
   return (
     <Card className="border-border bg-surface p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div
+        className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        data-tour={tourTarget}
+        tabIndex={tourTarget ? -1 : undefined}
+      >
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
             <FileText className="h-4 w-4" />
