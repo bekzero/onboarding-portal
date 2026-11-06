@@ -17,7 +17,7 @@ export function AdminSessionUnavailable() {
     setIsEmbedded(embedded);
 
     if (!embedded) {
-      window.location.replace("/admin-login");
+      window.location.replace("/admin-login?reason=session_expired");
     }
   }, []);
 

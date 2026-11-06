@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const authError = await getAdminApiAuthError();
+  const authError = await getAdminApiAuthError("SALES_ENGINEER");
   if (authError) return authError;
 
   if (!isDatabasePersistenceConfigured()) {

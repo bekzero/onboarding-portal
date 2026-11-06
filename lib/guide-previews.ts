@@ -26,7 +26,10 @@ export function getGuideAccessLabel(guideCount: number) {
 export function getTaskGuides(title: string): TaskGuide[] {
   const normalizedTitle = title.toLowerCase();
 
-  if (normalizedTitle.includes("add backup administrator")) {
+  if (
+    normalizedTitle === "add-backup-administrators" ||
+    normalizedTitle.includes("add backup administrator")
+  ) {
     return [
       {
         description: "Steps for creating an additional administrator in the KZero Passwordless Dashboard.",
@@ -36,7 +39,10 @@ export function getTaskGuides(title: string): TaskGuide[] {
     ];
   }
 
-  if (normalizedTitle.includes("add employees and contractors")) {
+  if (
+    normalizedTitle === "add-employees-and-contractors" ||
+    normalizedTitle.includes("add employees and contractors")
+  ) {
     return [
       {
         description: "Steps for adding users individually to a KZero Passwordless tenant.",
@@ -46,7 +52,7 @@ export function getTaskGuides(title: string): TaskGuide[] {
     ];
   }
 
-  if (normalizedTitle.includes("import your passwords")) {
+  if (normalizedTitle === "import-your-passwords" || normalizedTitle.includes("import your passwords")) {
     return [
       {
         description: "A collection of password import guides for supported sources.",
@@ -56,7 +62,11 @@ export function getTaskGuides(title: string): TaskGuide[] {
     ];
   }
 
-  if (normalizedTitle.includes("share vault") || normalizedTitle.includes("browser extension guidance")) {
+  if (
+    normalizedTitle === "share-vault-browser-extension-guidance" ||
+    normalizedTitle.includes("share vault") ||
+    normalizedTitle.includes("browser extension guidance")
+  ) {
     return [
       {
         description: "A collection of password import guides for supported sources.",

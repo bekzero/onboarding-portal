@@ -5,14 +5,17 @@ import { AdminLoginSubmit } from "@/components/admin-login-submit";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { isStaffOidcConfigured } from "@/lib/staff-auth";
 
 export default async function AdminLoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ error?: string; setup?: string }>;
+  searchParams: Promise<{ error?: string; setup?: string; reason?: string; staff?: string }>;
 }) {
   const params = await searchParams;
   const hasSignInError = Boolean(params.error || params.setup);
+  const staffConfigured = isStaffOidcConfigured();
 
   return (
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[500px] items-center px-4 py-5 sm:px-6 sm:py-8">
@@ -29,7 +32,16 @@ export default async function AdminLoginPage({
               Sign in to manage MSP and customer onboarding.
             </p>
 
-            <form action={submitAdminLogin} className="mt-6 grid gap-4">
+            {params.reason === "session_expired" ? <p className="mt-4 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-sm text-warning" role="alert">Your administrative session is unavailable or has expired. Sign in again.</p> : null}
+            {params.staff === "logged_out" ? <p className="mt-4 rounded-xl border border-border bg-input px-3 py-2 text-sm text-secondary">You have been signed out of the staff session.</p> : null}
+
+            <a className={`${buttonVariants()} mt-6 flex h-12 w-full`} href="/admin/staff-login">
+              {staffConfigured ? "Sign in with KZero Staff Identity" : "Staff identity setup required"}
+            </a>
+
+            <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-[0.16em] text-muted"><span className="h-px flex-1 bg-border"/><span>Transitional access</span><span className="h-px flex-1 bg-border"/></div>
+
+            <form action={submitAdminLogin} className="grid gap-4">
               <label className="grid gap-2 text-sm font-medium text-secondary" htmlFor="admin-access-code">
                 <span>Admin Access Code</span>
                 <input

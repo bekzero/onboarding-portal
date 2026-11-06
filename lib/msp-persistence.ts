@@ -1,13 +1,35 @@
 import "server-only";
-import type { AccessMode, OidcConfig, Prisma } from "@prisma/client";
+import { Prisma, type AccessMode, type OidcConfig } from "@prisma/client";
 import { createTaskCompletedAdminNotification } from "@/lib/admin-notifications";
 import { decryptStoredOidcClientSecret, encryptOidcClientSecret } from "@/lib/oidc-secret-crypto";
 import { getPlanBundle, type FirstCustomerPilot, type PlanBundle, type SaaSApp as MockSaaSApp, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
 import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-routing";
+import {
+  didActiveTaskChange,
+  isApprovedJ8Transition,
+  isQualifyingKzeroHandoff,
+  recordAutomationNotReadyAuditInTransaction,
+  recordZohoContactSyncEventsInTransaction,
+  recordZohoJourneyEventsInTransaction,
+  recordZohoPlanCreatedEventsInTransaction,
+  shouldFinishNudge
+} from "@/lib/zoho-lifecycle-events";
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
+
+async function lockOnboardingPlanMutation(transaction: Prisma.TransactionClient, planId: string) {
+  await transaction.$queryRaw(Prisma.sql`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`onboarding-plan:${planId}`}, 0))
+  `);
+}
 const onboardingPlanSelection = {
+  id: true,
+  assignedSeBookingUrl: true,
+  assignedSeEmail: true,
+  assignedSeName: true,
+  automationEnrollmentState: true,
+  automationOrigin: true,
   customerName: true,
   firstCustomerAdminContactEmail: true,
   firstCustomerAdminContactName: true,
@@ -16,7 +38,11 @@ const onboardingPlanSelection = {
   firstCustomerNotes: true,
   firstCustomerTargetRolloutTiming: true,
   currentStage: true,
+  kickoffBookedAt: true,
+  kickoffBookedBy: true,
   lastActivityAt: true,
+  nudgeStatus: true,
+  nudgeTaskKey: true,
   onboardingTasks: {
     orderBy: {
       order: "asc" as const
@@ -27,6 +53,7 @@ const onboardingPlanSelection = {
       order: true,
       owner: true,
       status: true,
+      templateKey: true,
       title: true
     }
   },
@@ -186,13 +213,15 @@ function buildPortalTaskRecords(
     order: number;
     owner: string | null;
     status: string;
+    templateKey: string | null;
     title: string;
   }>
 ) {
   const orderedTemplateTasks = getOrderedTemplateTasks(bundle);
 
   return orderedTemplateTasks.map((task, index) => {
-    const persistedTask = persistedTasks.find((item) => item.title === task.title) ??
+    const persistedTask = persistedTasks.find((item) => item.templateKey === task.templateKey) ??
+      persistedTasks.find((item) => item.title === task.title) ??
       persistedTasks.find((item) => item.order === index);
 
     return {
@@ -443,12 +472,16 @@ export type AdminDashboardCase = {
   activeTaskStatus?: string;
   activeTaskTitle?: string;
   assignedSalesEngineer: string;
+  assignedSeBookingUrl?: string;
+  assignedSeEmail?: string;
   customerName?: string;
   currentStage: string;
   enrollmentDate: string;
   enrollmentDateRaw: string;
   id: string;
   isGmmPartner: boolean;
+  kickoffBookedAt?: string;
+  kickoffBookedBy?: string;
   lastActivity: string;
   lastActivityRaw: string;
   mspName: string;
@@ -456,6 +489,8 @@ export type AdminDashboardCase = {
   oidcClientId?: string;
   oidcConfigured: boolean;
   planId: string;
+  automationEnrollmentState?: string;
+  automationOrigin?: string;
   primaryContactEmail: string;
   progress: number;
   status: string;
@@ -607,13 +642,19 @@ function toAdminDashboardCase(
     activeTaskOwner: activeTask?.owner,
     activeTaskStatus: activeTask?.status,
     activeTaskTitle: activeTask?.title,
-    assignedSalesEngineer: DEFAULT_SALES_ENGINEER,
+    assignedSalesEngineer: plan?.assignedSeName ?? msp.assignedSalesEngineer,
+    assignedSeBookingUrl: plan?.assignedSeBookingUrl ?? undefined,
+    assignedSeEmail: plan?.assignedSeEmail ?? undefined,
+    automationEnrollmentState: plan?.automationEnrollmentState,
+    automationOrigin: plan?.automationOrigin,
     customerName: plan?.customerName ?? undefined,
     currentStage: derivedMetrics?.currentStage ?? plan?.currentStage ?? "Kickoff",
     enrollmentDate: formatDateLabelFromValue(msp.enrollmentDate ?? msp.createdAt),
     enrollmentDateRaw: (msp.enrollmentDate ?? msp.createdAt).toISOString(),
     id: msp.id,
     isGmmPartner: msp.isGmmPartner,
+    kickoffBookedAt: plan?.kickoffBookedAt?.toISOString(),
+    kickoffBookedBy: plan?.kickoffBookedBy ?? undefined,
     lastActivity: formatDateLabelFromValue(plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt),
     lastActivityRaw: (plan?.lastActivityAt ?? plan?.updatedAt ?? msp.updatedAt).toISOString(),
     mspName: msp.name,
@@ -666,7 +707,8 @@ async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string)
     const unmatchedExistingTaskIds = new Set(existingTasks.map((task) => task.id));
 
     for (const [index, templateTask] of orderedTemplateTasks.entries()) {
-      const existingTask = existingTasks.find((task) => unmatchedExistingTaskIds.has(task.id) && task.title === templateTask.title) ??
+      const existingTask = existingTasks.find((task) => unmatchedExistingTaskIds.has(task.id) && task.templateKey === templateTask.templateKey) ??
+        existingTasks.find((task) => unmatchedExistingTaskIds.has(task.id) && task.title === templateTask.title) ??
         existingTasks.find((task) => unmatchedExistingTaskIds.has(task.id) && task.order === index);
 
       if (existingTask) {
@@ -695,6 +737,8 @@ async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string)
             order: index,
             owner: templateTask.owner,
             status: deriveInsertedTaskStatus(templateTask.title, existingTasks, templateTask.status),
+            statusChangedAt: new Date(),
+            templateKey: templateTask.templateKey,
             title: templateTask.title
           }
         })
@@ -721,6 +765,8 @@ async function ensurePortalTasksSeeded(onboardingPlanId: string, planId: string)
       order: index,
       owner: task.owner,
       status: task.status,
+      statusChangedAt: new Date(),
+      templateKey: task.templateKey,
       title: task.title
     }))
   });
@@ -753,19 +799,29 @@ export async function createMsp(input: CreateMspInput) {
   const planId = `${slug}-${planType}`;
   const templateBundle = getTemplateBundle(planId);
   const templateTasks = templateBundle ? getOrderedTemplateTasks(templateBundle) : [];
+  const createdAt = new Date();
+  const assignedSalesEngineer = input.assignedSalesEngineer?.trim() || DEFAULT_SALES_ENGINEER;
+  const primaryContactEmail = input.primaryContactEmail.trim();
 
-  const msp = await prisma.msp.create({
+  const msp = await prisma.$transaction(async (transaction) => {
+    const created = await transaction.msp.create({
     data: {
       accessMode: input.accessMode,
-      assignedSalesEngineer: input.assignedSalesEngineer?.trim() || DEFAULT_SALES_ENGINEER,
+      assignedSalesEngineer,
       enrollmentDate: parseCalendarDateInput(input.enrollmentDate) ?? new Date(),
       isGmmPartner: input.isGmmPartner ?? false,
       name: input.name.trim(),
       onboardingPlans: {
         create: {
+          assignedSeName: assignedSalesEngineer,
+          automationEnrollmentState: "PENDING",
+          automationOrigin: "NATIVE",
+          automationTaskMappingState: templateTasks.length > 0 ? "VERIFIED" : "NEEDS_REVIEW",
+          automaticJ1Allowed: false,
           customerName,
           currentStage: "Kickoff",
-          lastActivityAt: new Date(),
+          lastActivityAt: createdAt,
+          nextTaskSince: templateTasks.length > 0 ? createdAt : null,
           onboardingTasks: templateTasks.length > 0
             ? {
                 create: templateTasks.map((task, index) => ({
@@ -774,10 +830,21 @@ export async function createMsp(input: CreateMspInput) {
                   order: index,
                   owner: task.owner,
                   status: task.status,
+                  statusChangedAt: createdAt,
+                  templateKey: task.templateKey,
                   title: task.title
                 }))
               }
             : undefined,
+          planContacts: {
+            create: {
+              automationEnabled: false,
+              email: primaryContactEmail,
+              normalizedEmail: primaryContactEmail.toLowerCase(),
+              role: "ONBOARDING_OWNER",
+              subscriptionStatus: "UNKNOWN"
+            }
+          },
           planId,
           progress: 0,
           status: "waiting_on_msp",
@@ -786,7 +853,7 @@ export async function createMsp(input: CreateMspInput) {
           title: getPortalPlanDisplayTitle(input.name, planType, customerName)
         }
       },
-      primaryContactEmail: input.primaryContactEmail.trim(),
+      primaryContactEmail,
       slug
     },
     include: {
@@ -799,6 +866,18 @@ export async function createMsp(input: CreateMspInput) {
         take: 1
       }
     }
+    });
+    const createdPlan = created.onboardingPlans[0];
+    if (createdPlan) {
+      const planCreated = await recordZohoPlanCreatedEventsInTransaction(transaction, createdPlan.id);
+      if (!planCreated.created) {
+        await recordAutomationNotReadyAuditInTransaction(transaction, {
+          onboardingPlanId: createdPlan.id,
+          reasonCodes: planCreated.reasonCodes
+        });
+      }
+    }
+    return created;
   });
 
   return toAdminDashboardCase(msp);
@@ -811,11 +890,19 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
   const nextPlanType = input.planType === "customer" ? "customer" : input.planType === "nfr" ? "nfr" : undefined;
   const nextCustomerName = input.customerName?.trim();
 
-  const msp = await prisma.msp.update({
+  const msp = await prisma.$transaction(async (transaction) => {
+    const before = await transaction.msp.findUnique({
+      where: { id: mspId },
+      select: {
+        assignedSalesEngineer: true,
+        onboardingPlans: { orderBy: { createdAt: "asc" }, select: onboardingPlanSelection, take: 1 }
+      }
+    });
+    const updated = await transaction.msp.update({
     where: { id: mspId },
     data: {
       accessMode: input.accessMode,
-      assignedSalesEngineer: input.assignedSalesEngineer?.trim(),
+      assignedSalesEngineer: input.assignedSalesEngineer?.trim() || undefined,
       enrollmentDate: input.enrollmentDate !== undefined ? parseCalendarDateInput(input.enrollmentDate) : undefined,
       isGmmPartner: input.isGmmPartner,
       name: trimmedName,
@@ -832,6 +919,7 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
         updateMany: {
           where: {},
           data: {
+            assignedSeName: input.assignedSalesEngineer?.trim() || undefined,
             customerName: nextCustomerName || undefined,
             currentStage: input.currentStage?.trim(),
             lastActivityAt: parseLastActivityInput(input.lastActivity),
@@ -859,6 +947,54 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
         take: 1
       }
     }
+    });
+
+    const beforePlan = before?.onboardingPlans[0];
+    const updatedPlan = updated.onboardingPlans[0];
+    if (beforePlan && updatedPlan) {
+      const relevantChanged =
+        beforePlan.assignedSeName !== updatedPlan.assignedSeName ||
+        beforePlan.currentStage !== updatedPlan.currentStage ||
+        beforePlan.progress !== updatedPlan.progress ||
+        beforePlan.status !== updatedPlan.status ||
+        beforePlan.submittedAppCount !== updatedPlan.submittedAppCount ||
+        beforePlan.tenantType !== updatedPlan.tenantType;
+
+      if (relevantChanged) {
+        const stopState = updatedPlan.status === "paused" || updatedPlan.status === "complete";
+        const resumed =
+          beforePlan.automationEnrollmentState === "PAUSED" &&
+          beforePlan.status === "paused" &&
+          updatedPlan.status !== "paused" &&
+          updatedPlan.status !== "complete";
+        const automationEnrollmentState =
+          updatedPlan.status === "complete" &&
+          ["ACTIVE", "PAUSED"].includes(beforePlan.automationEnrollmentState)
+          ? "COMPLETE" as const
+          : updatedPlan.status === "paused" && beforePlan.automationEnrollmentState === "ACTIVE"
+            ? "PAUSED" as const
+            : resumed
+              ? "ACTIVE" as const
+              : undefined;
+        if (automationEnrollmentState || (stopState && updatedPlan.nudgeStatus === "WAITING")) {
+          await transaction.onboardingPlan.update({
+            where: { id: updatedPlan.id },
+            data: {
+              automationEnrollmentState,
+              nudgeStatus: stopState && updatedPlan.nudgeStatus === "WAITING" ? "DONE" : undefined
+            }
+          });
+        }
+        await recordZohoContactSyncEventsInTransaction(transaction, {
+          allowStopState: stopState,
+          isStopState: stopState,
+          occurrenceKey: `plan-updated:${updatedPlan.updatedAt.toISOString()}`,
+          onboardingPlanId: updatedPlan.id,
+          reason: stopState ? "plan.stop_state_changed" : "plan.relevant_state_changed"
+        });
+      }
+    }
+    return updated;
   });
 
   return toAdminDashboardCase(msp);
@@ -967,39 +1103,34 @@ export async function submitPortalSaasApp(planId: string, input: SubmitPortalSaa
     return null;
   }
 
-  await prisma.saaSAppSubmission.create({
-    data: {
-      appName,
-      loginUrl: input.loginUrl?.trim() || null,
-      notes: input.notes?.trim() || null,
-      onboardingPlanId: onboardingPlan.id,
-      priority: input.priority?.trim() || null
-    }
-  });
-
-  const refreshedPlan = await prisma.onboardingPlan.update({
-    where: { id: onboardingPlan.id },
-    data: {
-      lastActivityAt: new Date(),
-      submittedAppCount: onboardingPlan.saasAppSubmissions.length + 1
-    },
-    include: {
-      msp: {
-        select: {
-          name: true
-        }
-      },
-      saasAppSubmissions: {
-        orderBy: {
-          createdAt: "asc"
-        }
-      },
-      onboardingTasks: {
-        orderBy: {
-          order: "asc"
-        }
+  const refreshedPlan = await prisma.$transaction(async (transaction) => {
+    const submission = await transaction.saaSAppSubmission.create({
+      data: {
+        appName,
+        loginUrl: input.loginUrl?.trim() || null,
+        notes: input.notes?.trim() || null,
+        onboardingPlanId: onboardingPlan.id,
+        priority: input.priority?.trim() || null
       }
-    }
+    });
+    const updated = await transaction.onboardingPlan.update({
+      where: { id: onboardingPlan.id },
+      data: {
+        lastActivityAt: new Date(),
+        submittedAppCount: { increment: 1 }
+      },
+      include: {
+        msp: { select: { name: true } },
+        saasAppSubmissions: { orderBy: { createdAt: "asc" } },
+        onboardingTasks: { orderBy: { order: "asc" } }
+      }
+    });
+    await recordZohoContactSyncEventsInTransaction(transaction, {
+      occurrenceKey: `saas-app-submitted:${submission.id}`,
+      onboardingPlanId: onboardingPlan.id,
+      reason: "saas_app.submitted"
+    });
+    return updated;
   });
 
   return buildBundleFromPersistedState(
@@ -1133,26 +1264,139 @@ async function advanceOnboardingPlanTask({
 
   const metrics = getPlanMetrics(templateBundle, nextPortalTasks);
   const lastActivityAt = new Date();
+  const nextTemplateTask = metrics.nextTaskIndex === -1
+    ? null
+    : orderedTemplateTasks[metrics.nextTaskIndex] ?? null;
+  const nextPortalTask = metrics.nextTaskIndex === -1
+    ? null
+    : nextPortalTasks[metrics.nextTaskIndex] ?? null;
+  const transition = {
+    completedTask: {
+      owner: activeTask.owner,
+      status: "complete",
+      templateKey: activeTemplateTask.templateKey
+    },
+    nextTask: nextTemplateTask && nextPortalTask
+      ? {
+          owner: nextPortalTask.owner,
+          status: nextPortalTask.status,
+          templateKey: nextTemplateTask.templateKey
+        }
+      : null,
+    previousNextTask: {
+      owner: activeTask.owner,
+      status: activeTask.status,
+      templateKey: activeTemplateTask.templateKey
+    }
+  };
+  const activePersistedTask = persistedTasks[activeTaskIndex];
+  const finishNudge = shouldFinishNudge(
+    onboardingPlan.nudgeTaskKey,
+    activeTemplateTask.templateKey,
+    transition.nextTask?.owner
+  );
 
-  await prisma.$transaction([
-    ...persistedTasks.map((task, index) =>
-      prisma.onboardingTask.update({
+  const transitionApplied = await prisma.$transaction(async (transaction) => {
+    await lockOnboardingPlanMutation(transaction, onboardingPlan.id);
+    const freshActiveTask = activePersistedTask
+      ? await transaction.onboardingTask.findUnique({
+          where: { id: activePersistedTask.id },
+          select: { status: true }
+        })
+      : null;
+    if (!freshActiveTask || freshActiveTask.status !== activePersistedTask.status) {
+      return false;
+    }
+    for (const [index, task] of persistedTasks.entries()) {
+      const nextStatus = nextPortalTasks[index]?.status ?? task.status;
+      const statusChanged = nextStatus !== task.status;
+      await transaction.onboardingTask.update({
         where: { id: task.id },
         data: {
-          status: nextPortalTasks[index]?.status ?? task.status
+          completedAt:
+            statusChanged && nextStatus === "complete" && !task.completedAt
+              ? lastActivityAt
+              : undefined,
+          status: nextStatus,
+          statusChangedAt: statusChanged ? lastActivityAt : undefined
         }
-      })
-    ),
-    prisma.onboardingPlan.update({
+      });
+    }
+    await transaction.onboardingPlan.update({
       where: { id: onboardingPlan.id },
       data: {
         currentStage: metrics.currentStage,
         lastActivityAt,
+        nextTaskSince: didActiveTaskChange(transition.previousNextTask, transition.nextTask)
+          ? metrics.nextTaskIndex === -1
+            ? null
+            : lastActivityAt
+          : undefined,
+        nudgeStatus: finishNudge ? "DONE" : undefined,
         progress: metrics.progress,
         status: metrics.status
       }
-    })
-  ]);
+    });
+
+    const occurrenceKey = `task-completed:${activeTemplateTask.templateKey}:${lastActivityAt.toISOString()}`;
+    await recordZohoContactSyncEventsInTransaction(transaction, {
+      allowStopState: finishNudge || metrics.status === "complete",
+      isStopState: finishNudge || metrics.status === "complete",
+      occurrenceKey,
+      onboardingPlanId: onboardingPlan.id,
+      reason: finishNudge ? "task.completed.nudge_finished" : "task.completed",
+      taskKey: activeTemplateTask.templateKey
+    });
+
+    if (requireOwner === "kzero_se" && isQualifyingKzeroHandoff(transition)) {
+      const handoffKey = `${activeTemplateTask.templateKey}:to:${nextTemplateTask?.templateKey}`;
+      await recordZohoJourneyEventsInTransaction(transaction, {
+        handoffKey,
+        journey: "J5",
+        occurrenceKey: `kzero-handoff:${handoffKey}`,
+        onboardingPlanId: onboardingPlan.id,
+        reason: "kzero.task_completed.handoff_to_partner",
+        taskKey: nextTemplateTask?.templateKey
+      });
+    }
+
+    if (isApprovedJ8Transition(onboardingPlan.tenantType, transition)) {
+      await recordZohoContactSyncEventsInTransaction(transaction, {
+        allowStopState: true,
+        isStopState: true,
+        occurrenceKey,
+        onboardingPlanId: onboardingPlan.id,
+        reason: "nfr.first_customer_rollout.completed",
+        recipientRoles: ["ONBOARDING_OWNER", "EXECUTIVE_SPONSOR"],
+        taskKey: "complete-first-customer-rollout"
+      });
+      await recordZohoJourneyEventsInTransaction(transaction, {
+        journey: "J8",
+        marketingApprovalRequired:
+          process.env.ZMA_J8_NFR_RULE_APPROVED?.trim().toLowerCase() !== "true",
+        occurrenceKey: `nfr-first-customer-rollout:${onboardingPlan.planId}`,
+        onboardingPlanId: onboardingPlan.id,
+        reason: "nfr.first_customer_rollout.completed",
+        recipientRoles: ["ONBOARDING_OWNER", "EXECUTIVE_SPONSOR"],
+        taskKey: "complete-first-customer-rollout"
+      });
+    }
+    if (metrics.status === "complete") {
+      await transaction.onboardingPlan.update({
+        where: { id: onboardingPlan.id },
+        data: {
+          automationEnrollmentState:
+            onboardingPlan.automationEnrollmentState === "ACTIVE" ? "COMPLETE" : undefined,
+          nudgeStatus: onboardingPlan.nudgeStatus === "WAITING" ? "DONE" : undefined
+        }
+      });
+    }
+    return true;
+  });
+
+  if (!transitionApplied) {
+    return getPortalPlanBundle(planId);
+  }
 
   if (notifyTaskCompletion) {
     try {
@@ -1264,6 +1508,8 @@ export async function rollbackPortalTaskForMsp(mspId: string, templateTaskId: st
   const persistedTasks = await ensurePortalTasksSeeded(onboardingPlan.id, onboardingPlan.planId);
   const persistedApps = mapPersistedAppsToBundleApps(templateBundle, onboardingPlan.saasAppSubmissions);
   const firstCustomerPilot = mapFirstCustomerPilotFromPlan(onboardingPlan);
+  const previousPortalTasks = buildPortalTaskRecords(templateBundle, persistedTasks);
+  const previousActiveIndex = previousPortalTasks.findIndex((task) => task.status !== "complete");
 
   const nextPortalTasks = orderedTemplateTasks.map((task, index) => {
     if (index < targetTaskIndex) {
@@ -1299,32 +1545,103 @@ export async function rollbackPortalTaskForMsp(mspId: string, templateTaskId: st
   });
 
   const metrics = getPlanMetrics(templateBundle, nextPortalTasks);
+  const statusChanged = persistedTasks.some(
+    (task, index) => (nextPortalTasks[index]?.status ?? task.status) !== task.status
+  );
+  if (!statusChanged) {
+    return buildBundleFromPersistedState(templateBundle, previousPortalTasks, persistedApps, {
+      currentStage: onboardingPlan.currentStage,
+      customerName: onboardingPlan.customerName,
+      firstCustomerPilot,
+      mspName: onboardingPlan.msp?.name,
+      organizationName: onboardingPlan.msp?.name,
+      progress: onboardingPlan.progress,
+      title: getPortalPlanDisplayTitle(
+        onboardingPlan.msp?.name ?? onboardingPlan.title,
+        onboardingPlan.tenantType as PlanBundle["plan"]["tenantType"],
+        onboardingPlan.customerName
+      )
+    });
+  }
   const lastActivityAt = new Date();
+  const previousTemplateTask = previousActiveIndex === -1
+    ? null
+    : orderedTemplateTasks[previousActiveIndex] ?? null;
+  const nextTemplateTask = metrics.nextTaskIndex === -1
+    ? null
+    : orderedTemplateTasks[metrics.nextTaskIndex] ?? null;
+  const targetTemplateTask = orderedTemplateTasks[targetTaskIndex];
 
-  await prisma.$transaction([
-    ...persistedTasks.map((task, index) =>
-      prisma.onboardingTask.update({
+  const rollbackApplied = await prisma.$transaction(async (transaction) => {
+    await lockOnboardingPlanMutation(transaction, onboardingPlan.id);
+    const freshTasks = await transaction.onboardingTask.findMany({
+      where: { onboardingPlanId: onboardingPlan.id },
+      orderBy: { order: "asc" },
+      select: { id: true, status: true }
+    });
+    if (
+      freshTasks.some(
+        (task, index) => task.id !== persistedTasks[index]?.id || task.status !== persistedTasks[index]?.status
+      )
+    ) {
+      return false;
+    }
+    for (const [index, task] of persistedTasks.entries()) {
+      await transaction.onboardingTask.update({
         where: { id: task.id },
-        data: {
-          description: nextPortalTasks[index]?.description ?? task.description,
-          dueLabel: nextPortalTasks[index]?.dueLabel ?? task.dueLabel,
-          order: nextPortalTasks[index]?.order ?? task.order,
-          owner: nextPortalTasks[index]?.owner ?? task.owner,
-          status: nextPortalTasks[index]?.status ?? task.status,
-          title: nextPortalTasks[index]?.title ?? task.title
-        }
-      })
-    ),
-    prisma.onboardingPlan.update({
+        data: (() => {
+          const nextStatus = nextPortalTasks[index]?.status ?? task.status;
+          const taskStatusChanged = nextStatus !== task.status;
+
+          return {
+            completedAt:
+              taskStatusChanged && nextStatus === "complete" && !task.completedAt
+                ? lastActivityAt
+                : undefined,
+            description: nextPortalTasks[index]?.description ?? task.description,
+            dueLabel: nextPortalTasks[index]?.dueLabel ?? task.dueLabel,
+            order: nextPortalTasks[index]?.order ?? task.order,
+            owner: nextPortalTasks[index]?.owner ?? task.owner,
+            status: nextStatus,
+            statusChangedAt: taskStatusChanged ? lastActivityAt : undefined,
+            title: nextPortalTasks[index]?.title ?? task.title
+          };
+        })()
+      });
+    }
+    const rollbackStopsNudge = Boolean(
+      onboardingPlan.nudgeStatus === "WAITING" &&
+      onboardingPlan.nudgeTaskKey &&
+      onboardingPlan.nudgeTaskKey !== nextTemplateTask?.templateKey
+    );
+    await transaction.onboardingPlan.update({
       where: { id: onboardingPlan.id },
       data: {
         currentStage: metrics.currentStage,
         lastActivityAt,
+        nextTaskSince:
+          previousTemplateTask?.templateKey !== nextTemplateTask?.templateKey
+            ? lastActivityAt
+            : undefined,
+        nudgeStatus: rollbackStopsNudge ? "DONE" : undefined,
         progress: metrics.progress,
         status: metrics.status
       }
-    })
-  ]);
+    });
+    await recordZohoContactSyncEventsInTransaction(transaction, {
+      allowStopState: rollbackStopsNudge,
+      isStopState: rollbackStopsNudge,
+      occurrenceKey: `task-rollback:${targetTemplateTask?.templateKey ?? templateTaskId}:${lastActivityAt.toISOString()}`,
+      onboardingPlanId: onboardingPlan.id,
+      reason: "task.rollback",
+      taskKey: targetTemplateTask?.templateKey
+    });
+    return true;
+  });
+
+  if (!rollbackApplied) {
+    return getPortalPlanBundle(onboardingPlan.planId);
+  }
 
   return buildBundleFromPersistedState(templateBundle, nextPortalTasks, persistedApps, {
     currentStage: metrics.currentStage,
@@ -1381,36 +1698,39 @@ export async function submitFirstCustomerPilot(planId: string, input: SubmitFirs
     return null;
   }
 
-  const updatedPlan = await prisma.onboardingPlan.update({
-    where: { id: onboardingPlan.id },
-    data: {
-      firstCustomerAdminContactEmail: input.adminContactEmail?.trim() || null,
-      firstCustomerAdminContactName: input.adminContactName?.trim() || null,
-      firstCustomerAlias: customerAlias,
-      firstCustomerEstimatedUserCount:
-        input.estimatedUserCount && input.estimatedUserCount > 0 ? input.estimatedUserCount : null,
-      firstCustomerNotes: input.notes?.trim() || null,
-      firstCustomerTargetRolloutTiming: targetRolloutTiming,
-      lastActivityAt: new Date()
-    },
-    include: {
-      msp: {
-        select: {
-          name: true
-        }
-      },
-      saasAppSubmissions: {
-        orderBy: {
-          createdAt: "asc"
-        }
-      },
-      onboardingTasks: {
-        orderBy: {
-          order: "asc"
-        }
-      }
-    }
-  });
+  const pilotData = {
+    firstCustomerAdminContactEmail: input.adminContactEmail?.trim() || null,
+    firstCustomerAdminContactName: input.adminContactName?.trim() || null,
+    firstCustomerAlias: customerAlias,
+    firstCustomerEstimatedUserCount:
+      input.estimatedUserCount && input.estimatedUserCount > 0 ? input.estimatedUserCount : null,
+    firstCustomerNotes: input.notes?.trim() || null,
+    firstCustomerTargetRolloutTiming: targetRolloutTiming
+  };
+  const changed = Object.entries(pilotData).some(
+    ([key, value]) => onboardingPlan[key as keyof typeof pilotData] !== value
+  );
+
+  const updatedPlan = changed
+    ? await prisma.$transaction(async (transaction) => {
+        const changedAt = new Date();
+        const updated = await transaction.onboardingPlan.update({
+          where: { id: onboardingPlan.id },
+          data: { ...pilotData, lastActivityAt: changedAt },
+          include: {
+            msp: { select: { name: true } },
+            saasAppSubmissions: { orderBy: { createdAt: "asc" } },
+            onboardingTasks: { orderBy: { order: "asc" } }
+          }
+        });
+        await recordZohoContactSyncEventsInTransaction(transaction, {
+          occurrenceKey: `first-customer-pilot-updated:${changedAt.toISOString()}`,
+          onboardingPlanId: onboardingPlan.id,
+          reason: "first_customer_pilot.updated"
+        });
+        return updated;
+      })
+    : onboardingPlan;
 
   return buildBundleFromPersistedState(
     templateBundle,

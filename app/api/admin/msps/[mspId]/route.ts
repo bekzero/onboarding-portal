@@ -9,7 +9,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ mspId: string }> }
 ) {
-  const authError = await getAdminApiAuthError();
+  const authError = await getAdminApiAuthError("SALES_ENGINEER");
   if (authError) return authError;
 
   try {
@@ -43,7 +43,7 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ mspId: string }> }
 ) {
-  const authError = await getAdminApiAuthError();
+  const authError = await getAdminApiAuthError("ADMIN");
   if (authError) return authError;
 
   try {

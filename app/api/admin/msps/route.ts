@@ -24,7 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = await getAdminApiAuthError();
+  const authError = await getAdminApiAuthError("SALES_ENGINEER");
   if (authError) return authError;
 
   try {

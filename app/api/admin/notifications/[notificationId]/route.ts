@@ -10,7 +10,7 @@ export async function PATCH(
   _request: NextRequest,
   { params }: { params: Promise<{ notificationId: string }> }
 ) {
-  const authError = await getAdminApiAuthError();
+  const authError = await getAdminApiAuthError("SALES_ENGINEER");
   if (authError) return authError;
 
   if (!isDatabasePersistenceConfigured()) {

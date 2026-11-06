@@ -18,20 +18,114 @@ enum AdminNotificationType {
   task_completed
 }
 
+enum AutomationOrigin {
+  LEGACY
+  NATIVE
+}
+
+enum AutomationEnrollmentState {
+  EXCLUDED
+  PENDING
+  ACTIVE
+  PAUSED
+  COMPLETE
+}
+
+enum AutomationTaskMappingState {
+  UNVERIFIED
+  VERIFIED
+  NEEDS_REVIEW
+}
+
+enum NudgeStatus {
+  NONE
+  WAITING
+  DONE
+}
+
+enum PlanContactRole {
+  ONBOARDING_OWNER
+  EXECUTIVE_SPONSOR
+  TECHNICAL_ADMIN
+}
+
+enum SubscriptionEligibilityStatus {
+  UNKNOWN
+  PENDING_CONFIRMATION
+  CONFIRMED
+  INELIGIBLE
+  MANUAL_REVIEW
+}
+
+enum ZohoCommunicationContextState {
+  UNASSIGNED
+  ACTIVE
+  RELEASE_PENDING
+  BLOCKED
+}
+
+enum ZohoOutboxEventType {
+  UPSERT_CONTACT
+  TRIGGER_JOURNEY
+}
+
+enum ZohoJourneyType {
+  J1
+  J3_R1
+  J5
+  J8
+}
+
+enum ZohoOutboxEventStatus {
+  PENDING
+  HELD
+  PROCESSING
+  SUCCEEDED
+  RETRY
+  DEAD
+  CANCELLED
+}
+
+enum ZohoJourneyResult {
+  TRIGGERED
+  ALREADY_TRIGGERED
+  IGNORED
+  UNKNOWN
+  FAILED
+}
+
+enum ZohoApiOperation {
+  CONTACT_SYNC
+  JOURNEY_TRIGGER
+}
+
+enum ZohoNudgeRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum ZohoNudgeDecisionStatus {
+  ELIGIBLE
+  NOT_ELIGIBLE
+  BLOCKED
+  PREPARED
+}
+
 model Msp {
-  id                   String           @id @default(cuid())
-  name                 String
-  slug                 String           @unique
-  isGmmPartner         Boolean          @default(false)
-  primaryContactEmail  String
-  assignedSalesEngineer String          @default("Ben Eakin")
-  accessMode           AccessMode
-  enrollmentDate       DateTime         @default(now())
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
-  oidcConfig           OidcConfig?
-  adminNotifications   AdminNotification[]
-  onboardingPlans      OnboardingPlan[]
+  id                    String              @id @default(cuid())
+  name                  String
+  slug                  String              @unique
+  isGmmPartner          Boolean             @default(false)
+  primaryContactEmail   String
+  assignedSalesEngineer String              @default("Ben Eakin")
+  accessMode            AccessMode
+  enrollmentDate        DateTime            @default(now())
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  oidcConfig            OidcConfig?
+  adminNotifications    AdminNotification[]
+  onboardingPlans       OnboardingPlan[]
 
   @@map("msps")
 }
@@ -53,66 +147,287 @@ model OidcConfig {
 }
 
 model OnboardingPlan {
-  id                   String               @id @default(cuid())
-  mspId                String
-  planId               String               @unique
-  title                String?
-  tenantType           String?
-  customerName         String?
-  firstCustomerAdminContactEmail String?
-  firstCustomerAdminContactName  String?
-  firstCustomerAlias             String?
-  firstCustomerEstimatedUserCount Int?
-  firstCustomerNotes             String?
+  id                               String                     @id @default(cuid())
+  mspId                            String
+  planId                           String                     @unique
+  title                            String?
+  tenantType                       String?
+  customerName                     String?
+  firstCustomerAdminContactEmail   String?
+  firstCustomerAdminContactName    String?
+  firstCustomerAlias               String?
+  firstCustomerEstimatedUserCount  Int?
+  firstCustomerNotes               String?
   firstCustomerTargetRolloutTiming String?
-  progress             Int                  @default(0)
-  currentStage         String?
-  status               String               @default("in_progress")
-  lastActivityAt       DateTime?
-  submittedAppCount    Int                  @default(0)
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  msp                  Msp                  @relation(fields: [mspId], references: [id], onDelete: Cascade)
-  onboardingTasks      OnboardingTask[]
-  saasAppSubmissions   SaaSAppSubmission[]
-  documents            Document[]
+  progress                         Int                        @default(0)
+  currentStage                     String?
+  status                           String                     @default("in_progress")
+  lastActivityAt                   DateTime?
+  submittedAppCount                Int                        @default(0)
+  automationOrigin                 AutomationOrigin           @default(NATIVE)
+  automationEnrollmentState        AutomationEnrollmentState  @default(PENDING)
+  automationTaskMappingState       AutomationTaskMappingState @default(UNVERIFIED)
+  automaticJ1Allowed               Boolean                    @default(false)
+  automationEnrolledAt             DateTime?
+  automationEnrolledBy             String?
+  nextTaskSince                    DateTime?
+  kickoffBookedAt                  DateTime?
+  kickoffBookedBy                  String?
+  assignedSeName                   String?
+  assignedSeEmail                  String?
+  assignedSeBookingUrl             String?
+  nudgeTaskKey                     String?
+  nudgeStartedAt                   DateTime?
+  nudgeStatus                      NudgeStatus                @default(NONE)
+  createdAt                        DateTime                   @default(now())
+  updatedAt                        DateTime                   @updatedAt
+  msp                              Msp                        @relation(fields: [mspId], references: [id], onDelete: Cascade)
+  onboardingTasks                  OnboardingTask[]
+  saasAppSubmissions               SaaSAppSubmission[]
+  documents                        Document[]
+  planContacts                     PlanContact[]
+  zohoCommunicationContexts        ZohoCommunicationContext[]
+  zohoOutboxEvents                 ZohoOutboxEvent[]
+  zohoJourneySends                 ZohoJourneySend[]
+  zohoAutomationAudits             ZohoAutomationAudit[]
+  zohoNudgeDecisions               ZohoNudgeEvaluationDecision[]
 
   @@map("onboarding_plans")
 }
 
 model OnboardingTask {
-  id               String          @id @default(cuid())
+  id               String         @id @default(cuid())
   onboardingPlanId String
   title            String
   description      String?
   status           String
   owner            String?
-  order            Int             @default(0)
+  order            Int            @default(0)
   dueLabel         String?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  onboardingPlan   OnboardingPlan  @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+  templateKey      String?
+  statusChangedAt  DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  onboardingPlan   OnboardingPlan @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
 
+  @@unique([onboardingPlanId, templateKey])
   @@map("onboarding_tasks")
 }
 
+model PlanContact {
+  id                             String                        @id @default(cuid())
+  onboardingPlanId               String
+  email                          String
+  normalizedEmail                String
+  firstName                      String?
+  lastName                       String?
+  role                           PlanContactRole
+  automationEnabled              Boolean                       @default(false)
+  subscriptionStatus             SubscriptionEligibilityStatus @default(UNKNOWN)
+  subscriptionVerificationSource String?
+  subscriptionVerifiedBy         String?
+  subscriptionVerifiedAt         DateTime?
+  subscriptionEvidenceReference  String?
+  createdAt                      DateTime                      @default(now())
+  updatedAt                      DateTime                      @updatedAt
+  onboardingPlan                 OnboardingPlan                @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([onboardingPlanId, normalizedEmail, role])
+  @@index([normalizedEmail])
+  @@index([onboardingPlanId, automationEnabled])
+  @@map("plan_contacts")
+}
+
+model ZohoCommunicationContext {
+  recipientEmailNormalized String                        @id
+  activePlanId             String?
+  state                    ZohoCommunicationContextState @default(UNASSIGNED)
+  acquiredAt               DateTime?
+  acquiredBy               String?
+  acquisitionReason        String?
+  releaseRequestedAt       DateTime?
+  releaseRequestedBy       String?
+  releaseReason            String?
+  releasedAt               DateTime?
+  releasedBy               String?
+  verifiedAt               DateTime?
+  verifiedBy               String?
+  verificationEvidence     String?
+  version                  Int                           @default(0)
+  processingClaimId        String?
+  processingClaimedAt      DateTime?
+  processingLeaseExpiresAt DateTime?
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+  activePlan               OnboardingPlan?               @relation(fields: [activePlanId], references: [id], onDelete: Restrict)
+
+  @@index([activePlanId, state])
+  @@index([processingLeaseExpiresAt])
+  @@map("zoho_communication_contexts")
+}
+
+model ZohoRecipientSequence {
+  recipientEmailNormalized String   @id
+  nextSequence             BigInt   @default(1)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@map("zoho_recipient_sequences")
+}
+
+model ZohoOutboxEvent {
+  id                       String                @id @default(cuid())
+  eventKey                 String                @unique
+  onboardingPlanId         String
+  planId                   String
+  recipientEmailNormalized String
+  eventType                ZohoOutboxEventType
+  journey                  ZohoJourneyType?
+  taskKey                  String?
+  handoffKey               String?
+  payload                  Json
+  sequence                 BigInt
+  isStopState              Boolean               @default(false)
+  status                   ZohoOutboxEventStatus @default(PENDING)
+  holdReason               String?
+  attemptCount             Int                   @default(0)
+  nextAttemptAt            DateTime?
+  lastSanitizedError       String?
+  lastAttemptAt            DateTime?
+  lastProcessingDurationMs Int?
+  lastProviderOutcome      String?
+  processingClaimId        String?
+  processingClaimedAt      DateTime?
+  processingLeaseExpiresAt DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  onboardingPlan           OnboardingPlan        @relation(fields: [onboardingPlanId], references: [id], onDelete: Restrict)
+
+  @@unique([recipientEmailNormalized, sequence])
+  @@index([status, nextAttemptAt, createdAt])
+  @@index([status, isStopState, nextAttemptAt, createdAt])
+  @@index([recipientEmailNormalized, status])
+  @@index([onboardingPlanId, status])
+  @@map("zoho_outbox_events")
+}
+
+model ZohoApiThrottle {
+  operation       ZohoApiOperation @id
+  windowStartedAt DateTime?
+  requestCount    Int              @default(0)
+  blockedUntil    DateTime?
+  version         Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([blockedUntil])
+  @@map("zoho_api_throttles")
+}
+
+model ZohoJourneySend {
+  id                        String            @id @default(cuid())
+  dedupeKey                 String            @unique
+  onboardingPlanId          String
+  planId                    String
+  recipientEmailNormalized  String
+  journey                   ZohoJourneyType
+  taskKey                   String?
+  handoffKey                String?
+  providerResult            ZohoJourneyResult @default(UNKNOWN)
+  attemptedAt               DateTime?
+  succeededAt               DateTime?
+  sanitizedResponseMetadata Json?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  onboardingPlan            OnboardingPlan    @relation(fields: [onboardingPlanId], references: [id], onDelete: Restrict)
+
+  @@index([onboardingPlanId, journey])
+  @@index([recipientEmailNormalized, journey])
+  @@map("zoho_journey_sends")
+}
+
+model ZohoAutomationAudit {
+  id                       String          @id @default(cuid())
+  actor                    String
+  action                   String
+  onboardingPlanId         String?
+  planId                   String?
+  recipientEmailNormalized String?
+  reason                   String
+  evidenceReference        String?
+  createdAt                DateTime        @default(now())
+  onboardingPlan           OnboardingPlan? @relation(fields: [onboardingPlanId], references: [id], onDelete: SetNull)
+
+  @@index([onboardingPlanId, createdAt])
+  @@index([recipientEmailNormalized, createdAt])
+  @@index([action, createdAt])
+  @@map("zoho_automation_audits")
+}
+
+model ZohoNudgeEvaluationRun {
+  id                       String              @id @default(cuid())
+  businessDate             String              @unique
+  timezone                 String
+  status                   ZohoNudgeRunStatus  @default(RUNNING)
+  processingClaimId        String
+  processingLeaseExpiresAt DateTime
+  version                  Int                 @default(1)
+  startedAt                DateTime            @default(now())
+  completedAt              DateTime?
+  summary                  Json?
+  lastSanitizedError       String?
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  decisions                ZohoNudgeEvaluationDecision[]
+
+  @@index([status, processingLeaseExpiresAt])
+  @@map("zoho_nudge_evaluation_runs")
+}
+
+model ZohoNudgeEvaluationDecision {
+  id                       String                    @id @default(cuid())
+  runId                    String
+  businessDate             String
+  onboardingPlanId         String
+  planId                   String
+  recipientEmailNormalized String?
+  taskKey                  String?
+  status                   ZohoNudgeDecisionStatus
+  reasonCode               String
+  elapsedBusinessDays      Int?
+  thresholdBusinessDays    Int?
+  nextEligibleAt           DateTime?
+  evaluatedAt              DateTime                  @default(now())
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  run                      ZohoNudgeEvaluationRun    @relation(fields: [runId], references: [id], onDelete: Restrict)
+  onboardingPlan           OnboardingPlan            @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, onboardingPlanId])
+  @@index([businessDate, status])
+  @@index([onboardingPlanId, evaluatedAt])
+  @@index([reasonCode, evaluatedAt])
+  @@map("zoho_nudge_evaluation_decisions")
+}
+
 model SaaSAppSubmission {
-  id               String          @id @default(cuid())
+  id               String         @id @default(cuid())
   onboardingPlanId String
   appName          String
   loginUrl         String?
   priority         String?
   notes            String?
-  status           String          @default("submitted")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  onboardingPlan   OnboardingPlan  @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+  status           String         @default("submitted")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  onboardingPlan   OnboardingPlan @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
 
   @@map("saas_app_submissions")
 }
 
 model Document {
-  id               String          @id @default(cuid())
+  id               String         @id @default(cuid())
   onboardingPlanId String
   fileName         String
   mimeType         String?
@@ -121,10 +436,10 @@ model Document {
   storageKey       String?
   uploadedBy       String?
   uploadedByRole   String?
-  status           String          @default("submitted")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  onboardingPlan   OnboardingPlan  @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
+  status           String         @default("submitted")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  onboardingPlan   OnboardingPlan @relation(fields: [onboardingPlanId], references: [id], onDelete: Cascade)
 
   @@map("documents")
 }

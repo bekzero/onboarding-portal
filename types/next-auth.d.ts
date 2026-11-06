@@ -10,6 +10,11 @@ declare module "next-auth" {
       resource_access?: unknown;
       groups?: unknown;
       organization_roles?: unknown;
+      staff_provider?: unknown;
+      staff_issuer?: string;
+      staff_subject?: string;
+      staff_email_verified?: boolean | null;
+      staff_roles?: string[];
     };
   }
 }

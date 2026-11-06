@@ -1,0 +1,164 @@
+# Phase 7A — isolated PostgreSQL integration validation
+
+Status: **empty isolated database validation passed; restored-production-snapshot rehearsal remains required**
+Assessment date: November 6, 2026
+
+No production database connection, Zoho write, email, journey trigger, cron execution, deployment, or production migration was performed.
+
+## 1. Confirmed database target
+
+The safety harness connected only through `.env.zoho-test.local` to the separately named resource `kzero-onboarding-zoho-testing`.
+
+Sanitized identity evidence:
+
+```text
+resource: kzero-onboarding-zoho-testing
+database: postgres
+schema: public
+pooled endpoint fingerprint: 6b6bfeb051eaaf1a
+direct endpoint fingerprint: 07ed6439cfe2d7d0
+pooled/direct database, schema, tables and migration history agree: true
+host kind: remote-isolated
+```
+
+The fingerprints match the earlier empty-database preflight. The generic `DATABASE_URL` and `DIRECT_URL` were absent from the Phase 7A parent process. The safety contract requires the exact resource name and isolation confirmation, rejects database names containing `prod`/`production`, rejects a target matching any generic database URL present in the process, and never accepts a generic URL as Phase 7A input.
+
+This validation did not connect to production to compare live server metadata. Separation evidence is the dedicated resource name, dedicated ignored environment file, stable endpoint fingerprints, absent generic URLs, and the user's independently provisioned Vercel resource. Project attachment and ownership should still be verified in Vercel before Phase 7B or production work.
+
+## 2. Migration state
+
+The read-only preflight found exactly 12 successful records, no failed or rolled-back migration records, and this final migration:
+
+```text
+20261105120000_add_zoho_phase_5_nudge_engine
+```
+
+Repository and database order matched exactly:
+
+1. `20260617185715_init`
+2. `20260617194303_add_admin_reporting_fields`
+3. `20260617194747_add_onboarding_plan_reporting_fields`
+4. `20260619110000_add_first_customer_pilot_fields`
+5. `20260625143000_add_admin_notifications`
+6. `20260703120000_add_msp_enrollment_date`
+7. `20260713120000_add_msp_gmm_partner_flag`
+8. `20260715120000_add_customer_name_to_onboarding_plan`
+9. `20260715153000_add_document_storage_fields`
+10. `20261104150000_add_zoho_phase_1a_foundation`
+11. `20261104210000_add_zoho_phase_4_dispatcher`
+12. `20261105120000_add_zoho_phase_5_nudge_engine`
+
+The migrated empty database contained 16 application tables and no application rows before testing. The Phase 1A verifier reported zero plans, contacts, contexts, outbox events, journey sends, mapping issues, or historical-protection violations.
+
+## 3. Prisma environment-loading finding
+
+The initialization wrapper explicitly launches Prisma with:
+
+```text
+DATABASE_URL = ZOHO_PHASE7A_DIRECT_URL
+```
+
+The configured direct test URL has host `pooled.db.prisma.io`; therefore Prisma displaying that host is consistent with the explicitly selected Phase 7A value. The configured runtime URL uses the distinct `db.prisma.io` endpoint. Both resolved to the same migrated database and returned identical schema, table, and migration state.
+
+Prisma CLI and Prisma Client automatically discover the repository `.env`, which explains `Environment variables loaded from .env`. Existing process variables take precedence, so the explicitly injected test `DATABASE_URL` remained effective. This was corroborated by the 12 migration records being visible through both previously fingerprinted test endpoints.
+
+The first verifier attempt also inherited `VERCEL_ENV=production` from Prisma's `.env` loading and correctly failed closed. The Phase 7A wrapper now explicitly scopes only that isolated verifier subprocess to `NODE_ENV=test` and `VERCEL_ENV=test`; its database URL remains the already safety-checked test URL. Production verification checks remain unchanged.
+
+## 4. Real PostgreSQL integration results
+
+Command: `npm run test:zoho-phase-7a-db`
+
+Result: **8 passed, 0 failed**.
+
+| Scenario | Expected result | Actual result |
+|---|---|---|
+| Migration history | Exact 12 successful migrations | Pass |
+| Legacy/empty foundation | No historical events or invented timestamps | Pass on empty database |
+| PlanContact CRUD | Create, update, delete and cross-plan email reuse | Pass |
+| Contact constraints | Normalization and same-plan uniqueness enforced | Pass (`23514`/`23505`) |
+| Contact rollback | Rolled-back contact is absent | Pass |
+| Kickoff booking | Timestamp/audit persist; task progress unchanged | Pass |
+| Outbox atomicity | Failed duplicate event rolls business change back | Pass |
+| Event idempotency | Duplicate event key rejected | Pass (`23505`) |
+| Recipient ordering | 20 concurrent allocations are unique and monotonic | Pass |
+| Durable held event | HELD row survives a fresh pool | Pass |
+| Concurrent claims | Second worker skips locked event | Pass |
+| Recipient lease | One contender acquires the recipient lease | Pass |
+| Stale-worker fencing | Old version cannot clear newer lease | Pass |
+| Lease recovery | Matching expired claim/version recovers lease | Pass |
+| Shared throttle | 12 concurrent increments persist | Pass |
+| Retry persistence | RETRY and next-attempt timestamp persist | Pass |
+| J3 deduplication | Duplicate journey dedupe key rejected | Pass (`23505`) |
+| Unknown outcome | UNKNOWN journey result remains durable | Pass |
+| Context conflict | Second plan cannot create another context for the email | Pass (`23505`) |
+| Nudge stop state | WAITING becomes DONE and urgent stop event persists | Pass |
+| Daily evaluation | Duplicate business date rejected | Pass (`23505`) |
+| Nudge decision | Duplicate run/plan decision rejected | Pass (`23505`) |
+
+The suite used real PostgreSQL transactions and concurrent clients. Zoho behavior was supplied only by existing mock/unit suites; no Zoho endpoint was contacted. Teardown removed only uniquely prefixed Phase 7A fixtures.
+
+These tests prove the database constraints and concurrency primitives exercised by the harness. They are not a full multi-process load test of every application route, and they do not replace a restored-production-snapshot migration rehearsal.
+
+## 5. Existing automated validation
+
+| Suite | Type | Result |
+|---|---|---:|
+| Phase 2 | unit/mock provider | 14 passed |
+| Phase 3 | unit/static lifecycle | 7 passed |
+| Phase 4 | mock provider/dispatcher rules | 19 passed |
+| Phase 5 | unit/static nudge engine | 20 passed |
+| Phase 6 | unit/static admin monitoring | 9 passed |
+| Phase 6.5 | unit/static authentication/authorization | 10 passed |
+
+Total existing Phase 2–6.5 tests: **79 passed, 0 failed**.
+
+Additional checks:
+
+```text
+npx prisma generate: passed
+npx prisma validate: passed
+npm run build: passed
+git diff --check: passed
+```
+
+The test output's experimental TypeScript transform and typeless-package warnings are test-runner performance/forward-compatibility notices, not failed security checks.
+
+## 6. Corrections made during validation
+
+1. The preflight now requires the complete applied migration list to equal all 12 repository migrations in exact order and compares pooled/direct migration histories and table inventories.
+2. Windows child processes now use `shell: false` and `npx.cmd`, removing the Node `DEP0190` risk associated with passing arguments through `shell: true`.
+3. The read-only Phase 1A verifier now uses the same `@prisma/adapter-pg` transport as the application. This resolved a Windows TLS-engine incompatibility without changing TLS settings.
+4. The database suite now covers durable UNKNOWN journey outcomes, J3 deduplication, single-context conflict enforcement, and urgent nudge stop-state persistence.
+
+## 7. SSL warning review
+
+The test URLs currently specify `sslmode=require`. With the installed `pg` stack this is presently treated as `verify-full`, so certificate and hostname verification remain enabled. The warning says the next major `pg`/`pg-connection-string` versions will adopt standard libpq semantics, where `require` provides weaker identity verification.
+
+No connection string or TLS setting was changed merely to suppress the warning. Before upgrading to `pg` 9, regenerate or update the provider-approved URLs to explicitly use `sslmode=verify-full` after confirming Vercel/Prisma compatibility. Do not choose `uselibpqcompat=true&sslmode=require` as a warning-only workaround because that would intentionally weaken verification.
+
+The `DEP0190` warning was security-relevant because `shell: true` can permit argument injection in child processes. It is resolved by direct executable invocation with no shell.
+
+## 8. Limitations and remaining blockers
+
+- This was an empty-database migration and integration run. It does not validate backfill behavior against real historical plans or ambiguous task mappings.
+- A restored, approved production snapshot still needs the full pre/post protected-record comparison. No task IDs, progress, documents, OIDC rows, or notifications from production were available to compare here.
+- Route authorization remains covered by unit/static tests, not live authenticated HTTP requests backed by this database.
+- No approved staff IdP login, browser test, or Zoho CRM embedded Web Tab test was performed.
+- No live Zoho field discovery, subscription check, listsubscribe, or journey trigger was performed.
+- Vercel resource ownership, project attachment, backup/restore evidence, and network access controls require operational confirmation outside this repository.
+- The provider-generated direct URL uses a hostname containing `pooled`; tests confirm database identity and migration behavior, but Vercel/Prisma should confirm the intended connection-mode labeling before production migration planning.
+
+## 9. Phase 7B readiness recommendation
+
+The isolated empty database is **ready for controlled, allowlisted Phase 7B Zoho API testing** only after the test resource/project attachment and provider connection-mode labels are operationally confirmed. Keep all production flags disabled and use test contacts, test contexts, and test journeys only.
+
+The system is **not ready for production migration or activation**. Before production approval:
+
+1. Restore an approved, sanitized production snapshot into a new isolated database.
+2. Run `npm run rehearse:zoho-phase-7a-db` with verified backup/restore evidence.
+3. Confirm protected pre/post counts and digests, and review every task-mapping exception.
+4. Run database-backed application-service and authenticated route tests.
+5. Confirm explicit `verify-full` TLS compatibility for the eventual driver upgrade.
+6. Complete controlled Phase 7B API tests and operational reconciliation procedures.
+
+Production event emission, contact synchronization, journey triggering, automatic dispatch, nudge evaluation, cron, and global enablement remain disabled.

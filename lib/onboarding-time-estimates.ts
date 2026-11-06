@@ -53,6 +53,18 @@ const taskEstimates = {
 
 type StableTaskKey = keyof typeof taskEstimates;
 
+const templateKeyToEstimateKey = {
+  "add-backup-administrators": "task-2",
+  "add-employees-and-contractors": "task-3",
+  "book-kickoff": "task-1",
+  "book-sso-implementation-session": "task-8",
+  "import-your-passwords": "import-your-passwords",
+  "review-app-compatibility-prepare-onboarding-plan": "task-6",
+  "select-first-customer-pilot": "task-9",
+  "share-vault-browser-extension-guidance": "task-4",
+  "submit-saas-applications-for-review": "task-5"
+} satisfies Record<string, StableTaskKey>;
+
 const tenantSetupTaskKeys = ["import-your-passwords", "task-2", "task-3", "task-4"] satisfies StableTaskKey[];
 
 export const TENANT_SETUP_TOTAL_MINUTES = tenantSetupTaskKeys.reduce(
@@ -61,9 +73,21 @@ export const TENANT_SETUP_TOTAL_MINUTES = tenantSetupTaskKeys.reduce(
 );
 
 function getStableTaskKey(taskId: string) {
+  const templateEstimateKey = templateKeyToEstimateKey[taskId as keyof typeof templateKeyToEstimateKey];
+  if (templateEstimateKey) {
+    return templateEstimateKey;
+  }
+
   return (Object.keys(taskEstimates) as StableTaskKey[]).find(
     (taskKey) => taskId === taskKey || taskId.endsWith(`-${taskKey}`)
   );
+}
+
+export function getTaskTimeEstimateMinutes(taskIdOrTemplateKey: string) {
+  const taskKey = getStableTaskKey(taskIdOrTemplateKey);
+  if (!taskKey) return null;
+  const estimate: TaskEstimate = taskEstimates[taskKey];
+  return estimate.minutes ?? null;
 }
 
 export function getTaskTimeEstimate(taskId: string, placement: EstimatePlacement) {

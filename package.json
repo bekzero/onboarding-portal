@@ -6,7 +6,22 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
-    "start": "next start"
+    "start": "next start",
+    "test:zoho-phase-2": "node --test --experimental-transform-types tests/zoho-phase-2.test.mjs",
+    "test:zoho-phase-3": "node --test --experimental-transform-types tests/zoho-phase-3.test.mjs",
+    "test:zoho-phase-4": "node --test --experimental-transform-types tests/zoho-phase-4.test.mjs",
+    "test:zoho-phase-5": "node --test --experimental-transform-types tests/zoho-phase-5.test.mjs",
+    "test:zoho-phase-6": "node --test --experimental-transform-types tests/zoho-phase-6.test.mjs",
+    "test:zoho-phase-6-5": "node --test --experimental-transform-types tests/zoho-phase-6-5.test.mjs",
+    "test:zoho-phase-7b1": "node --test --experimental-transform-types tests/zoho-phase-7b1.test.mjs",
+    "check:zoho-phase-7a-config": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs config",
+    "initialize:zoho-phase-7a-empty": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs initialize",
+    "test:zoho-phase-7a-db": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs verify",
+    "preflight:zoho-phase-7a-db": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs preflight",
+    "rehearse:zoho-phase-7a-db": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs rehearse",
+    "check:zoho-phase-7b1-config": "node --experimental-transform-types --env-file=.env.zoho-test.local --env-file=.env.zoho-readonly.local scripts/zoho-phase-7b1-readonly.mjs config",
+    "verify:zoho-phase-7b1-readonly": "node --experimental-transform-types --env-file=.env.zoho-test.local --env-file=.env.zoho-readonly.local scripts/zoho-phase-7b1-readonly.mjs live",
+    "verify:zoho-phase-1a": "node scripts/verify-zoho-phase-1a.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

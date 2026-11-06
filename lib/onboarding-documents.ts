@@ -2,6 +2,7 @@ import "server-only";
 
 import { del, get, put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
+import { recordZohoContactSyncEventsInTransaction } from "@/lib/zoho-lifecycle-events";
 import {
   getDocumentTypeLabel,
   isAllowedDocumentType,
@@ -136,17 +137,25 @@ export async function uploadOnboardingDocuments({
       });
 
       try {
-        const document = await prisma.document.create({
-          data: {
-            fileName: file.name.trim(),
-            fileSize: file.size,
-            mimeType: file.type || null,
+        const document = await prisma.$transaction(async (transaction) => {
+          const created = await transaction.document.create({
+            data: {
+              fileName: file.name.trim(),
+              fileSize: file.size,
+              mimeType: file.type || null,
+              onboardingPlanId: onboardingPlan.id,
+              storageKey: uploadedBlob.pathname,
+              storageUrl: uploadedBlob.url,
+              uploadedBy: uploadedByName?.trim() || null,
+              uploadedByRole
+            }
+          });
+          await recordZohoContactSyncEventsInTransaction(transaction, {
+            occurrenceKey: `document-uploaded:${created.id}`,
             onboardingPlanId: onboardingPlan.id,
-            storageKey: uploadedBlob.pathname,
-            storageUrl: uploadedBlob.url,
-            uploadedBy: uploadedByName?.trim() || null,
-            uploadedByRole
-          }
+            reason: "document.uploaded"
+          });
+          return created;
         });
 
         return toPortalDocumentRecord(document);

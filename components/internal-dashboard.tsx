@@ -18,12 +18,15 @@ import {
   Printer,
   Search,
   TimerReset,
+  Workflow,
   Trash2,
   X
 } from "lucide-react";
 import { DocumentsReviewCard } from "@/components/documents-review-card";
 import { KzeroLogo } from "@/components/kzero-logo";
+import { OnboardingContactsAdmin } from "@/components/onboarding-contacts-admin";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { StaffIdentityControl, type StaffIdentityView } from "@/components/staff-identity-control";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -38,7 +41,6 @@ import {
   normalizeTenantName,
 } from "@/lib/tenant-routing";
 
-const SALES_ENGINEER_NAME = "Ben Eakin";
 const PRODUCTION_REDIRECT_URI = "https://onboarding-portal20.vercel.app/api/oidc/callback";
 const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
 const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database migration and environment variables.";
@@ -52,9 +54,15 @@ type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
   activeTaskStatus?: string;
   activeTaskTitle?: string;
+  assignedSeBookingUrl?: string;
+  assignedSeEmail?: string;
+  automationEnrollmentState?: string;
+  automationOrigin?: string;
   firstCustomerPilot?: FirstCustomerPilot | null;
   enrollmentDateRaw?: string;
   lastActivityRaw?: string;
+  kickoffBookedAt?: string;
+  kickoffBookedBy?: string;
   mspId?: string;
   submittedApps?: Array<{
     id: string;
@@ -71,12 +79,18 @@ type AdminApiCase = {
   activeTaskStatus?: string;
   activeTaskTitle?: string;
   assignedSalesEngineer: string;
+  assignedSeBookingUrl?: string;
+  assignedSeEmail?: string;
+  automationEnrollmentState?: string;
+  automationOrigin?: string;
   customerName?: string;
   currentStage: string;
   enrollmentDate: string;
   enrollmentDateRaw: string;
   id: string;
   isGmmPartner: boolean;
+  kickoffBookedAt?: string;
+  kickoffBookedBy?: string;
   lastActivity: string;
   lastActivityRaw: string;
   mspName: string;
@@ -197,6 +211,9 @@ type EnrollmentFormState = {
 
 type EditFormState = {
   accessMode: OnboardingCase["accessMode"];
+  assignedSeBookingUrl: string;
+  assignedSeEmail: string;
+  assignedSeName: string;
   customerName: string;
   currentStage: string;
   enrollmentDate: string;
@@ -1005,9 +1022,12 @@ function createEnrollmentState(): EnrollmentFormState {
   };
 }
 
-function createEditState(item: OnboardingCase): EditFormState {
+function createEditState(item: DashboardCase): EditFormState {
   return {
     accessMode: item.accessMode,
+    assignedSeBookingUrl: item.assignedSeBookingUrl ?? "",
+    assignedSeEmail: item.assignedSeEmail ?? "",
+    assignedSeName: item.assignedSalesEngineer,
     customerName: item.customerName ?? "",
     currentStage: item.currentStage,
     enrollmentDate: formatDateInputValue(item.enrollmentDate ?? item.lastActivity),
@@ -1038,13 +1058,19 @@ function adminApiCaseToDashboardCase(item: AdminApiCase): DashboardCase {
     activeTaskOwner: item.activeTaskOwner,
     activeTaskStatus: item.activeTaskStatus,
     activeTaskTitle: item.activeTaskTitle,
-    assignedSalesEngineer: SALES_ENGINEER_NAME,
+    assignedSalesEngineer: item.assignedSalesEngineer,
+    assignedSeBookingUrl: item.assignedSeBookingUrl,
+    assignedSeEmail: item.assignedSeEmail,
+    automationEnrollmentState: item.automationEnrollmentState,
+    automationOrigin: item.automationOrigin,
     customerName: item.customerName,
     firstCustomerPilot: item.firstCustomerPilot ?? null,
     currentStage: item.currentStage,
     enrollmentDate: item.enrollmentDate,
     enrollmentDateRaw: item.enrollmentDateRaw,
     isGmmPartner: item.isGmmPartner,
+    kickoffBookedAt: item.kickoffBookedAt,
+    kickoffBookedBy: item.kickoffBookedBy,
     lastActivity: item.lastActivity,
     lastActivityRaw: item.lastActivityRaw,
     mspId: item.id,
@@ -1492,10 +1518,13 @@ function DashboardTable({
 }
 
 export function InternalDashboard({
-  baseCases
+  baseCases,
+  salesEngineers,
+  staffIdentity
 }: {
   baseCases: OnboardingCase[];
   salesEngineers: User[];
+  staffIdentity: StaffIdentityView | null;
 }) {
   const allowLocalFallback = process.env.NODE_ENV !== "production";
   const [caseOverrides, setCaseOverrides] = useState<Record<string, AdminCaseOverride>>({});
@@ -1714,7 +1743,7 @@ export function InternalDashboard({
         ...item,
         ...caseOverrides[item.onboardingPlanId],
         actionHref: `/portal/${item.onboardingPlanId}`,
-        assignedSalesEngineer: SALES_ENGINEER_NAME,
+        assignedSalesEngineer: item.assignedSalesEngineer,
         enrollmentDate: caseOverrides[item.onboardingPlanId]?.enrollmentDate ?? item.enrollmentDate ?? item.lastActivity,
         enrollmentDateRaw: toIsoFromDisplayDate(item.enrollmentDate ?? item.lastActivity),
         lastActivityRaw: toIsoFromDisplayDate(item.lastActivity)
@@ -2158,7 +2187,7 @@ export function InternalDashboard({
           },
           body: JSON.stringify({
             accessMode,
-            assignedSalesEngineer: SALES_ENGINEER_NAME,
+            assignedSalesEngineer: salesEngineers[0]?.name,
             customerName: enrollmentState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
             enrollmentDate: nextEnrollmentDate,
             isGmmPartner: enrollmentState.isGmmPartner,
@@ -2185,7 +2214,7 @@ export function InternalDashboard({
             },
             body: JSON.stringify({
               accessMode,
-              assignedSalesEngineer: SALES_ENGINEER_NAME,
+              assignedSalesEngineer: salesEngineers[0]?.name,
               customerName: enrollmentState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
               currentStage: enrollmentState.currentStage,
               isGmmPartner: enrollmentState.isGmmPartner,
@@ -2299,7 +2328,6 @@ export function InternalDashboard({
           },
           body: JSON.stringify({
             accessMode: nextAccessMode,
-            assignedSalesEngineer: SALES_ENGINEER_NAME,
             customerName: editState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
             currentStage: editState.currentStage,
             enrollmentDate: nextEnrollmentDate,
@@ -2317,7 +2345,25 @@ export function InternalDashboard({
         });
 
         if (!response.ok) {
-          throw new Error("update_failed");
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error ?? "Could not update MSP details.");
+        }
+
+        const salesEngineerResponse = await fetch(
+          `/api/admin/plans/${encodeURIComponent(selectedCase.onboardingPlanId)}/sales-engineer`,
+          {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              bookingUrl: editState.assignedSeBookingUrl,
+              email: editState.assignedSeEmail,
+              name: editState.assignedSeName
+            })
+          }
+        );
+        if (!salesEngineerResponse.ok) {
+          const payload = (await salesEngineerResponse.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error ?? "Could not update Sales Engineer details.");
         }
 
         await loadDashboardCases();
@@ -2397,7 +2443,7 @@ export function InternalDashboard({
           },
           body: JSON.stringify({
             accessMode,
-            assignedSalesEngineer: SALES_ENGINEER_NAME,
+            assignedSalesEngineer: selectedCase.assignedSalesEngineer,
             currentStage: selectedCase.currentStage,
             lastActivity: formatDateLabel(),
             name: selectedCase.mspName,
@@ -2596,6 +2642,7 @@ export function InternalDashboard({
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+              <StaffIdentityControl identity={staffIdentity} />
               <ThemeToggle />
               <Link
                 className="inline-flex h-10 items-center px-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -2620,6 +2667,12 @@ export function InternalDashboard({
                 <FileText className="mr-2 h-4 w-4" />
                 Reports
               </Button>
+              <Link href="/admin/zoho">
+                <Button className="h-10 rounded-xl px-3.5" variant="outline">
+                  <Workflow className="mr-2 h-4 w-4" />
+                  Zoho Automation
+                </Button>
+              </Link>
               <Button className="h-10 whitespace-nowrap rounded-xl px-4" onClick={openEnroll}>
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Enroll MSP
@@ -3419,7 +3472,10 @@ export function InternalDashboard({
                             </div>
                             <div>
                               <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Sales Engineer</p>
-                              <p className="mt-1 text-sm text-secondary">{SALES_ENGINEER_NAME}</p>
+                              <p className="mt-1 text-sm text-secondary">{selectedCase.assignedSalesEngineer || "Not assigned"}</p>
+                              {selectedCase.assignedSeEmail ? (
+                                <p className="mt-1 break-all text-xs text-muted">{selectedCase.assignedSeEmail}</p>
+                              ) : null}
                             </div>
                             <div>
                               <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Enrollment Date</p>
@@ -3433,6 +3489,22 @@ export function InternalDashboard({
                         </div>
                       </div>
                     </div>
+
+                    {useServerData ? (
+                      <OnboardingContactsAdmin
+                        onChanged={async () => {
+                          await loadDashboardCases();
+                        }}
+                        planId={selectedCase.onboardingPlanId}
+                      />
+                    ) : (
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-sm font-semibold text-foreground">Onboarding Contacts</p>
+                        <p className="mt-2 text-sm text-secondary">
+                          Contact management is available for server-backed onboarding cases.
+                        </p>
+                      </div>
+                    )}
 
                     <div className="grid gap-4 lg:grid-cols-3">
                       <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
@@ -3663,10 +3735,41 @@ export function InternalDashboard({
                               value={editState.primaryContactEmail}
                             />
                           </label>
-                          <div className="rounded-2xl border border-border bg-input px-4 py-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Assigned Sales Engineer</p>
-                            <p className="mt-2 text-sm text-foreground">{SALES_ENGINEER_NAME}</p>
-                          </div>
+                          <label className="grid gap-2 text-sm text-secondary">
+                            <span>Assigned Sales Engineer Name</span>
+                            <input
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
+                              onChange={(event) =>
+                                setEditState((current) => current ? { ...current, assignedSeName: event.target.value } : current)
+                              }
+                              value={editState.assignedSeName}
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-secondary">
+                            <span>Sales Engineer Email</span>
+                            <input
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
+                              onChange={(event) =>
+                                setEditState((current) => current ? { ...current, assignedSeEmail: event.target.value } : current)
+                              }
+                              type="email"
+                              value={editState.assignedSeEmail}
+                            />
+                          </label>
+                          <label className="grid gap-2 text-sm text-secondary">
+                            <span>Microsoft Bookings URL</span>
+                            <input
+                              className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
+                              onChange={(event) =>
+                                setEditState((current) => current ? { ...current, assignedSeBookingUrl: event.target.value } : current)
+                              }
+                              type="url"
+                              value={editState.assignedSeBookingUrl}
+                            />
+                          </label>
+                          <p className="text-xs leading-5 text-muted">
+                            These values populate future merge fields only. They do not change Zoho sender or Reply-To settings.
+                          </p>
                           <label className="flex items-center gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
                             <input
                               checked={editState.isGmmPartner}
@@ -4008,7 +4111,7 @@ export function InternalDashboard({
                           </label>
                           <div className="rounded-2xl border border-border bg-input px-4 py-3">
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Assigned Sales Engineer</p>
-                            <p className="mt-2 text-sm text-foreground">{SALES_ENGINEER_NAME}</p>
+                            <p className="mt-2 text-sm text-foreground">{salesEngineers[0]?.name ?? "Not assigned"}</p>
                           </div>
                           <label className="flex items-center gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
                             <input

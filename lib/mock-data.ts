@@ -36,6 +36,7 @@ export type Phase = {
 
 export type Task = {
   id: string;
+  templateKey: string;
   phaseId: string;
   title: string;
   description: string;
@@ -319,9 +320,12 @@ export const users: User[] = [
   }
 ];
 
+export const ONBOARDING_TASK_TEMPLATE_VERSION = 1;
+
 const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   {
     stableId: "task-1",
+    templateKey: "book-kickoff",
     phaseId: "phase-kickoff",
     title: "Book Setup Call with Your KZero Sales Engineer",
     description: "Schedule the kickoff meeting with your KZero Sales Engineer to begin NFR tenant setup and confirm the first rollout steps.",
@@ -332,6 +336,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "import-your-passwords",
+    templateKey: "import-your-passwords",
     phaseId: "phase-tenant-setup",
     title: "Import Your Passwords",
     description: "Import your saved passwords into KZero Passwordless Vault first so you can validate the user experience before guiding the rest of your team. Complete this step when the onboarding owner has imported saved passwords, confirmed access to imported items, and noted any import issues before the wider rollout.",
@@ -340,6 +345,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-2",
+    templateKey: "add-backup-administrators",
     phaseId: "phase-tenant-setup",
     title: "Add Backup Administrators",
     description: "Invite backup administrators in the KZero Passwordless Dashboard so your tenant is not dependent on a single admin account. Complete this step when backup administrators are invited, break-glass coverage is identified, and the invited administrators can access the dashboard.",
@@ -348,6 +354,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-3",
+    templateKey: "add-employees-and-contractors",
     phaseId: "phase-tenant-setup",
     title: "Add Employees and Contractors",
     description: "Invite the members of your team who will participate in the NFR rollout using their company email addresses. Complete this step when pilot users are invited, activation emails are sent, and the users appear in the selected tenant.",
@@ -356,6 +363,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-4",
+    templateKey: "share-vault-browser-extension-guidance",
     phaseId: "phase-tenant-setup",
     title: "Share Vault and Browser Extension Guidance",
     description: "Share the KZero Passwordless Vault and browser extension guides with the users you added. Complete this step when your team knows where to find the guides, understands password import preparation, and knows which browsers and extensions are supported.",
@@ -364,6 +372,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-5",
+    templateKey: "submit-saas-applications-for-review",
     phaseId: "phase-app-review",
     title: "Submit SaaS Applications for Review",
     description: "Submit the SaaS applications your team wants KZero Passwordless to review for SSO readiness and rollout planning. Complete this step when priority applications, login URLs, and supporting notes are included where available.",
@@ -372,6 +381,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-6",
+    templateKey: "review-app-compatibility-prepare-onboarding-plan",
     phaseId: "phase-app-review",
     title: "Review App Compatibility and Prepare the Onboarding Plan",
     description: "KZero reviews the submitted applications and prepares a recommended implementation plan for the first SSO rollout wave.",
@@ -381,6 +391,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-7",
+    templateKey: "upload-onboarding-plan",
     phaseId: "phase-sso-rollout",
     title: "Upload the Onboarding Plan",
     description: "KZero will upload the onboarding plan with recommended app sequencing and implementation guidance so your team can review it before implementation.",
@@ -389,6 +400,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-8",
+    templateKey: "book-sso-implementation-session",
     phaseId: "phase-sso-rollout",
     title: "Book the SSO Implementation Session",
     description: "Schedule a working session with your KZero Sales Engineer to implement the first SSO application wave.",
@@ -398,6 +410,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-9",
+    templateKey: "select-first-customer-pilot",
     phaseId: "phase-customer-rollout",
     title: "Select First Customer Pilot",
     description: "Provide the customer name or alias, estimated user count, target rollout timing, and any rollout notes so KZero Passwordless can prepare the first customer rollout.",
@@ -406,6 +419,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-10",
+    templateKey: "confirm-customer-readiness",
     phaseId: "phase-customer-rollout",
     title: "Confirm Customer Readiness",
     description: "Confirm the customer has agreed to participate, customer administrators are identified, and the rollout timing is acceptable for the first pilot.",
@@ -414,6 +428,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-11",
+    templateKey: "kzero-reviews-pilot-plan",
     phaseId: "phase-customer-rollout",
     title: "KZero Reviews Pilot Plan",
     description: "KZero reviews the first customer details and confirms the rollout approach for the pilot tenant.",
@@ -422,6 +437,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-12",
+    templateKey: "book-customer-rollout-session",
     phaseId: "phase-customer-rollout",
     title: "Book Customer Rollout Session",
     description: "Schedule a working session with your KZero Sales Engineer to prepare the first customer tenant for rollout.",
@@ -431,6 +447,7 @@ const baseTasks: Array<{ stableId: string } & Omit<Task, "id">> = [
   },
   {
     stableId: "task-13",
+    templateKey: "complete-first-customer-rollout",
     phaseId: "phase-customer-rollout",
     title: "Complete First Customer Rollout",
     description: "Apply the validated KZero Passwordless rollout process to the first customer tenant and confirm the initial rollout is complete.",

@@ -23,6 +23,7 @@ import { getTaskGuides, type TaskGuide } from "@/lib/guide-previews";
 import type { PlanBundle } from "@/lib/mock-data";
 import { users } from "@/lib/mock-data";
 import { getPhaseTimeEstimate, getTaskTimeEstimate } from "@/lib/onboarding-time-estimates";
+import { resolvePortalTaskDeepLink } from "@/lib/portal-deep-link";
 
 const BOOKING_URL =
   "https://outlook.office.com/bookwithme/user/be858ab23c9b4c5f846a37d3d14e064b@klvn0.co/meetingtype/L_3aZP9-PUWjbOtkRaB7bw2?anonymous&ismsaljsauthenabled&ep=mlink";
@@ -305,6 +306,7 @@ export function PlanView({
   const [expandedPhaseIds, setExpandedPhaseIds] = useState<string[]>([]);
   const tourWorkspaceSnapshotRef = useRef<TourWorkspaceSnapshot | null>(null);
   const tourAutoStartCheckedRef = useRef(false);
+  const deepLinkAppliedRef = useRef(false);
   const orderedTasks = bundle.plan.taskIds
     .map((taskId) => bundle.tasks.find((task) => task.id === taskId))
     .filter((task): task is NonNullable<(typeof bundle.tasks)[number]> => Boolean(task));
@@ -492,6 +494,29 @@ export function PlanView({
   useEffect(() => {
     setSubmittedApps(bundle.apps);
   }, [bundle.apps]);
+
+  useEffect(() => {
+    if (deepLinkAppliedRef.current) return;
+    const search = new URLSearchParams(window.location.search);
+    const targetTask = resolvePortalTaskDeepLink(search, orderedTasks);
+    if (!targetTask) return;
+    const taskKey = targetTask.templateKey;
+
+    deepLinkAppliedRef.current = true;
+    setActiveTab("tasks");
+    setExpandedPhaseIds((current) =>
+      current.includes(targetTask.phaseId) ? current : [...current, targetTask.phaseId]
+    );
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const target = Array.from(document.querySelectorAll<HTMLElement>("[data-task-key]")).find(
+          (element) => element.dataset.taskKey === taskKey
+        );
+        target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        target?.focus({ preventScroll: true });
+      });
+    });
+  }, [orderedTasks]);
 
   useEffect(() => {
     if (tourAutoStartCheckedRef.current || isAdminView) {
@@ -1081,8 +1106,9 @@ export function PlanView({
 
                                   return (
                                     <div
+                                      data-task-key={task.templateKey}
                                       id={isCurrentTask ? "current-task-card" : undefined}
-                                      tabIndex={isCurrentTask ? -1 : undefined}
+                                      tabIndex={-1}
                                       key={task.id}
                                       className={`scroll-mt-24 rounded-2xl border p-3.5 transition focus:outline-none focus:ring-2 focus:ring-primary/50 ${
                                         isCurrentTask ? "ring-1 ring-primary/40" : ""

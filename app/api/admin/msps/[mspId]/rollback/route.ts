@@ -9,7 +9,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ mspId: string }> }
 ) {
-  const authError = await getAdminApiAuthError();
+  const authError = await getAdminApiAuthError("SALES_ENGINEER");
   if (authError) return authError;
 
   try {
