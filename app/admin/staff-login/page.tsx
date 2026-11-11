@@ -9,7 +9,7 @@ import { isStaffOidcConfigured } from "@/lib/staff-auth";
 
 export default async function StaffLoginPage({ searchParams }: { searchParams: Promise<{ returnTo?: string; error?: string }> }) {
   const params = await searchParams;
-  const configured = isStaffOidcConfigured();
+  const configured = await isStaffOidcConfigured();
   const returnTo = params.returnTo?.startsWith("/admin") ? params.returnTo : "/admin";
   return <main className="mx-auto flex min-h-[100dvh] w-full max-w-[520px] items-center px-4 py-6 sm:px-6">
     <Card className="w-full border-border bg-surface p-6 shadow-panel sm:p-8">

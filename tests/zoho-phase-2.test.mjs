@@ -97,7 +97,13 @@ function discoveredFields() {
 
 test("OAuth refresh is cached and secrets stay in the form body", async () => {
   const calls = [];
-  const fetchImpl = sequenceFetch([jsonResponse({ access_token: "access-one", expires_in: 3600 })], calls);
+  const fetchImpl = sequenceFetch([jsonResponse({
+    access_token: "access-one",
+    api_domain: "https://www.zohoapis.com",
+    expires_in: 3600,
+    scope: "ZohoMarketingAutomation.lead.READ",
+    token_type: "Bearer"
+  })], calls);
   const manager = new ZohoOAuthTokenManager(
     { clientId: "client", clientSecret: "secret", refreshToken: "refresh" },
     fetchImpl
@@ -108,6 +114,12 @@ test("OAuth refresh is cached and secrets stay in the form body", async () => {
   assert.equal(calls[0].input, "https://accounts.zoho.com/oauth/v2/token");
   assert.match(String(calls[0].init.body), /grant_type=refresh_token/);
   assert.doesNotMatch(JSON.stringify(calls[0].init.headers), /secret|refresh/);
+  assert.deepEqual(manager.getLastRefreshDiagnostic(), {
+    apiDomain: "https://www.zohoapis.com",
+    grantedScope: "ZohoMarketingAutomation.lead.READ",
+    responseKeys: ["api_domain", "expires_in", "scope"],
+    tokenType: "Bearer"
+  });
 });
 
 test("missing OAuth credentials are rejected without a network call", async () => {

@@ -15,7 +15,7 @@ export default async function AdminLoginPage({
 }) {
   const params = await searchParams;
   const hasSignInError = Boolean(params.error || params.setup);
-  const staffConfigured = isStaffOidcConfigured();
+  const staffConfigured = await isStaffOidcConfigured();
 
   return (
     <div className="mx-auto flex min-h-[100dvh] w-full max-w-[500px] items-center px-4 py-5 sm:px-6 sm:py-8">

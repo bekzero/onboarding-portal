@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { parseMailingLists, parseTopics } from "../lib/zoho-api-core.ts";
+import {
+  ZOHO_TOPICS_API_BASE_URL,
+  ZohoApiClientCore,
+  buildMailingListsPageDiagnostic,
+  buildTopicsPageDiagnostic,
+  parseMailingLists,
+  parseTopics
+} from "../lib/zoho-api-core.ts";
 import { ZOHO_BUILT_IN_FIELDS, ZOHO_CUSTOM_FIELDS } from "../lib/zoho-field-mapping.ts";
 import {
   PHASE7B1_EXPECTED_ORGANIZATION,
@@ -9,7 +16,9 @@ import {
   PHASE7B1_READ_ONLY_AUTHORIZATION,
   assertPhase7b1ReadOnlyOperation,
   buildPhase7b1DiscoveryReport,
-  evaluatePhase7b1Configuration
+  evaluatePhase7b1Configuration,
+  evaluatePhase7b1TopicBootstrapConfiguration,
+  findExactPhase7b1Topic
 } from "../lib/zoho-phase7b1-readiness.ts";
 
 function baseEnvironment() {
@@ -87,6 +96,41 @@ test("wrong organization or missing manual organization evidence fails closed", 
   }).blockers.includes("ORGANIZATION_EVIDENCE_REQUIRED"));
 });
 
+test("topic bootstrap does not require a known topic ID but preserves organization and authorization gates", () => {
+  const bootstrap = evaluatePhase7b1TopicBootstrapConfiguration({
+    ...baseEnvironment(),
+    ZMA_TOPIC_ID: "",
+    ZMA_LIST_KEY: "",
+    ZOHO_PHASE7B1_OAUTH_SCOPES: "ZohoMarketingAutomation.lead.READ"
+  });
+  assert.equal(bootstrap.readyForTopicBootstrap, true);
+  assert.deepEqual(bootstrap.blockers, []);
+
+  for (const override of [
+    { ZOHO_PHASE7B1_EXPECTED_ORGANIZATION: "org-other" },
+    { ZOHO_PHASE7B1_ORGANIZATION_VERIFICATION_REFERENCE: "" },
+    { ZOHO_PHASE7B1_READ_ONLY_AUTHORIZATION: "" },
+    { ZOHO_TEST_SYNC_ENABLED: "true" }
+  ]) {
+    assert.equal(evaluatePhase7b1TopicBootstrapConfiguration({
+      ...baseEnvironment(),
+      ZMA_TOPIC_ID: "",
+      ...override
+    }).readyForTopicBootstrap, false);
+  }
+});
+
+test("topic bootstrap requires one exact topic name with a numeric ID", () => {
+  const expected = { primaryList: "7", topicId: "80696000000044001", topicName: "Partner Onboarding" };
+  assert.deepEqual(findExactPhase7b1Topic([
+    { primaryList: null, topicId: "1", topicName: "partner onboarding" },
+    expected
+  ]), expected);
+  assert.throws(() => findExactPhase7b1Topic([]), /found 0/);
+  assert.throws(() => findExactPhase7b1Topic([expected, { ...expected, topicId: "2" }]), /found 2/);
+  assert.throws(() => findExactPhase7b1Topic([{ ...expected, topicId: "not-numeric" }]), /not numeric/);
+});
+
 test("missing, ambiguous, and mistyped fields remain visible blockers", () => {
   const environment = baseEnvironment();
   const fields = completeFields()
@@ -131,9 +175,127 @@ test("mailing-list and topic parsers preserve identity and privacy evidence", ()
   assert.deepEqual(parseMailingLists({ list_of_details: [{ listkey: "key", listname: "KZero Partner Onboarding", is_public: "false", owner: "Owner" }] }), [
     { isPublic: false, listKey: "key", listName: "KZero Partner Onboarding", owner: "Owner" }
   ]);
+  assert.deepEqual(parseMailingLists({ response: { lists: [{ listkey: "key-2", listname: "Other", is_public: true }] } }), [
+    { isPublic: true, listKey: "key-2", listName: "Other", owner: null }
+  ]);
+  assert.deepEqual(buildMailingListsPageDiagnostic({
+    code: "0",
+    list_of_details: [],
+    status: "success"
+  }, 200), {
+    code: "0",
+    containerKey: "list_of_details",
+    httpStatus: 200,
+    listCount: 0,
+    message: null,
+    status: "success",
+    topLevelKeys: ["code", "list_of_details", "status"]
+  });
   assert.deepEqual(parseTopics({ topicDetails: [{ topicId: 42, topicName: "Partner Onboarding", primaryList: 7 }] }), [
     { primaryList: "7", topicId: "42", topicName: "Partner Onboarding" }
   ]);
+  assert.deepEqual(parseTopics({ response: { topics: [{ topic_id: "43", topic_name: "Marketing", primary_list: "8" }] } }), [
+    { primaryList: "8", topicId: "43", topicName: "Marketing" }
+  ]);
+  assert.deepEqual(buildTopicsPageDiagnostic({
+    code: "200",
+    message: "Success",
+    response: { topics: [] }
+  }, 200), {
+    code: "200",
+    containerKey: "response.topics",
+    httpStatus: 200,
+    message: "Success",
+    topicCount: 0,
+    topLevelKeys: ["code", "message", "response"]
+  });
+});
+
+test("mailing-list diagnostic uses an allowlisted read-only POST with documented parameters", async () => {
+  const requested = [];
+  const payloads = [
+    {
+      code: "0",
+      list_of_details: [{
+        is_public: "false",
+        listkey: "sensitive-list-key",
+        listname: "KZero Partner Onboarding",
+        owner: "KZero"
+      }],
+      status: "success"
+    },
+    { code: "0", list_of_details: [], status: "success" }
+  ];
+  const client = new ZohoApiClientCore({
+    getAccessToken: async () => "not-logged",
+    invalidate: () => undefined
+  }, async (url, init) => {
+    requested.push({ body: String(init.body), method: init.method, url: String(url) });
+    return new Response(JSON.stringify(payloads.shift()), { status: 200 });
+  });
+
+  const result = await client.discoverMailingLists({ pageSize: 1, maxPages: 2 });
+  assert.equal(result.lists[0].listName, "KZero Partner Onboarding");
+  assert.equal(requested.length, 2);
+  assert.ok(requested.every((request) => request.method === "POST"));
+  assert.ok(requested.every((request) => request.url.endsWith("/api/v1/getmailinglists")));
+  assert.equal(requested[0].body, "fromindex=1&range=1&resfmt=JSON&sort=asc");
+  assert.equal(requested[1].body, "fromindex=2&range=1&resfmt=JSON&sort=asc");
+});
+
+test("mailing-list inspection preserves sanitized metadata for an unknown success shape", async () => {
+  const client = new ZohoApiClientCore({
+    getAccessToken: async () => "not-logged",
+    invalidate: () => undefined
+  }, async () => new Response(JSON.stringify({ code: "0", status: "success", unexpected: [] }), { status: 200 }));
+  const result = await client.inspectMailingListsPage({ fromIndex: 1, range: 100 });
+  assert.equal(result.lists, null);
+  assert.equal(result.parseError.kind, "INVALID_RESPONSE");
+  assert.deepEqual(result.diagnostic.topLevelKeys, ["code", "status", "unexpected"]);
+  assert.equal(result.diagnostic.httpStatus, 200);
+});
+
+test("mailing-list inspection classifies an HTTP-200 invalid OAuth scope as unauthorized", async () => {
+  const client = new ZohoApiClientCore({
+    getAccessToken: async () => "not-logged",
+    invalidate: () => undefined
+  }, async () => new Response(JSON.stringify({
+    Code: "INVALID_OAUTHSCOPE",
+    message: "",
+    status: "error"
+  }), { status: 200 }));
+  const result = await client.inspectMailingListsPage({ fromIndex: 1, range: 100 });
+  assert.equal(result.lists, null);
+  assert.equal(result.diagnostic.code, "INVALID_OAUTHSCOPE");
+  assert.equal(result.parseError.kind, "UNAUTHORIZED");
+  assert.match(result.parseError.message, /OAuth scope/);
+});
+
+test("topic discovery uses the documented request shape and bounded pagination", async () => {
+  const requested = [];
+  const payloads = [
+    { code: "200", topicDetails: [{ topicId: "1", topicName: "Marketing" }] },
+    { code: "200", topicDetails: [{ topicId: "2", topicName: "Partner Onboarding" }] },
+    { code: "200", topicDetails: [] }
+  ];
+  const client = new ZohoApiClientCore({
+    getAccessToken: async () => "not-logged",
+    invalidate: () => undefined
+  }, async (url, init) => {
+    requested.push({ init, url: String(url) });
+    return new Response(JSON.stringify(payloads.shift()), {
+      headers: { "content-type": "application/json" },
+      status: 200
+    });
+  });
+
+  const result = await client.discoverTopics({ pageSize: 1, maxPages: 3 });
+  assert.deepEqual(result.topics.map((topic) => topic.topicId), ["1", "2"]);
+  assert.equal(requested.length, 3);
+  assert.ok(requested.every((request) => request.url.startsWith(`${ZOHO_TOPICS_API_BASE_URL}/api/v1/topics?`)));
+  assert.match(decodeURIComponent(requested[0].url), /details=\{from_index:0,range:1\}/);
+  assert.match(decodeURIComponent(requested[1].url), /details=\{from_index:1,range:1\}/);
+  assert.ok(requested.every((request) => request.init.method === undefined));
 });
 
 test("production/test key collisions and unsafe recipients block readiness", () => {
@@ -164,4 +326,5 @@ test("the Phase 7B.1 runner contains no contact or journey write invocation", as
   assert.match(source, /getMailingLists/);
   assert.match(source, /getTopics/);
   assert.match(source, /getOpenJourneys/);
+  assert.match(source, /topic-bootstrap/);
 });

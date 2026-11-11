@@ -3,6 +3,7 @@ import { buildZohoFieldDiscoveryReport, getZohoFieldIdentifierMap } from "./zoho
 
 export const PHASE7B1_EXPECTED_ORGANIZATION = "org859403413";
 export const PHASE7B1_READ_ONLY_AUTHORIZATION = "I_AUTHORIZE_PHASE7B1_READ_ONLY_ZOHO_CALLS";
+export const PHASE7B1_EXPECTED_TOPIC_NAME = "Partner Onboarding";
 export const PHASE7B1_REQUIRED_SCOPES = [
   "ZohoMarketingAutomation.lead.READ",
   "ZohoMarketingAutomation.lead.UPDATE",
@@ -73,6 +74,70 @@ function scopeSatisfied(configured: Set<string>, required: string) {
   return false;
 }
 
+function unsafeAutomationFlags(environment: Environment) {
+  const unsafeFlags = [
+    ["ZOHO_DISPATCH_ENABLED", enabled(environment, "ZOHO_DISPATCH_ENABLED")],
+    ["ZOHO_EVENT_EMISSION_ENABLED", enabled(environment, "ZOHO_EVENT_EMISSION_ENABLED")],
+    ["ZOHO_CONTACT_SYNC_ENABLED", enabled(environment, "ZOHO_CONTACT_SYNC_ENABLED")],
+    ["ZOHO_JOURNEY_TRIGGERING_ENABLED", enabled(environment, "ZOHO_JOURNEY_TRIGGERING_ENABLED")],
+    ["ZOHO_AUTOMATIC_DISPATCH_ENABLED", enabled(environment, "ZOHO_AUTOMATIC_DISPATCH_ENABLED")],
+    ["ZOHO_PRODUCTION_DISPATCH_APPROVED", enabled(environment, "ZOHO_PRODUCTION_DISPATCH_APPROVED")],
+    ["ZMA_NUDGE_EVALUATION_ENABLED", enabled(environment, "ZMA_NUDGE_EVALUATION_ENABLED")],
+    ["ZOHO_TEST_SYNC_ENABLED", enabled(environment, "ZOHO_TEST_SYNC_ENABLED")],
+    ["ZOHO_TEST_FIXTURE_ENABLED", enabled(environment, "ZOHO_TEST_FIXTURE_ENABLED")]
+  ].filter(([, active]) => active).map(([name]) => name as string);
+  if (value(environment, "ZOHO_GLOBAL_KILL_SWITCH").toLowerCase() !== "true") unsafeFlags.push("ZOHO_GLOBAL_KILL_SWITCH");
+  if (!["", "disabled"].includes(value(environment, "ZOHO_DISPATCH_MODE").toLowerCase())) unsafeFlags.push("ZOHO_DISPATCH_MODE");
+  return unsafeFlags;
+}
+
+export function evaluatePhase7b1TopicBootstrapConfiguration(environment: Environment) {
+  const blockers: string[] = [];
+  const missingCredentials = ["ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET", "ZOHO_REFRESH_TOKEN"]
+    .filter((name) => !value(environment, name));
+  if (missingCredentials.length) blockers.push("MISSING_OAUTH_CREDENTIALS");
+  if (value(environment, "ZOHO_PHASE7B1_EXPECTED_ORGANIZATION") !== PHASE7B1_EXPECTED_ORGANIZATION) {
+    blockers.push("WRONG_OR_UNCONFIRMED_ORGANIZATION");
+  }
+  if (!value(environment, "ZOHO_PHASE7B1_ORGANIZATION_VERIFICATION_REFERENCE")) {
+    blockers.push("ORGANIZATION_EVIDENCE_REQUIRED");
+  }
+  if (value(environment, "ZOHO_PHASE7B1_READ_ONLY_AUTHORIZATION") !== PHASE7B1_READ_ONLY_AUTHORIZATION) {
+    blockers.push("READ_ONLY_CALL_NOT_AUTHORIZED");
+  }
+
+  const scopes = new Set(csv(environment, "ZOHO_PHASE7B1_OAUTH_SCOPES"));
+  const missingScopes = ["ZohoMarketingAutomation.lead.READ"]
+    .filter((scope) => !scopeSatisfied(scopes, scope));
+  if (missingScopes.length) blockers.push("MISSING_REQUIRED_OAUTH_SCOPES");
+
+  const unsafeFlags = unsafeAutomationFlags(environment);
+  if (unsafeFlags.length) blockers.push("WRITE_OR_AUTOMATION_FLAG_ENABLED");
+
+  return {
+    blockers: [...new Set(blockers)],
+    expectedOrganization: PHASE7B1_EXPECTED_ORGANIZATION,
+    expectedTopicName: PHASE7B1_EXPECTED_TOPIC_NAME,
+    missingCredentials,
+    missingScopes,
+    readyForTopicBootstrap: blockers.length === 0,
+    unsafeFlags
+  };
+}
+
+export function findExactPhase7b1Topic(topics: ZohoTopic[]) {
+  const matches = topics.filter((topic) => topic.topicName === PHASE7B1_EXPECTED_TOPIC_NAME);
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one topic named ${PHASE7B1_EXPECTED_TOPIC_NAME}; found ${matches.length}.`
+    );
+  }
+  if (!/^\d+$/.test(matches[0].topicId)) {
+    throw new Error(`The ${PHASE7B1_EXPECTED_TOPIC_NAME} topic ID is not numeric.`);
+  }
+  return matches[0];
+}
+
 export function evaluatePhase7b1Configuration(environment: Environment) {
   const blockers: string[] = [];
   const warnings: string[] = [];
@@ -101,16 +166,7 @@ export function evaluatePhase7b1Configuration(environment: Environment) {
   if (!value(environment, "ZMA_TOPIC_ID")) blockers.push("MISSING_TOPIC_ID");
   if (!value(environment, "ZOHO_PHASE7B1_EXPECTED_LIST_OWNER")) warnings.push("EXPECTED_LIST_OWNER_NOT_CONFIGURED");
 
-  const unsafeFlags = [
-    ["ZOHO_EVENT_EMISSION_ENABLED", enabled(environment, "ZOHO_EVENT_EMISSION_ENABLED")],
-    ["ZOHO_CONTACT_SYNC_ENABLED", enabled(environment, "ZOHO_CONTACT_SYNC_ENABLED")],
-    ["ZOHO_JOURNEY_TRIGGERING_ENABLED", enabled(environment, "ZOHO_JOURNEY_TRIGGERING_ENABLED")],
-    ["ZOHO_AUTOMATIC_DISPATCH_ENABLED", enabled(environment, "ZOHO_AUTOMATIC_DISPATCH_ENABLED")],
-    ["ZOHO_PRODUCTION_DISPATCH_APPROVED", enabled(environment, "ZOHO_PRODUCTION_DISPATCH_APPROVED")],
-    ["ZMA_NUDGE_EVALUATION_ENABLED", enabled(environment, "ZMA_NUDGE_EVALUATION_ENABLED")]
-  ].filter(([, active]) => active).map(([name]) => name as string);
-  if (value(environment, "ZOHO_GLOBAL_KILL_SWITCH").toLowerCase() !== "true") unsafeFlags.push("ZOHO_GLOBAL_KILL_SWITCH");
-  if (!['', 'disabled'].includes(value(environment, "ZOHO_DISPATCH_MODE").toLowerCase())) unsafeFlags.push("ZOHO_DISPATCH_MODE");
+  const unsafeFlags = unsafeAutomationFlags(environment);
   if (unsafeFlags.length) blockers.push("WRITE_OR_AUTOMATION_FLAG_ENABLED");
 
   const production = journeyConfig(environment, "");
@@ -173,7 +229,7 @@ export function buildPhase7b1DiscoveryReport(input: {
 
   const configuredTopicId = value(input.environment, "ZMA_TOPIC_ID");
   const topic = input.topics.find((item) => item.topicId === configuredTopicId);
-  const topicStatus = !topic ? "MISSING" : topic.topicName !== "Partner Onboarding" ? "IDENTITY_MISMATCH" : "FOUND";
+  const topicStatus = !topic ? "MISSING" : topic.topicName !== PHASE7B1_EXPECTED_TOPIC_NAME ? "IDENTITY_MISMATCH" : "FOUND";
 
   const production = journeyConfig(input.environment, "");
   const tests = journeyConfig(input.environment, "TEST_");

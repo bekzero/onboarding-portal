@@ -1,6 +1,6 @@
 # Phase 7B.1 — controlled Zoho connection readiness
 
-Status: **offline guardrails implemented; live Zoho verification blocked by missing configuration**
+Status: **offline guardrails implemented; live Zoho verification remains explicitly gated**
 Assessment date: November 6, 2026
 
 No Zoho token request, contact subscription, contact update, journey trigger, journey change, email, cron execution, production database connection, migration, or deployment was performed.
@@ -18,6 +18,115 @@ Phase 7B.1 reuses the Phase 2 OAuth/token manager and API client. It adds only r
 
 The runner loads both `.env.zoho-test.local` and `.env.zoho-readonly.local`. The Phase 7A safety contract must first identify `kzero-onboarding-zoho-testing`; generic production database variables are not accepted as its target.
 
+### Topic ID bootstrap
+
+The full discovery check intentionally requires `ZMA_TOPIC_ID`, but the guarded topic bootstrap does not. It uses Zoho's documented read-only Get Topics endpoint (`GET https://ma.zoho.com/api/v1/topics`) with `ZohoMarketingAutomation.lead.READ`, then requires exactly one case-sensitive topic named `Partner Onboarding`. The returned `topicId` must contain digits only and is retained as a string so a large Zoho identifier is not rounded by JavaScript.
+
+Before any network call, the bootstrap still requires:
+
+- the verified Phase 7A isolated database target and fingerprints;
+- `ZOHO_PHASE7B1_EXPECTED_ORGANIZATION=org859403413`;
+- a non-empty `ZOHO_PHASE7B1_ORGANIZATION_VERIFICATION_REFERENCE` recorded from the approved Zoho organization;
+- the existing OAuth credentials and declared `ZohoMarketingAutomation.lead.READ` scope;
+- `ZOHO_PHASE7B1_READ_ONLY_AUTHORIZATION=I_AUTHORIZE_PHASE7B1_READ_ONLY_ZOHO_CALLS`;
+- the global kill switch enabled and every write/dispatch/nudge feature dormant.
+
+Run the offline gate first:
+
+```powershell
+npm.cmd run check:zoho-phase-7b1-topic-bootstrap
+```
+
+Only after it reports `readyForTopicBootstrap: true`, run the explicitly authorized read-only lookup:
+
+```powershell
+npm.cmd run discover:zoho-phase-7b1-topic
+```
+
+Copy the returned digits into the ignored local file as:
+
+```text
+ZMA_TOPIC_ID=<returned topicId>
+```
+
+Do not include quotes or copy the ID into `.env`, `.env.example`, Vercel production settings, or documentation. The endpoint does not return the organization ID, so the manual organization evidence requirement remains fail-closed; a configured expected-organization string alone is not treated as provider proof.
+
+If the exact topic is not returned, run the sanitized diagnostic:
+
+```powershell
+npm.cmd run diagnose:zoho-phase-7b1-topic
+```
+
+This makes bounded GET requests against both the officially documented `https://ma.zoho.com` host and the standard `https://marketingautomation.zoho.com` API host. It reports only HTTP status, application code/message, top-level response keys, detected topic container, page/topic counts, and exact-match IDs. It does not print OAuth tokens or raw payloads.
+
+The corrected request follows Zoho's documented object-literal parameter shape:
+
+```text
+details={from_index:0,range:100}
+```
+
+Pagination is capped at ten pages of no more than 100 topics each. Parsing supports the documented top-level `topicDetails` property plus `topics`, `topic_details`, and the same properties under `response`. Topic entry identifiers support the documented camel-case names and observed snake-case variants. Resolution still requires exactly one case-sensitive `Partner Onboarding` match with a digits-only ID.
+
+### Mailing-list control diagnostic
+
+Use the documented read-only Get Mailing Lists operation to test whether the OAuth connection can see an expected KZero resource:
+
+```powershell
+npm.cmd run diagnose:zoho-phase-7b1-mailing-list
+```
+
+The operation is strictly allowlisted even though Zoho documents it as a POST. It sends only `resfmt=JSON`, `sort=asc`, `fromindex`, and `range`, uses bounded pagination, and never prints the returned list key.
+
+Live result on November 6, 2026:
+
+```text
+HTTP status: 200
+Application status: error
+Application code: INVALID_OAUTHSCOPE
+Expected list visibility: not tested because Zoho rejected the granted scope
+```
+
+The locally declared `ZOHO_PHASE7B1_OAUTH_SCOPES` is not proof of the token grant. A later forced OAuth refresh provided supported response metadata confirming that the actual token grant contains `ZohoMarketingAutomation.lead.READ`, `ZohoMarketingAutomation.lead.UPDATE`, and `ZohoMarketingAutomation.journey.READ`. The Get Mailing Lists operation nevertheless returned `INVALID_OAUTHSCOPE`. This rules out missing `lead.READ` text in the actual grant, but it does not prove that the grant was bound to the intended Marketing Automation portal.
+
+Offline fingerprint verification established:
+
+```text
+Client ID fingerprint: sha256:9d85fa3fee885a1b
+Refresh token fingerprint: sha256:36596e7108a6bf78
+Effective source: .env.zoho-readonly.local
+Inherited credential overrides: none
+Other local env credential conflicts: none
+Persistent token cache: none
+```
+
+The OAuth refresh succeeds with this client/token pair and returns `api_domain=https://www.zohoapis.com`, but it does not return an organization or portal ID. Zoho documents selecting the target application and portal when generating the Self Client authorization code; no supported refresh-token introspection endpoint was found that independently returns the selected Marketing Automation portal.
+
+#### Controlled separate-token test
+
+Do not replace `.env.zoho-readonly.local`. In the approved US Zoho API Console:
+
+1. Open the intended existing Self Client and verify its displayed Client ID corresponds to the configured client.
+2. Generate a new authorization code with exactly `ZohoMarketingAutomation.lead.READ`.
+3. When Zoho prompts for an application/portal, select the KZero Marketing Automation portal associated with `org859403413`.
+4. Exchange the short-lived code using that same Self Client's Client ID and secret, following Zoho's documented authorization-code flow.
+5. Save the separate Client ID, secret, and newly returned refresh token only in the ignored `.env.zoho-readonly-fallback.local` file. Do not overwrite the primary file.
+6. Copy the non-secret organization evidence, authorization phrase, scope declaration, and dormant safety flags from the primary read-only file into the fallback file if they are not already inherited.
+7. Confirm the fallback fingerprints and absence of inherited conflicts:
+
+```powershell
+npm.cmd run diagnose:zoho-phase-7b1-credentials:fallback
+```
+
+8. Run only the controlled read-only list diagnostic:
+
+```powershell
+npm.cmd run diagnose:zoho-phase-7b1-mailing-list:fallback
+```
+
+If the fallback succeeds, the original grant was bound incorrectly despite containing the scope. If it also returns `INVALID_OAUTHSCOPE`, the strongest remaining causes are Marketing Automation 2.0/v1 API compatibility or an account-level portal role/permission restriction. Escalate both sanitized results, the portal ID, Self Client ID fingerprint, and confirmation of the selected portal to Zoho Support; never send the tokens or client secret.
+
+Zoho's Marketing Automation 2.0 migration guidance says Lists migrate without changes, while Topics need migration to the latest version and become contact-associated rather than legacy list-associated. The public v1 API documentation still describes the older list-associated topic model and does not confirm that `/api/v1/topics` exposes 2.0 topics. If Get Mailing Lists succeeds after correcting the actual OAuth grant but Get Topics still returns zero, record the two sanitized responses and ask Zoho Support whether the v1 Topics API exposes Marketing Automation 2.0 contact topics for this portal.
+
 ## 2. OAuth and organization status
 
 Expected endpoints and organization:
@@ -34,9 +143,9 @@ Current local status:
 
 | Item | Status | Evidence |
 |---|---|---|
-| Client ID | Not configured | Guarded presence check only |
-| Client secret | Not configured | Guarded presence check only |
-| Refresh token | Not configured | Guarded presence check only |
+| Client ID | Configured locally | Guarded presence check only; value not printed |
+| Client secret | Configured locally | Guarded presence check only; value not printed |
+| Refresh token | Configured locally | Guarded presence check only; value not printed |
 | Expected organization | Configured as `org859403413` | Local expectation, not provider proof |
 | Organization evidence | Missing | Manual evidence required |
 | Live OAuth refresh | Not performed | Blocked before network access |
@@ -94,16 +203,13 @@ direct fingerprint: 07ed6439cfe2d7d0
 host kind: remote-isolated
 ```
 
-Current blockers:
+Current full-discovery blockers:
 
-- `ZOHO_CLIENT_ID` missing;
-- `ZOHO_CLIENT_SECRET` missing;
-- `ZOHO_REFRESH_TOKEN` missing;
-- `ZMA_LIST_KEY` missing;
 - `ZMA_TOPIC_ID` missing;
 - `ZOHO_PHASE7B1_ORGANIZATION_VERIFICATION_REFERENCE` missing;
 - exact live read-only authorization phrase absent;
-- no approved internal test recipient configured.
+
+The expected list owner and approved internal test recipient are not yet configured, but those are warnings rather than blockers for the topic bootstrap. The bootstrap itself is blocked only by the missing organization-evidence reference and explicit authorization phrase. OAuth values were checked only for presence and were not printed or transmitted.
 
 All write and automation flags passed the dormant-state check. The runner refused live mode and made no authenticated API call.
 

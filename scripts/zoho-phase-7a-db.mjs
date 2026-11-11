@@ -1,31 +1,47 @@
 import { createHash } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 import { Pool } from "pg";
-import { getPhase7aTarget, safeTargetSummary } from "./zoho-phase-7a-safety.mjs";
+import {
+  getPhase7aTarget,
+  REHEARSAL_ISOLATION_CONFIRMATION,
+  REHEARSAL_RESOURCE_NAME,
+  safeTargetSummary
+} from "./zoho-phase-7a-safety.mjs";
+import {
+  BASELINE_MIGRATIONS,
+  classifyExactMigrationHistory,
+  CURRENT_MIGRATIONS,
+  HISTORICAL_TEST_MIGRATIONS,
+  REHEARSAL_PENDING_MIGRATIONS,
+  assertExactMigrationHistory
+} from "./zoho-phase-7a-migrations.mjs";
 
 const mode = process.argv[2] ?? "preflight";
+const targetProfile = process.argv[3] ?? "test";
 const allowedModes = new Set(["config", "initialize", "preflight", "rehearse", "verify"]);
 if (!allowedModes.has(mode)) throw new Error(`Unknown Phase 7A mode: ${mode}`);
+if (!new Set(["test", "rehearsal"]).has(targetProfile)) throw new Error(`Unknown Phase 7A target profile: ${targetProfile}`);
+if (mode === 'rehearse' && targetProfile !== 'rehearsal') throw new Error('Migration rehearsal is permitted only for the separately verified rehearsal target. The historical 12-migration test database is immutable.');
+if (mode === 'initialize') throw new Error('Empty initialization is retired for these named resources: preserve the historical 12-migration test database and restore the nine-migration production snapshot into the rehearsal database.');
+process.env.ZOHO_PHASE7A_TARGET_PROFILE = targetProfile;
 
-const ZOHO_MIGRATIONS = [
-  "20261104150000_add_zoho_phase_1a_foundation",
-  "20261104210000_add_zoho_phase_4_dispatcher",
-  "20261105120000_add_zoho_phase_5_nudge_engine"
-];
-const REPOSITORY_MIGRATIONS = [
-  "20260617185715_init",
-  "20260617194303_add_admin_reporting_fields",
-  "20260617194747_add_onboarding_plan_reporting_fields",
-  "20260619110000_add_first_customer_pilot_fields",
-  "20260625143000_add_admin_notifications",
-  "20260703120000_add_msp_enrollment_date",
-  "20260713120000_add_msp_gmm_partner_flag",
-  "20260715120000_add_customer_name_to_onboarding_plan",
-  "20260715153000_add_document_storage_fields",
-  ...ZOHO_MIGRATIONS
-];
-const BASELINE_LAST_MIGRATION = "20260715153000_add_document_storage_fields";
+const MIGRATIONS_DIRECTORY = join(process.cwd(), "prisma", "migrations");
+
+function repositoryMigrationManifest() {
+  const directories = readdirSync(MIGRATIONS_DIRECTORY, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+  if (JSON.stringify(directories) !== JSON.stringify(CURRENT_MIGRATIONS)) {
+    throw new Error("Repository migration directories do not exactly match the approved 13-migration manifest.");
+  }
+  return Object.fromEntries(CURRENT_MIGRATIONS.map((name) => {
+    const sql = readFileSync(join(MIGRATIONS_DIRECTORY, name, "migration.sql"));
+    return [name, createHash("sha256").update(sql).digest("hex")];
+  }));
+}
+
+const migrationManifest = repositoryMigrationManifest();
 
 const protectedTables = {
   msps: ['id','name','slug','primaryContactEmail','assignedSalesEngineer','accessMode','enrollmentDate','isGmmPartner','createdAt','updatedAt'],
@@ -95,7 +111,7 @@ async function inspect(pool) {
     }
     const migrations = migrationTable.rows[0].exists
       ? await client.query(`
-          SELECT migration_name, finished_at, rolled_back_at
+          SELECT migration_name, checksum, finished_at, rolled_back_at
           FROM "_prisma_migrations"
           ORDER BY started_at, migration_name
         `)
@@ -108,6 +124,7 @@ async function inspect(pool) {
       migrationTableExists: migrationTable.rows[0].exists,
       migrationHistory: migrations.rows.map((row) => ({
         migrationName: row.migration_name,
+        checksum: row.checksum,
         applied: Boolean(row.finished_at && !row.rolled_back_at),
         failed: Boolean(!row.finished_at && !row.rolled_back_at),
         rolledBack: Boolean(row.rolled_back_at)
@@ -124,23 +141,20 @@ async function inspect(pool) {
   }
 }
 
-function assertBaseline(info, expectedState) {
-  if (info.failed.length) throw new Error(`Database has ${info.failed.length} unfinished migration(s).`);
-  if (!info.applied.includes(BASELINE_LAST_MIGRATION)) throw new Error(`Required baseline migration ${BASELINE_LAST_MIGRATION} is not applied.`);
-  const present = ZOHO_MIGRATIONS.filter((migration) => info.applied.includes(migration));
-  if (expectedState === 'before') {
-    if (present.length) throw new Error(`Rehearsal target already has ${present.length} Zoho migration(s); restore a fresh baseline snapshot.`);
-    if (info.applied.at(-1) !== BASELINE_LAST_MIGRATION) throw new Error('The restored database has unexpected migrations after the approved baseline.');
+function assertMigrationChecksums(info) {
+  for (const entry of info.migrationHistory) {
+    const expected = migrationManifest[entry.migrationName];
+    if (!expected) throw new Error(`Unexpected migration record: ${entry.migrationName}.`);
+    if (entry.checksum !== expected) throw new Error(`Migration integrity check failed for ${entry.migrationName}.`);
   }
-  if (expectedState === 'after') {
-    if (present.length !== ZOHO_MIGRATIONS.length) throw new Error(`Expected all ${ZOHO_MIGRATIONS.length} Zoho migrations, found ${present.length}.`);
-    if (JSON.stringify(info.applied.slice(-ZOHO_MIGRATIONS.length)) !== JSON.stringify(ZOHO_MIGRATIONS)) {
-      throw new Error('Zoho migrations were not applied in the approved dependency order.');
-    }
-    if (JSON.stringify(info.applied) !== JSON.stringify(REPOSITORY_MIGRATIONS)) {
-      throw new Error(`Expected exactly ${REPOSITORY_MIGRATIONS.length} successful repository migrations in dependency order.`);
-    }
-  }
+}
+
+function assertRecognizedPreflightHistory(info, profile) {
+  const classification = classifyExactMigrationHistory(info);
+  const allowed = profile === 'test' ? new Set(['empty', 'historical12']) : new Set(['empty', 'baseline9', 'current13']);
+  if (!allowed.has(classification)) throw new Error(`The ${profile} target has unsupported migration history: ${classification}.`);
+  if (classification !== 'empty') assertMigrationChecksums(info);
+  return classification;
 }
 
 function run(command, args, env, allowedStatuses = [0]) {
@@ -151,10 +165,13 @@ function run(command, args, env, allowedStatuses = [0]) {
 }
 
 const target = getPhase7aTarget({
-  requireBackup: mode === 'rehearse',
-  requireEmptyInitialization: mode === 'initialize'
+  requireBackup: targetProfile === 'rehearsal' && ['rehearse', 'verify'].includes(mode),
+  requireEmptyInitialization: mode === 'initialize',
+  requireRehearsalMigrationApproval: mode === 'rehearse',
+  expectedResourceName: targetProfile === 'rehearsal' ? REHEARSAL_RESOURCE_NAME : undefined,
+  expectedIsolationConfirmation: targetProfile === 'rehearsal' ? REHEARSAL_ISOLATION_CONFIRMATION : undefined
 });
-console.log(JSON.stringify({ phase: '7A', mode, target: safeTargetSummary(target) }, null, 2));
+console.log(JSON.stringify({ phase: '7A', mode, targetProfile, target: safeTargetSummary(target) }, null, 2));
 
 if (mode === 'config') {
   console.log(JSON.stringify({ connected: false, configurationValid: true }, null, 2));
@@ -197,7 +214,8 @@ try {
       });
       pool = new Pool({ connectionString: target.connectionString, max: 4 });
       const initialized = await inspect(pool);
-      assertBaseline(initialized, 'after');
+      assertExactMigrationHistory(initialized, 'current13');
+      assertMigrationChecksums(initialized);
       console.log(JSON.stringify({
         initialized: true,
         appliedMigrationCount: initialized.applied.length,
@@ -205,7 +223,8 @@ try {
       }, null, 2));
       process.exitCode = 0;
     } else {
-      const zohoApplied = ZOHO_MIGRATIONS.filter((migration) => beforeInfo.applied.includes(migration));
+      const historyProfile = assertRecognizedPreflightHistory(beforeInfo, targetProfile);
+      const pendingApplied = REHEARSAL_PENDING_MIGRATIONS.filter((migration) => beforeInfo.applied.includes(migration));
     const applicationTables = beforeInfo.tables.filter((table) => table.name !== '_prisma_migrations');
     console.log(JSON.stringify({
       identity: {
@@ -223,14 +242,16 @@ try {
       applicationDataEmpty: applicationTables.every((table) => !table.hasRows),
       appliedMigrationCount: beforeInfo.applied.length,
       failedMigrationCount: beforeInfo.failed.length,
-      repositoryMigrationHistoryMatches: JSON.stringify(beforeInfo.applied) === JSON.stringify(REPOSITORY_MIGRATIONS),
-      baselinePresent: beforeInfo.applied.includes(BASELINE_LAST_MIGRATION),
-      zohoMigrationsApplied: zohoApplied
+      migrationHistoryProfile: historyProfile,
+      repositoryMigrationHistoryMatches: JSON.stringify(beforeInfo.applied) === JSON.stringify(CURRENT_MIGRATIONS),
+      baselinePresent: BASELINE_MIGRATIONS.every((migration) => beforeInfo.applied.includes(migration)),
+      pendingMigrationsApplied: pendingApplied
     }, null, 2));
     process.exitCode = 0;
     }
   } else if (mode === 'verify') {
-    assertBaseline(beforeInfo, 'after');
+    assertExactMigrationHistory(beforeInfo, targetProfile === 'test' ? 'historical12' : 'current13');
+    assertMigrationChecksums(beforeInfo);
     run('node', ['scripts/verify-zoho-phase-1a.mjs'], {
       ...process.env,
       DATABASE_URL: target.connectionString,
@@ -240,7 +261,8 @@ try {
     }, [0, 2]);
     run('node', ['--test', 'tests/zoho-phase-7a-db.test.mjs'], process.env);
   } else {
-    assertBaseline(beforeInfo, 'before');
+    assertExactMigrationHistory(beforeInfo, 'baseline9');
+    assertMigrationChecksums(beforeInfo);
     const before = await snapshot(pool);
     await pool.end();
     pool = null;
@@ -249,10 +271,16 @@ try {
     const migrationDurationMs = Date.now() - startedAt;
     pool = new Pool({ connectionString: target.connectionString, max: 4 });
     const afterInfo = await inspect(pool);
-    assertBaseline(afterInfo, 'after');
+    assertExactMigrationHistory(afterInfo, 'current13');
+    assertMigrationChecksums(afterInfo);
     const after = await snapshot(pool);
     const differences = compareSnapshots(before, after);
-    console.log(JSON.stringify({ migrationDurationMs, protectedStateDifferences: differences, protectedTableCounts: Object.fromEntries(Object.entries(after).map(([table, value]) => [table, value.count])) }, null, 2));
+    console.log(JSON.stringify({
+      migrationDurationMs,
+      protectedStateDifferences: differences,
+      protectedBaselineSnapshot: before,
+      protectedPostMigrationSnapshot: after,
+    }, null, 2));
     if (differences.length) throw new Error('Protected pre/post migration state differs. Stop and investigate; do not continue toward production.');
     run('node', ['scripts/verify-zoho-phase-1a.mjs'], {
       ...process.env,

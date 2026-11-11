@@ -44,6 +44,13 @@ type TokenCache = {
   expiresAt: number;
 };
 
+export type ZohoOAuthRefreshDiagnostic = {
+  apiDomain: string | null;
+  grantedScope: string | null;
+  responseKeys: string[];
+  tokenType: string | null;
+};
+
 function sanitizeProviderMessage(value: unknown) {
   if (typeof value !== "string") return "Zoho returned an error.";
   return value.replace(/(token|secret|authorization)\s*[:=]\s*[^\s,]+/gi, "$1=[redacted]").slice(0, 300);
@@ -94,6 +101,7 @@ function requireOAuthConfig(config: ZohoOAuthConfig) {
 
 export class ZohoOAuthTokenManager {
   private cache: TokenCache | null = null;
+  private lastRefreshDiagnostic: ZohoOAuthRefreshDiagnostic | null = null;
   private refreshPromise: Promise<string> | null = null;
 
   constructor(
@@ -105,6 +113,10 @@ export class ZohoOAuthTokenManager {
 
   invalidate() {
     this.cache = null;
+  }
+
+  getLastRefreshDiagnostic() {
+    return this.lastRefreshDiagnostic;
   }
 
   async getAccessToken(forceRefresh = false) {
@@ -156,6 +168,14 @@ export class ZohoOAuthTokenManager {
       accessToken,
       expiresAt: this.now() + (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000
     };
+    this.lastRefreshDiagnostic = {
+      apiDomain: typeof record.api_domain === "string" ? record.api_domain : null,
+      grantedScope: typeof record.scope === "string" ? record.scope : null,
+      responseKeys: Object.keys(record)
+        .filter((key) => !/token|secret|authorization/i.test(key))
+        .sort(),
+      tokenType: typeof record.token_type === "string" ? record.token_type : null
+    };
     return accessToken;
   }
 }
@@ -166,15 +186,15 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 function providerCode(payload: unknown) {
   if (!isRecord(payload)) return undefined;
-  const direct = payload.code;
-  const nested = isRecord(payload.response) ? payload.response.code : undefined;
+  const direct = payload.code ?? payload.Code;
+  const nested = isRecord(payload.response) ? payload.response.code ?? payload.response.Code : undefined;
   return direct === undefined && nested === undefined ? undefined : String(direct ?? nested);
 }
 
 function providerMessage(payload: unknown) {
   if (!isRecord(payload)) return undefined;
-  const direct = payload.message;
-  const nested = isRecord(payload.response) ? payload.response.message : undefined;
+  const direct = payload.message ?? payload.Message;
+  const nested = isRecord(payload.response) ? payload.response.message ?? payload.response.Message : undefined;
   return typeof (direct ?? nested) === "string" ? String(direct ?? nested) : undefined;
 }
 
@@ -189,6 +209,7 @@ function classifyProviderError(response: Response, payload: unknown): ZohoApiErr
   };
 
   if (response.status === 401 || code === "401") return new ZohoApiError(message, "UNAUTHORIZED", options);
+  if (code === "INVALID_OAUTHSCOPE") return new ZohoApiError("Zoho rejected the OAuth scope.", "UNAUTHORIZED", options);
   if (response.status === 429 || code === "2008") return new ZohoApiError(message, "RATE_LIMIT", options);
   if (["2501", "2502"].includes(code ?? "")) return new ZohoApiError(message, "INVALID_LIST", options);
   if (code === "2004" || code === "5004") return new ZohoApiError(message, "INVALID_EMAIL", options);
@@ -218,10 +239,29 @@ export type ZohoMailingList = {
   owner: string | null;
 };
 
+export type ZohoMailingListsPageDiagnostic = {
+  code: string | null;
+  containerKey: string | null;
+  httpStatus: number;
+  listCount: number;
+  message: string | null;
+  status: string | null;
+  topLevelKeys: string[];
+};
+
 export type ZohoTopic = {
   primaryList: string | null;
   topicId: string;
   topicName: string;
+};
+
+export type ZohoTopicsPageDiagnostic = {
+  code: string | null;
+  containerKey: string | null;
+  httpStatus: number;
+  message: string | null;
+  topicCount: number;
+  topLevelKeys: string[];
 };
 
 export type ZohoJourney = {
@@ -306,11 +346,27 @@ export function parseLeadFields(payload: unknown): ZohoLeadField[] {
   });
 }
 
+function mailingListCollection(payload: unknown) {
+  if (!isRecord(payload)) return { containerKey: null, items: null };
+  const response = isRecord(payload.response) ? payload.response : null;
+  const candidates: Array<[string, unknown]> = [
+    ["list_of_details", payload.list_of_details],
+    ["lists", payload.lists],
+    ["response.list_of_details", response?.list_of_details],
+    ["response.lists", response?.lists]
+  ];
+  const match = candidates.find(([, candidate]) => Array.isArray(candidate));
+  return match
+    ? { containerKey: match[0], items: match[1] as unknown[] }
+    : { containerKey: null, items: null };
+}
+
 export function parseMailingLists(payload: unknown): ZohoMailingList[] {
-  if (!isRecord(payload) || !Array.isArray(payload.list_of_details)) {
+  const collection = mailingListCollection(payload);
+  if (!collection.items) {
     throw new ZohoApiError("Zoho mailing-list response has no list details.", "INVALID_RESPONSE");
   }
-  return payload.list_of_details.map((item) => {
+  return collection.items.map((item) => {
     if (!isRecord(item) || typeof item.listkey !== "string" || typeof item.listname !== "string") {
       throw new ZohoApiError("Zoho returned an invalid mailing-list entry.", "INVALID_RESPONSE");
     }
@@ -329,20 +385,73 @@ export function parseMailingLists(payload: unknown): ZohoMailingList[] {
   });
 }
 
+export function buildMailingListsPageDiagnostic(
+  payload: unknown,
+  httpStatus: number
+): ZohoMailingListsPageDiagnostic {
+  const record = isRecord(payload) ? payload : {};
+  const collection = mailingListCollection(payload);
+  return {
+    code: record.code === undefined && record.Code === undefined ? null : String(record.code ?? record.Code),
+    containerKey: collection.containerKey,
+    httpStatus,
+    listCount: collection.items?.length ?? 0,
+    message: typeof (record.message ?? record.Message) === "string"
+      ? sanitizeProviderMessage(String(record.message ?? record.Message))
+      : null,
+    status: typeof record.status === "string" ? sanitizeProviderMessage(record.status) : null,
+    topLevelKeys: Object.keys(record).sort()
+  };
+}
+
+function topicCollection(payload: unknown) {
+  if (!isRecord(payload)) return { containerKey: null, items: null };
+  const response = isRecord(payload.response) ? payload.response : null;
+  const candidates: Array<[string, unknown]> = [
+    ["topicDetails", payload.topicDetails],
+    ["topics", payload.topics],
+    ["topic_details", payload.topic_details],
+    ["response.topicDetails", response?.topicDetails],
+    ["response.topics", response?.topics],
+    ["response.topic_details", response?.topic_details]
+  ];
+  const match = candidates.find(([, candidate]) => Array.isArray(candidate));
+  return match
+    ? { containerKey: match[0], items: match[1] as unknown[] }
+    : { containerKey: null, items: null };
+}
+
 export function parseTopics(payload: unknown): ZohoTopic[] {
-  if (!isRecord(payload) || !Array.isArray(payload.topicDetails)) {
+  const collection = topicCollection(payload);
+  if (!collection.items) {
     throw new ZohoApiError("Zoho topic response has no topic details.", "INVALID_RESPONSE");
   }
-  return payload.topicDetails.map((item) => {
-    if (!isRecord(item) || item.topicId === undefined || typeof item.topicName !== "string") {
+  return collection.items.map((item) => {
+    const topicId = isRecord(item) ? item.topicId ?? item.topic_id : undefined;
+    const topicName = isRecord(item) ? item.topicName ?? item.topic_name : undefined;
+    const primaryList = isRecord(item) ? item.primaryList ?? item.primary_list : undefined;
+    if (!isRecord(item) || topicId === undefined || typeof topicName !== "string") {
       throw new ZohoApiError("Zoho returned an invalid topic entry.", "INVALID_RESPONSE");
     }
     return {
-      primaryList: item.primaryList === undefined || item.primaryList === null ? null : String(item.primaryList),
-      topicId: String(item.topicId),
-      topicName: item.topicName
+      primaryList: primaryList === undefined || primaryList === null ? null : String(primaryList),
+      topicId: String(topicId),
+      topicName
     };
   });
+}
+
+export function buildTopicsPageDiagnostic(payload: unknown, httpStatus: number): ZohoTopicsPageDiagnostic {
+  const record = isRecord(payload) ? payload : {};
+  const collection = topicCollection(payload);
+  return {
+    code: record.code === undefined ? null : String(record.code),
+    containerKey: collection.containerKey,
+    httpStatus,
+    message: typeof record.message === "string" ? sanitizeProviderMessage(record.message) : null,
+    topicCount: collection.items?.length ?? 0,
+    topLevelKeys: Object.keys(record).sort()
+  };
 }
 
 export function parseJourneys(payload: unknown): ZohoJourney[] {
@@ -405,12 +514,13 @@ export class ZohoApiClientCore {
     private readonly timeoutMs = 10_000
   ) {}
 
-  private async request(
+  private async requestResult(
     path: string,
     init: RequestInit = {},
     allowAuthRetry = true,
-    baseUrl = ZOHO_API_BASE_URL
-  ): Promise<unknown> {
+    baseUrl = ZOHO_API_BASE_URL,
+    acceptProviderError = false
+  ): Promise<{ payload: unknown; status: number }> {
     const accessToken = await this.tokenManager.getAccessToken();
     const response = await fetchWithTimeout(
       this.fetchImpl,
@@ -430,12 +540,21 @@ export class ZohoApiClientCore {
     if ((response.status === 401 || code === "401") && allowAuthRetry) {
       this.tokenManager.invalidate();
       await this.tokenManager.getAccessToken(true);
-      return this.request(path, init, false, baseUrl);
+      return this.requestResult(path, init, false, baseUrl, acceptProviderError);
     }
-    if (!response.ok || (code && !["0", "200"].includes(code))) {
+    if (!acceptProviderError && (!response.ok || (code && !["0", "200"].includes(code)))) {
       throw classifyProviderError(response, payload);
     }
-    return payload;
+    return { payload, status: response.status };
+  }
+
+  private async request(
+    path: string,
+    init: RequestInit = {},
+    allowAuthRetry = true,
+    baseUrl = ZOHO_API_BASE_URL
+  ): Promise<unknown> {
+    return (await this.requestResult(path, init, allowAuthRetry, baseUrl)).payload;
   }
 
   async getAllLeadFields() {
@@ -451,20 +570,117 @@ export class ZohoApiClientCore {
     return parseJourneys(payload);
   }
 
-  async getMailingLists() {
-    const body = new URLSearchParams({ fromindex: "1", range: "200", resfmt: "JSON", sort: "asc" });
-    const payload = await this.request("/api/v1/getmailinglists", {
-      body,
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      method: "POST"
+  async inspectMailingListsPage(input: { fromIndex: number; range: number }) {
+    const body = new URLSearchParams({
+      fromindex: String(input.fromIndex),
+      range: String(input.range),
+      resfmt: "JSON",
+      sort: "asc"
     });
-    return parseMailingLists(payload);
+    const result = await this.requestResult(
+      "/api/v1/getmailinglists",
+      {
+        body,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST"
+      },
+      true,
+      ZOHO_API_BASE_URL,
+      true
+    );
+    const diagnostic = buildMailingListsPageDiagnostic(result.payload, result.status);
+    const code = providerCode(result.payload);
+    if (code && !["0", "200"].includes(code)) {
+      const providerError = classifyProviderError(new Response(null, { status: result.status }), result.payload);
+      return {
+        diagnostic,
+        lists: null,
+        parseError: { kind: providerError.kind, message: providerError.message }
+      };
+    }
+    try {
+      return { diagnostic, lists: parseMailingLists(result.payload), parseError: null };
+    } catch (error) {
+      return {
+        diagnostic,
+        lists: null,
+        parseError: error instanceof ZohoApiError ? {
+          kind: error.kind,
+          message: error.message
+        } : { kind: "UNEXPECTED", message: "The mailing-list response could not be parsed." }
+      };
+    }
+  }
+
+  async getMailingListsPage(input: { fromIndex: number; range: number }) {
+    const result = await this.inspectMailingListsPage(input);
+    if (!result.lists) {
+      throw new ZohoApiError(result.parseError?.message ?? "Zoho mailing-list response is invalid.", "INVALID_RESPONSE");
+    }
+    return { diagnostic: result.diagnostic, lists: result.lists };
+  }
+
+  async discoverMailingLists(input: { maxPages?: number; pageSize?: number } = {}) {
+    const maxPages = Math.min(Math.max(input.maxPages ?? 10, 1), 10);
+    const pageSize = Math.min(Math.max(input.pageSize ?? 100, 1), 100);
+    const lists = new Map<string, ZohoMailingList>();
+    const pages: ZohoMailingListsPageDiagnostic[] = [];
+
+    for (let page = 0; page < maxPages; page += 1) {
+      const result = await this.getMailingListsPage({
+        fromIndex: 1 + page * pageSize,
+        range: pageSize
+      });
+      pages.push(result.diagnostic);
+      result.lists.forEach((list) => lists.set(list.listKey, list));
+      if (result.lists.length < pageSize) return { lists: [...lists.values()], pages };
+    }
+
+    throw new ZohoApiError("Zoho mailing-list discovery exceeded the bounded pagination limit.", "INVALID_RESPONSE");
+  }
+
+  async getMailingLists() {
+    return (await this.discoverMailingLists()).lists;
+  }
+
+  async getTopicsPage(input: { baseUrl?: string; fromIndex: number; range: number }) {
+    const details = encodeURIComponent(`{from_index:${input.fromIndex},range:${input.range}}`);
+    const result = await this.requestResult(
+      `/api/v1/topics?details=${details}`,
+      {},
+      true,
+      input.baseUrl ?? ZOHO_TOPICS_API_BASE_URL
+    );
+    return {
+      diagnostic: buildTopicsPageDiagnostic(result.payload, result.status),
+      topics: parseTopics(result.payload)
+    };
+  }
+
+  async discoverTopics(input: { baseUrl?: string; maxPages?: number; pageSize?: number } = {}) {
+    const maxPages = Math.min(Math.max(input.maxPages ?? 10, 1), 10);
+    const pageSize = Math.min(Math.max(input.pageSize ?? 100, 1), 100);
+    const pages: ZohoTopicsPageDiagnostic[] = [];
+    const topics = new Map<string, ZohoTopic>();
+
+    for (let page = 0; page < maxPages; page += 1) {
+      const result = await this.getTopicsPage({
+        baseUrl: input.baseUrl,
+        fromIndex: page * pageSize,
+        range: pageSize
+      });
+      pages.push(result.diagnostic);
+      result.topics.forEach((topic) => topics.set(topic.topicId, topic));
+      if (result.topics.length < pageSize) {
+        return { pages, topics: [...topics.values()] };
+      }
+    }
+
+    throw new ZohoApiError("Zoho topic discovery exceeded the bounded pagination limit.", "INVALID_RESPONSE");
   }
 
   async getTopics() {
-    const details = encodeURIComponent(JSON.stringify({ from_index: 0, range: 200 }));
-    const payload = await this.request(`/api/v1/topics?details=${details}`, {}, true, ZOHO_TOPICS_API_BASE_URL);
-    return parseTopics(payload);
+    return (await this.discoverTopics()).topics;
   }
 
   async getListLeads(input: {

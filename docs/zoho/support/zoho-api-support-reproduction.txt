@@ -1,0 +1,527 @@
+KZero Passwordless - Zoho Marketing Automation API support reproduction
+Prepared: 2026-11-09
+Classification: Sanitized technical reproduction for Zoho One Support review
+
+IMPORTANT SECURITY NOTE
+=======================
+
+This package contains no usable credentials. Values in angle brackets are placeholders.
+Do not request that secrets or tokens be added to this file. The reproduction performs
+read-only discovery only: OAuth token refresh, Get Mailing Lists, and Get Topics. It does
+not subscribe contacts, modify lists/topics, trigger journeys, or send email.
+
+A. ENVIRONMENT
+==============
+
+Application: KZero Passwordless onboarding portal
+Runtime observed while preparing this package: Node.js v24.22.2
+HTTP implementation: Node.js built-in WHATWG fetch, URLSearchParams, AbortController
+Zoho data center: United States
+OAuth host: https://accounts.zoho.com
+Marketing Automation API host: https://marketingautomation.zoho.com
+Documented Topics API host used by the integration: https://ma.zoho.com
+Expected Marketing Automation organization: org859403413
+Organization-binding status: expected/configured, but not independently proven by either
+  API response because these responses do not include a portal/organization identifier
+Zoho product generation shown in the UI: Zoho Marketing Automation 2.0
+API version under test: Marketing Automation API v1
+Application source revision inspected: c4cf367965f12ebf5c608bdfb888c0361a20ac2b
+
+B. INTENDED FUNCTIONALITY
+========================
+
+The onboarding portal is intended to:
+
+1. Retrieve existing mailing lists.
+2. Retrieve existing topic IDs.
+3. Verify the existing Zoho custom contact fields.
+4. In a later, separately approved phase, synchronize onboarding contact information.
+5. In a later, separately approved phase, initiate approved onboarding journeys.
+
+The current failure occurs during read-only configuration discovery, before any contact
+write, list subscription, topic modification, or journey trigger.
+
+C. OAUTH IMPLEMENTATION
+=======================
+
+The server uses the OAuth refresh-token grant. It sends the client ID, client secret,
+grant type, and refresh token as application/x-www-form-urlencoded data to the US Accounts
+endpoint. The returned access token is cached in server memory until 60 seconds before
+expiry. A 401 response invalidates the cache and causes one forced refresh/retry.
+
+The original refresh response reported these actual granted scopes:
+
+- ZohoMarketingAutomation.lead.READ
+- ZohoMarketingAutomation.lead.UPDATE
+- ZohoMarketingAutomation.journey.READ
+
+This scope value came from the OAuth refresh response, not merely from local configuration.
+A second independently generated refresh token also produced INVALID_OAUTHSCOPE for Get
+Mailing Lists, but the second token's actual granted scopes have not been independently
+verified. The OAuth refresh response did not provide a Marketing Automation organization ID.
+
+Exact sanitized excerpt from lib/zoho-api-core.ts (credentials remain runtime values):
+
+----- BEGIN CURRENT OAUTH EXCERPT -----
+export const ZOHO_API_BASE_URL = "https://marketingautomation.zoho.com";
+export const ZOHO_ACCOUNTS_BASE_URL = "https://accounts.zoho.com";
+export const ZOHO_TOPICS_API_BASE_URL = "https://ma.zoho.com";
+export const ZOHO_ORGANIZATION_ID = "org859403413";
+
+async getAccessToken(forceRefresh = false) {
+  if (!forceRefresh && this.cache && this.cache.expiresAt - 60_000 > this.now()) {
+    return this.cache.accessToken;
+  }
+  if (this.refreshPromise) return this.refreshPromise;
+
+  this.refreshPromise = this.refreshAccessToken();
+  try {
+    return await this.refreshPromise;
+  } finally {
+    this.refreshPromise = null;
+  }
+}
+
+private async refreshAccessToken() {
+  requireOAuthConfig(this.config);
+  const body = new URLSearchParams({
+    client_id: this.config.clientId,
+    client_secret: this.config.clientSecret,
+    grant_type: "refresh_token",
+    refresh_token: this.config.refreshToken
+  });
+  const response = await fetchWithTimeout(
+    this.fetchImpl,
+    `${ZOHO_ACCOUNTS_BASE_URL}/oauth/v2/token`,
+    {
+      body,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST"
+    },
+    this.timeoutMs
+  );
+  const payload = await parseJsonResponse(response);
+  const record = isRecord(payload) ? payload : {};
+  const accessToken = typeof record.access_token === "string" ? record.access_token : "";
+  const expiresIn = Number(record.expires_in ?? 3600);
+
+  if (!response.ok || !accessToken) {
+    throw new ZohoApiError(
+      sanitizeProviderMessage(record.error_description ?? record.error ?? "Zoho OAuth refresh failed."),
+      "OAUTH",
+      { status: response.status }
+    );
+  }
+
+  this.cache = {
+    accessToken,
+    expiresAt: this.now() + (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000
+  };
+  this.lastRefreshDiagnostic = {
+    apiDomain: typeof record.api_domain === "string" ? record.api_domain : null,
+    grantedScope: typeof record.scope === "string" ? record.scope : null,
+    responseKeys: Object.keys(record)
+      .filter((key) => !/token|secret|authorization/i.test(key))
+      .sort(),
+    tokenType: typeof record.token_type === "string" ? record.token_type : null
+  };
+  return accessToken;
+}
+----- END CURRENT OAUTH EXCERPT -----
+
+The shared request method attaches the token as follows:
+
+----- BEGIN CURRENT AUTHENTICATED REQUEST EXCERPT -----
+const accessToken = await this.tokenManager.getAccessToken();
+const response = await fetchWithTimeout(
+  this.fetchImpl,
+  `${baseUrl}${path}`,
+  {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Zoho-oauthtoken ${accessToken}`
+    }
+  },
+  this.timeoutMs
+);
+const payload = await parseJsonResponse(response);
+----- END CURRENT AUTHENTICATED REQUEST EXCERPT -----
+
+The actual Authorization header value is intentionally not included in this package.
+
+D. GET MAILING LISTS REQUEST
+============================
+
+Method: POST
+URL: https://marketingautomation.zoho.com/api/v1/getmailinglists
+Headers:
+  Authorization: Zoho-oauthtoken <ACCESS_TOKEN_REDACTED>
+  Content-Type: application/x-www-form-urlencoded
+Form parameters on the first page:
+  fromindex=1
+  range=100
+  resfmt=JSON
+  sort=asc
+
+The POST is a read-only operation according to the Zoho API documentation. Pagination is
+bounded to at most 10 pages and at most 100 entries per page.
+
+Exact excerpt from the current implementation:
+
+----- BEGIN CURRENT MAILING-LIST EXCERPT -----
+async inspectMailingListsPage(input: { fromIndex: number; range: number }) {
+  const body = new URLSearchParams({
+    fromindex: String(input.fromIndex),
+    range: String(input.range),
+    resfmt: "JSON",
+    sort: "asc"
+  });
+  const result = await this.requestResult(
+    "/api/v1/getmailinglists",
+    {
+      body,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      method: "POST"
+    },
+    true,
+    ZOHO_API_BASE_URL,
+    true
+  );
+  const diagnostic = buildMailingListsPageDiagnostic(result.payload, result.status);
+  const code = providerCode(result.payload);
+  if (code && !["0", "200"].includes(code)) {
+    const providerError = classifyProviderError(
+      new Response(null, { status: result.status }),
+      result.payload
+    );
+    return {
+      diagnostic,
+      lists: null,
+      parseError: { kind: providerError.kind, message: providerError.message }
+    };
+  }
+  try {
+    return { diagnostic, lists: parseMailingLists(result.payload), parseError: null };
+  } catch (error) {
+    return {
+      diagnostic,
+      lists: null,
+      parseError: error instanceof ZohoApiError
+        ? { kind: error.kind, message: error.message }
+        : { kind: "UNEXPECTED", message: "The mailing-list response could not be parsed." }
+    };
+  }
+}
+----- END CURRENT MAILING-LIST EXCERPT -----
+
+The parser accepts list arrays at list_of_details, lists, response.list_of_details, or
+response.lists. It reads listkey, listname, is_public, and owner. The diagnostic records
+only HTTP status, application status/code/message, top-level keys, container name, and count.
+
+E. GET TOPICS REQUEST
+=====================
+
+Method: GET
+Primary URL:
+  https://ma.zoho.com/api/v1/topics?details=%7Bfrom_index%3A0%2Crange%3A100%7D
+Comparison host also tested:
+  https://marketingautomation.zoho.com/api/v1/topics?details=%7Bfrom_index%3A0%2Crange%3A100%7D
+Headers:
+  Authorization: Zoho-oauthtoken <ACCESS_TOKEN_REDACTED>
+Query parameter before URL encoding:
+  details={from_index:0,range:100}
+
+Pagination is bounded to at most 10 pages and at most 100 entries per page.
+
+Exact excerpt from the current implementation:
+
+----- BEGIN CURRENT TOPICS EXCERPT -----
+async getTopicsPage(input: { baseUrl?: string; fromIndex: number; range: number }) {
+  const details = encodeURIComponent(`{from_index:${input.fromIndex},range:${input.range}}`);
+  const result = await this.requestResult(
+    `/api/v1/topics?details=${details}`,
+    {},
+    true,
+    input.baseUrl ?? ZOHO_TOPICS_API_BASE_URL
+  );
+  return {
+    diagnostic: buildTopicsPageDiagnostic(result.payload, result.status),
+    topics: parseTopics(result.payload)
+  };
+}
+
+async discoverTopics(input: { baseUrl?: string; maxPages?: number; pageSize?: number } = {}) {
+  const maxPages = Math.min(Math.max(input.maxPages ?? 10, 1), 10);
+  const pageSize = Math.min(Math.max(input.pageSize ?? 100, 1), 100);
+  const pages: ZohoTopicsPageDiagnostic[] = [];
+  const topics = new Map<string, ZohoTopic>();
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await this.getTopicsPage({
+      baseUrl: input.baseUrl,
+      fromIndex: page * pageSize,
+      range: pageSize
+    });
+    pages.push(result.diagnostic);
+    result.topics.forEach((topic) => topics.set(topic.topicId, topic));
+    if (result.topics.length < pageSize) {
+      return { pages, topics: [...topics.values()] };
+    }
+  }
+
+  throw new ZohoApiError(
+    "Zoho topic discovery exceeded the bounded pagination limit.",
+    "INVALID_RESPONSE"
+  );
+}
+----- END CURRENT TOPICS EXCERPT -----
+
+The topic parser accepts topicDetails, topics, topic_details, and the same properties under
+response. It accepts topicId/topic_id, topicName/topic_name, and primaryList/primary_list.
+The exact case-sensitive target name is "Partner Onboarding".
+
+F. ACTUAL SANITIZED RESULTS
+===========================
+
+Get Mailing Lists:
+
+  HTTP status: 200
+  Zoho application status: error
+  Zoho application code: INVALID_OAUTHSCOPE
+  Normalized sanitized fields retained by the diagnostic (not a claim about the raw
+  response property's capitalization):
+    {
+      "status": "error",
+      "code": "INVALID_OAUTHSCOPE"
+    }
+
+No additional error message is asserted here because no verified exact message was retained
+in the diagnostic evidence supplied for this package.
+
+Get Topics, using both https://ma.zoho.com and
+https://marketingautomation.zoho.com:
+
+  HTTP status: 200
+  Zoho application code: 200
+  Message: Success
+  topicDetails: []
+  Sanitized response shape:
+    {
+      "code": 200,
+      "message": "Success",
+      "topicDetails": []
+    }
+
+The Marketing Automation 2.0 UI visibly contains exactly these two topics at the time of
+manual inspection:
+
+1. Partner Onboarding (0 contacts)
+2. Marketing (0 contacts)
+
+The expected mailing list is "KZero Partner Onboarding". Its API visibility and privacy
+could not be verified because Get Mailing Lists returned INVALID_OAUTHSCOPE.
+
+G. EXPECTED RESULTS
+===================
+
+1. Get Mailing Lists accepts the granted lead.READ permission and returns the existing
+   "KZero Partner Onboarding" mailing list.
+2. Get Topics returns the existing "Partner Onboarding" topic and its real numeric topic ID.
+3. The documented read-only APIs accept a valid OAuth grant associated with the intended
+   KZero Marketing Automation portal.
+
+H. TROUBLESHOOTING COMPLETED
+============================
+
+- The original token's actual OAuth refresh response was inspected and contained
+  ZohoMarketingAutomation.lead.READ, lead.UPDATE, and journey.READ.
+- A separate refresh token was generated and Get Mailing Lists was retried. It also returned
+  INVALID_OAUTHSCOPE. That second token's actual scope response still requires confirmation.
+- The local credential source was verified; no conflicting inherited process credentials or
+  alternate local credential file were found for the tested process.
+- The diagnostic used a newly constructed token manager and a forced refresh, excluding the
+  in-process access-token cache as the explanation. There is no persistent token cache.
+- The topics request was tested against both ma.zoho.com and marketingautomation.zoho.com.
+- Both topics are visible in the Marketing Automation 2.0 user interface.
+- No contact write, contact subscription, topic/list modification, journey trigger, or email
+  operation was attempted.
+- The API responses did not independently prove which Marketing Automation organization the
+  OAuth grant was bound to.
+
+I. QUESTIONS FOR ZOHO SUPPORT
+=============================
+
+1. Why does Get Mailing Lists return INVALID_OAUTHSCOPE when the original OAuth refresh
+   response confirms ZohoMarketingAutomation.lead.READ in the actual grant?
+2. Can Zoho confirm whether this OAuth grant is associated with the expected Marketing
+   Automation organization org859403413 and the correct Marketing Automation portal?
+3. Are POST /api/v1/getmailinglists and GET /api/v1/topics compatible with Marketing
+   Automation 2.0 organizations?
+4. Are additional portal permissions, organization headers, account-level permissions, or
+   settings required beyond the documented OAuth scopes?
+5. Why does Get Topics return HTTP 200/code 200/Success with an empty topicDetails array when
+   "Partner Onboarding" and "Marketing" are visible in the Marketing Automation 2.0 UI?
+
+J. STANDALONE READ-ONLY NODE.JS REPRODUCTION
+============================================
+
+The following is a newly created standalone reproduction for Zoho Support. It is not a
+verbatim application file. It mirrors the current request methods, endpoints, parameters,
+authorization scheme, bounded timeout, and sanitized output. It requires Node.js 18 or later.
+
+Save only this section as zoho-readonly-repro.mjs if execution is required. Set environment
+variables in the process without placing secrets in source control. The script refuses to run
+unless the expected organization string and explicit read-only authorization are present.
+That local check is a safeguard; it does not independently prove OAuth portal binding.
+
+----- BEGIN STANDALONE REPRODUCTION -----
+const EXPECTED_ORGANIZATION = "org859403413";
+const ACCOUNTS_BASE = "https://accounts.zoho.com";
+const MA_BASE = "https://marketingautomation.zoho.com";
+const TOPICS_BASES = ["https://ma.zoho.com", MA_BASE];
+
+function required(name) {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  return value;
+}
+
+if (required("EXPECTED_ZOHO_ORGANIZATION") !== EXPECTED_ORGANIZATION) {
+  throw new Error("Expected Zoho organization does not match the approved KZero value.");
+}
+if (required("ALLOW_ZOHO_READ_ONLY_REPRO") !== "I_AUTHORIZE_READ_ONLY_ZOHO_REPRO") {
+  throw new Error("Explicit read-only authorization is missing.");
+}
+
+const oauth = {
+  clientId: required("ZOHO_CLIENT_ID"),
+  clientSecret: required("ZOHO_CLIENT_SECRET"),
+  refreshToken: required("ZOHO_REFRESH_TOKEN")
+};
+
+async function request(url, init = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function json(response) {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { diagnostic: "NON_JSON_RESPONSE", responseBytes: text.length };
+  }
+}
+
+async function refreshAccessToken() {
+  const body = new URLSearchParams({
+    client_id: oauth.clientId,
+    client_secret: oauth.clientSecret,
+    grant_type: "refresh_token",
+    refresh_token: oauth.refreshToken
+  });
+  const response = await request(`${ACCOUNTS_BASE}/oauth/v2/token`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body
+  });
+  const payload = await json(response);
+  if (!response.ok || typeof payload.access_token !== "string") {
+    throw new Error(`OAuth refresh failed (HTTP ${response.status}, error=${String(payload.error ?? "unknown")})`);
+  }
+  return {
+    accessToken: payload.access_token,
+    diagnostic: {
+      httpStatus: response.status,
+      apiDomain: typeof payload.api_domain === "string" ? payload.api_domain : null,
+      grantedScope: typeof payload.scope === "string" ? payload.scope : null,
+      tokenType: typeof payload.token_type === "string" ? payload.token_type : null
+    }
+  };
+}
+
+function sanitizedDiagnostic(response, payload) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const topicDetails = Array.isArray(source.topicDetails) ? source.topicDetails : null;
+  const lists = Array.isArray(source.list_of_details)
+    ? source.list_of_details
+    : Array.isArray(source.lists) ? source.lists : null;
+  return {
+    httpStatus: response.status,
+    applicationStatus: typeof source.status === "string" ? source.status : null,
+    applicationCode: source.code === undefined && source.Code === undefined
+      ? null : String(source.code ?? source.Code),
+    message: typeof (source.message ?? source.Message) === "string"
+      ? String(source.message ?? source.Message).slice(0, 300) : null,
+    topLevelKeys: Object.keys(source).filter((key) => !/token|secret|authorization/i.test(key)).sort(),
+    topicCount: topicDetails?.length ?? null,
+    mailingListCount: lists?.length ?? null
+  };
+}
+
+async function authenticatedRequest(accessToken, url, init = {}) {
+  const response = await request(url, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Zoho-oauthtoken ${accessToken}`
+    }
+  });
+  const payload = await json(response);
+  return sanitizedDiagnostic(response, payload);
+}
+
+const { accessToken, diagnostic: oauthDiagnostic } = await refreshAccessToken();
+
+const mailingListBody = new URLSearchParams({
+  fromindex: "1",
+  range: "100",
+  resfmt: "JSON",
+  sort: "asc"
+});
+const mailingLists = await authenticatedRequest(
+  accessToken,
+  `${MA_BASE}/api/v1/getmailinglists`,
+  {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: mailingListBody
+  }
+);
+
+const details = encodeURIComponent("{from_index:0,range:100}");
+const topics = [];
+for (const base of TOPICS_BASES) {
+  topics.push({
+    base,
+    result: await authenticatedRequest(accessToken, `${base}/api/v1/topics?details=${details}`)
+  });
+}
+
+console.log(JSON.stringify({
+  environment: {
+    expectedOrganization: EXPECTED_ORGANIZATION,
+    organizationBindingVerifiedByResponse: false,
+    dataCenter: "US"
+  },
+  oauth: oauthDiagnostic,
+  mailingLists,
+  topics
+}, null, 2));
+----- END STANDALONE REPRODUCTION -----
+
+Required placeholders/environment variables for the standalone reproduction:
+
+EXPECTED_ZOHO_ORGANIZATION=org859403413
+ALLOW_ZOHO_READ_ONLY_REPRO=I_AUTHORIZE_READ_ONLY_ZOHO_REPRO
+ZOHO_CLIENT_ID=<ZOHO_CLIENT_ID_REDACTED>
+ZOHO_CLIENT_SECRET=<ZOHO_CLIENT_SECRET_REDACTED>
+ZOHO_REFRESH_TOKEN=<ZOHO_REFRESH_TOKEN_REDACTED>
+
+End of support reproduction.

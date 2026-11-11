@@ -112,6 +112,88 @@ enum ZohoNudgeDecisionStatus {
   PREPARED
 }
 
+enum StaffSsoStatus {
+  DRAFT
+  VALIDATED
+  ENABLED
+  DISABLED
+}
+
+enum StaffApplicationRole {
+  ADMIN
+  SALES_ENGINEER
+  VIEWER
+}
+
+model StaffSsoConfiguration {
+  id                      String         @id @default("primary")
+  realmName               String
+  clientId                String
+  encryptedClientSecret   String
+  secretAuthTag           String
+  secretIv                String
+  issuerUrl               String
+  applicationOrigin       String
+  redirectUri             String
+  postLogoutRedirectUri   String
+  adminRoleClaim          String?
+  salesEngineerRoleClaim  String?
+  viewerRoleClaim         String?
+  approvedGroupClaim      String?
+  status                  StaffSsoStatus @default(DRAFT)
+  discoveryValidatedAt    DateTime?
+  discoveryEvidence       Json?
+  authenticationTestedAt  DateTime?
+  authenticationSubject   String?
+  enabledAt               DateTime?
+  enabledBy               String?
+  disabledAt              DateTime?
+  disabledBy              String?
+  bootstrapRetiredAt      DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @updatedAt
+  identities              StaffIdentity[]
+  audits                  StaffSsoAudit[]
+
+  @@map("staff_sso_configurations")
+}
+
+model StaffIdentity {
+  id                String               @id @default(cuid())
+  configurationId   String
+  issuer            String
+  subject           String
+  email             String?
+  displayName       String?
+  role              StaffApplicationRole
+  active            Boolean              @default(true)
+  verifiedAt        DateTime?
+  lastAuthenticatedAt DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  configuration     StaffSsoConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+
+  @@unique([issuer, subject])
+  @@index([configurationId, role, active])
+  @@map("staff_identities")
+}
+
+model StaffSsoAudit {
+  id              String                @id @default(cuid())
+  configurationId String
+  actor           String
+  action          String
+  targetSubject   String?
+  reason          String
+  metadata        Json?
+  createdAt       DateTime              @default(now())
+  configuration   StaffSsoConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+
+  @@index([configurationId, createdAt])
+  @@index([action, createdAt])
+  @@map("staff_sso_audits")
+}
+
 model Msp {
   id                    String              @id @default(cuid())
   name                  String

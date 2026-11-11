@@ -9,11 +9,11 @@ export type EncryptedSecret = {
   secretIv: string;
 };
 
-function getEncryptionKey() {
-  const rawKey = process.env.OIDC_SECRET_ENCRYPTION_KEY?.trim();
+function getEncryptionKey(environmentVariable = "OIDC_SECRET_ENCRYPTION_KEY") {
+  const rawKey = process.env[environmentVariable]?.trim();
 
   if (!rawKey) {
-    throw new Error("OIDC_SECRET_ENCRYPTION_KEY is required for OIDC secret encryption.");
+    throw new Error(`${environmentVariable} is required for OIDC secret encryption.`);
   }
 
   const base64Key = Buffer.from(rawKey, "base64");
@@ -35,9 +35,9 @@ function getEncryptionKey() {
   );
 }
 
-export function encryptOidcClientSecret(clientSecret: string): EncryptedSecret {
+export function encryptOidcClientSecret(clientSecret: string, environmentVariable?: string): EncryptedSecret {
   const iv = randomBytes(12);
-  const cipher = createCipheriv(ALGORITHM, getEncryptionKey(), iv);
+  const cipher = createCipheriv(ALGORITHM, getEncryptionKey(environmentVariable), iv);
   const encrypted = Buffer.concat([cipher.update(clientSecret, "utf8"), cipher.final()]);
   const authTag = cipher.getAuthTag();
 
@@ -48,8 +48,8 @@ export function encryptOidcClientSecret(clientSecret: string): EncryptedSecret {
   };
 }
 
-export function decryptStoredOidcClientSecret(input: EncryptedSecret) {
-  const decipher = createDecipheriv(ALGORITHM, getEncryptionKey(), Buffer.from(input.secretIv, "base64"));
+export function decryptStoredOidcClientSecret(input: EncryptedSecret, environmentVariable?: string) {
+  const decipher = createDecipheriv(ALGORITHM, getEncryptionKey(environmentVariable), Buffer.from(input.secretIv, "base64"));
   decipher.setAuthTag(Buffer.from(input.secretAuthTag, "base64"));
 
   const decrypted = Buffer.concat([

@@ -55,11 +55,12 @@ test("resource role parsing can be constrained to the staff client", () => {
 
 test("Auth.js staff provider requires dedicated configuration and protocol checks", async () => {
   const auth = await read("auth.ts");
+  const runtime = await read("lib/staff-sso-config.ts");
   assert.match(auth, /id: "kzero-staff"/);
-  assert.match(auth, /STAFF_AUTH_ISSUER/);
+  assert.match(runtime, /STAFF_AUTH_ISSUER/);
   assert.match(auth, /checks: \["pkce", "state", "nonce"\]/);
-  assert.match(auth, /clientId: process\.env\.STAFF_AUTH_CLIENT_ID/);
-  assert.match(auth, /session: \{ strategy: "jwt", maxAge: 60 \* 60 \* 8/);
+  assert.match(auth, /clientId: staff\.clientId/);
+  assert.match(auth, /session: \{ strategy: "jwt"(?: as const)?, maxAge: 60 \* 60 \* 8/);
   assert.match(auth, /authorizeStaffIdentity/);
   assert.doesNotMatch(auth, /@kzero\.com.*ADMIN|endsWith\(.*kzero/i);
 });

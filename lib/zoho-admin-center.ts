@@ -98,7 +98,7 @@ export async function getZohoAdminOverview() {
       enabled: false,
       reason: staffAdmin
         ? "Individual ADMIN authorization is verified. Operational context, enrollment, and cancellation workflows remain disabled until their Phase 6 controls are implemented."
-        : isStaffOidcConfigured()
+        : await isStaffOidcConfigured()
           ? "Sign in with an individually attributable staff ADMIN identity to authorize sensitive operations."
           : "The approved staff identity provider is not configured. Shared access cannot authorize sensitive operations."
     }

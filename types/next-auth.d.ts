@@ -15,6 +15,7 @@ declare module "next-auth" {
       staff_subject?: string;
       staff_email_verified?: boolean | null;
       staff_roles?: string[];
+      staff_test_only?: boolean;
     };
   }
 }

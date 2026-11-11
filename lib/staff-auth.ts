@@ -6,6 +6,7 @@ import {
   staffRoleAllows,
   type StaffRole
 } from "@/lib/staff-authorization-core";
+import { findApprovedStaffIdentity, getStaffSsoRuntimeConfiguration } from "@/lib/staff-sso-config";
 
 export type AuthenticatedStaffIdentity = {
   issuer: string;
@@ -20,12 +21,9 @@ function value(name: string) {
   return process.env[name]?.trim() || "";
 }
 
-export function isStaffOidcConfigured() {
-  return Boolean(
-    value("AUTH_SECRET") && value("STAFF_AUTH_ISSUER") && value("STAFF_AUTH_CLIENT_ID") &&
-    value("STAFF_AUTH_CLIENT_SECRET") &&
-    (value("STAFF_AUTH_ADMIN_ROLE") || value("STAFF_AUTH_SALES_ENGINEER_ROLE") || value("STAFF_AUTH_VIEWER_ROLE"))
-  );
+export async function isStaffOidcConfigured() {
+  const config = await getStaffSsoRuntimeConfiguration();
+  return Boolean(value("AUTH_SECRET") && config.testable);
 }
 
 function staffPolicy() {
@@ -39,10 +37,17 @@ function staffPolicy() {
 }
 
 export async function getAuthenticatedStaffIdentity(): Promise<AuthenticatedStaffIdentity | null> {
-  if (!isStaffOidcConfigured()) return null;
+  if (!(await isStaffOidcConfigured())) return null;
   const session = await auth();
   const user = session?.user;
-  if (!user?.staff_subject || !user.staff_issuer || !Array.isArray(user.staff_roles)) return null;
+  if (!user?.staff_subject || !user.staff_issuer || !Array.isArray(user.staff_roles) || user.staff_test_only) return null;
+  const runtime = await getStaffSsoRuntimeConfiguration();
+  if (runtime.source === "database") {
+    if (!runtime.enabled) return null;
+    const approved = await findApprovedStaffIdentity(user.staff_issuer, user.staff_subject);
+    if (!approved?.active || !user.staff_roles.includes(approved.role)) return null;
+    return { issuer: user.staff_issuer, subject: user.staff_subject, email: user.email ?? null, emailVerified: user.staff_email_verified ?? null, name: user.name ?? null, role: approved.role };
+  }
   const decision = authorizeStaffIdentity({
     issuer: user.staff_issuer,
     subject: user.staff_subject,

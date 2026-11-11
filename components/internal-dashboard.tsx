@@ -17,6 +17,7 @@ import {
   PlusCircle,
   Printer,
   Search,
+  Settings,
   TimerReset,
   Workflow,
   Trash2,
@@ -2671,6 +2672,12 @@ export function InternalDashboard({
                 <Button className="h-10 rounded-xl px-3.5" variant="outline">
                   <Workflow className="mr-2 h-4 w-4" />
                   Zoho Automation
+                </Button>
+              </Link>
+              <Link href="/admin/settings/sso">
+                <Button className="h-10 rounded-xl px-3.5" variant="outline">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Staff SSO
                 </Button>
               </Link>
               <Button className="h-10 whitespace-nowrap rounded-xl px-4" onClick={openEnroll}>

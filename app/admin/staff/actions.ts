@@ -9,7 +9,7 @@ function safeReturnTo(value: FormDataEntryValue | null) {
 }
 
 export async function signInStaff(formData: FormData) {
-  if (!isStaffOidcConfigured()) return;
+  if (!(await isStaffOidcConfigured())) return;
   await signIn("kzero-staff", { redirectTo: safeReturnTo(formData.get("returnTo")) });
 }
 

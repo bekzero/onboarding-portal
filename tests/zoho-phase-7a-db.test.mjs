@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
 import test, { after, before } from "node:test";
 import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
 import { getPhase7aTarget } from "../scripts/zoho-phase-7a-safety.mjs";
 
 const target = getPhase7aTarget();
+const includesStaffSso = target.targetProfile === 'rehearsal';
 const pool = new Pool({ connectionString: target.connectionString, max: 12 });
+const prisma = target.targetProfile === 'rehearsal' ? new PrismaClient({ adapter: new PrismaPg(pool) }) : null;
 const suffix = randomUUID().replaceAll('-', '');
 const ids = {
   mspA: `phase7a-msp-a-${suffix}`,
@@ -20,6 +24,7 @@ const email = `phase7a.${suffix}@example.invalid`;
 const runMonth = String((Number.parseInt(suffix.slice(0, 2), 16) % 12) + 1).padStart(2, '0');
 const runDay = String((Number.parseInt(suffix.slice(2, 4), 16) % 28) + 1).padStart(2, '0');
 const runDate = `2099-${runMonth}-${runDay}`;
+const staffConfigId = `phase7a-sso-config-${suffix}`;
 
 async function expectPgCode(operation, expectedCode) {
   await assert.rejects(operation, (error) => error?.code === expectedCode);
@@ -39,6 +44,15 @@ before(async () => {
   assert.deepEqual(foundationCounts.rows[0], {
     contacts: 0, contexts: 0, events: 0, journeys: 0, audits: 0, throttles: 0, nudge_runs: 0
   }, 'The database integration suite requires a fresh post-migration rehearsal database.');
+  if (includesStaffSso) {
+    const staffCounts = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM "staff_sso_configurations") AS configurations,
+        (SELECT COUNT(*)::int FROM "staff_identities") AS identities,
+        (SELECT COUNT(*)::int FROM "staff_sso_audits") AS audits
+    `);
+    assert.deepEqual(staffCounts.rows[0], { configurations: 0, identities: 0, audits: 0 }, 'Staff SSO tables must be empty before rehearsal fixtures.');
+  }
   await pool.query(`
     INSERT INTO "msps" ("id", "name", "slug", "primaryContactEmail", "assignedSalesEngineer", "accessMode", "enrollmentDate", "createdAt", "updatedAt")
     VALUES
@@ -61,6 +75,7 @@ before(async () => {
 });
 
 after(async () => {
+  if (includesStaffSso) await pool.query('DELETE FROM "staff_sso_configurations" WHERE "id" = $1', [staffConfigId]);
   await pool.query('DELETE FROM "zoho_nudge_evaluation_decisions" WHERE "onboardingPlanId" IN ($1, $2)', [ids.planA, ids.planB]);
   await pool.query(`DELETE FROM "zoho_nudge_evaluation_runs" WHERE "id" LIKE $1`, [`phase7a-${suffix}-%`]);
   await pool.query('DELETE FROM "zoho_automation_audits" WHERE "onboardingPlanId" IN ($1, $2)', [ids.planA, ids.planB]);
@@ -73,18 +88,88 @@ after(async () => {
   await pool.query('DELETE FROM "onboarding_tasks" WHERE "onboardingPlanId" IN ($1, $2)', [ids.planA, ids.planB]);
   await pool.query('DELETE FROM "onboarding_plans" WHERE "id" IN ($1, $2)', [ids.planA, ids.planB]);
   await pool.query('DELETE FROM "msps" WHERE "id" IN ($1, $2)', [ids.mspA, ids.mspB]);
-  await pool.end();
+  if (prisma) await prisma.$disconnect();
+  else await pool.end();
 });
 
-test('all Phase 1A, Phase 4, and Phase 5 migrations are applied', async () => {
+test('the exact target-specific Phase 7A migration history is applied', async () => {
   const expected = [
     '20261104150000_add_zoho_phase_1a_foundation',
     '20261104210000_add_zoho_phase_4_dispatcher',
-    '20261105120000_add_zoho_phase_5_nudge_engine'
+    '20261105120000_add_zoho_phase_5_nudge_engine',
+    ...(includesStaffSso ? ['20261106150000_add_staff_sso_configuration'] : [])
   ];
   const result = await pool.query(`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`);
   const applied = new Set(result.rows.map((row) => row.migration_name));
   assert.deepEqual(expected.filter((name) => !applied.has(name)), []);
+});
+
+test('Staff SSO migration creates the approved enums, indexes, and cascading foreign keys', { skip: !includesStaffSso }, async () => {
+  const tables = await pool.query(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ANY($1::text[]) ORDER BY table_name`, [['staff_sso_configurations', 'staff_identities', 'staff_sso_audits']]);
+  assert.deepEqual(tables.rows.map((row) => row.table_name), ['staff_identities', 'staff_sso_audits', 'staff_sso_configurations']);
+  const enumValues = await pool.query(`
+    SELECT type.typname, enum.enumlabel
+    FROM pg_type type JOIN pg_enum enum ON enum.enumtypid = type.oid
+    WHERE type.typname = ANY($1::text[])
+    ORDER BY type.typname, enum.enumsortorder
+  `, [['StaffApplicationRole', 'StaffSsoStatus']]);
+  assert.deepEqual(enumValues.rows, [
+    { typname: 'StaffApplicationRole', enumlabel: 'ADMIN' }, { typname: 'StaffApplicationRole', enumlabel: 'SALES_ENGINEER' }, { typname: 'StaffApplicationRole', enumlabel: 'VIEWER' },
+    { typname: 'StaffSsoStatus', enumlabel: 'DRAFT' }, { typname: 'StaffSsoStatus', enumlabel: 'VALIDATED' }, { typname: 'StaffSsoStatus', enumlabel: 'ENABLED' }, { typname: 'StaffSsoStatus', enumlabel: 'DISABLED' }
+  ]);
+  const indexes = await pool.query(`SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND indexname = ANY($1::text[]) ORDER BY indexname`, [[
+    'staff_identities_issuer_subject_key', 'staff_identities_configurationId_role_active_idx',
+    'staff_sso_audits_configurationId_createdAt_idx', 'staff_sso_audits_action_createdAt_idx'
+  ]]);
+  assert.equal(indexes.rowCount, 4);
+  const foreignKeys = await pool.query(`
+    SELECT conname, confdeltype, confupdtype
+    FROM pg_constraint
+    WHERE contype = 'f' AND conname = ANY($1::text[])
+    ORDER BY conname
+  `, [['staff_identities_configurationId_fkey', 'staff_sso_audits_configurationId_fkey']]);
+  assert.deepEqual(foreignKeys.rows, [
+    { conname: 'staff_identities_configurationId_fkey', confdeltype: 'c', confupdtype: 'c' },
+    { conname: 'staff_sso_audits_configurationId_fkey', confdeltype: 'c', confupdtype: 'c' }
+  ]);
+});
+
+test('Staff SSO configuration, encrypted secret replacement, identities, audits, constraints, and rollback work', { skip: !includesStaffSso }, async () => {
+  const key = randomBytes(32); const iv = randomBytes(12); const plaintext = `phase7a-secret-${suffix}`;
+  const cipher = createCipheriv('aes-256-gcm', key, iv); const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]); const tag = cipher.getAuthTag();
+  await prisma.staffSsoConfiguration.create({ data: {
+    id: staffConfigId, realmName: 'Phase7AStaff', clientId: 'phase7a-client', encryptedClientSecret: encrypted.toString('base64'),
+    secretAuthTag: tag.toString('base64'), secretIv: iv.toString('base64'), issuerUrl: 'https://ca.auth.kzero.com/realms/Phase7AStaff',
+    applicationOrigin: 'https://phase7a.example.invalid', redirectUri: 'https://phase7a.example.invalid/api/auth/callback/kzero-staff',
+    postLogoutRedirectUri: 'https://phase7a.example.invalid/admin-login', status: 'DRAFT'
+  } });
+  const stored = (await pool.query('SELECT "encryptedClientSecret", "secretAuthTag", "secretIv" FROM "staff_sso_configurations" WHERE "id" = $1', [staffConfigId])).rows[0];
+  assert.notEqual(stored.encryptedClientSecret, plaintext); assert.equal(JSON.stringify(stored).includes(plaintext), false);
+
+  const identityId = `phase7a-sso-identity-${suffix}`; const auditId = `phase7a-sso-audit-${suffix}`;
+  await prisma.staffIdentity.create({ data: { id: identityId, configurationId: staffConfigId, issuer: 'https://ca.auth.kzero.com/realms/Phase7AStaff', subject: `phase7a-subject-${suffix}`, role: 'ADMIN' } });
+  await prisma.staffSsoAudit.create({ data: { id: auditId, configurationId: staffConfigId, actor: 'phase7a:test', action: 'CONFIGURATION_TESTED', targetSubject: `phase7a-subject-${suffix}`, reason: 'Phase 7A fixture' } });
+  await expectPgCode(() => pool.query(`INSERT INTO "staff_identities" ("id", "configurationId", "issuer", "subject", "role", "createdAt", "updatedAt") VALUES ($1, $2, 'https://ca.auth.kzero.com/realms/Phase7AStaff', $3, 'VIEWER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, [`${identityId}-duplicate`, staffConfigId, `phase7a-subject-${suffix}`]), '23505');
+  await expectPgCode(() => pool.query(`INSERT INTO "staff_identities" ("id", "configurationId", "issuer", "subject", "role", "createdAt", "updatedAt") VALUES ($1, 'missing-configuration', 'https://ca.auth.kzero.com/realms/Phase7AStaff', $2, 'VIEWER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, [`${identityId}-orphan`, `phase7a-orphan-${suffix}`]), '23503');
+  await expectPgCode(() => pool.query(`INSERT INTO "staff_identities" ("id", "configurationId", "issuer", "subject", "role", "createdAt", "updatedAt") VALUES ($1, $2, 'https://ca.auth.kzero.com/realms/Phase7AStaff', $3, 'OWNER', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, [`${identityId}-enum`, staffConfigId, `phase7a-enum-${suffix}`]), '22P02');
+
+  const replacementPlaintext = `phase7a-replacement-${suffix}`; const replacementIv = randomBytes(12); const replacementCipher = createCipheriv('aes-256-gcm', key, replacementIv);
+  const replacement = Buffer.concat([replacementCipher.update(replacementPlaintext, 'utf8'), replacementCipher.final()]); const replacementTag = replacementCipher.getAuthTag();
+  await prisma.staffSsoConfiguration.update({ where: { id: staffConfigId }, data: { encryptedClientSecret: replacement.toString('base64'), secretAuthTag: replacementTag.toString('base64'), secretIv: replacementIv.toString('base64') } });
+  const replaced = (await pool.query('SELECT "encryptedClientSecret", "secretAuthTag", "secretIv" FROM "staff_sso_configurations" WHERE "id" = $1', [staffConfigId])).rows[0];
+  assert.equal(replaced.encryptedClientSecret, replacement.toString('base64')); assert.equal(JSON.stringify(replaced).includes(replacementPlaintext), false);
+
+  await assert.rejects(prisma.$transaction(async (tx) => {
+    await tx.staffSsoConfiguration.create({ data: { id: `phase7a-sso-config-rollback-${suffix}`, realmName: 'RollbackRealm', clientId: 'rollback-client', encryptedClientSecret: 'ciphertext', secretAuthTag: 'tag', secretIv: 'iv', issuerUrl: 'https://ca.auth.kzero.com/realms/RollbackRealm', applicationOrigin: 'https://phase7a.example.invalid', redirectUri: 'https://phase7a.example.invalid/api/auth/callback/kzero-staff', postLogoutRedirectUri: 'https://phase7a.example.invalid/admin-login' } });
+    await tx.staffSsoAudit.create({ data: { id: `phase7a-sso-rollback-${suffix}`, configurationId: staffConfigId, actor: 'phase7a:test', action: 'ROLLBACK_TEST', reason: 'Must roll back' } });
+    throw new Error('Injected rollback');
+  }), /Injected rollback/);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM "staff_sso_audits" WHERE "id" = $1', [`phase7a-sso-rollback-${suffix}`])).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM "staff_sso_configurations" WHERE "id" = $1', [`phase7a-sso-config-rollback-${suffix}`])).rows[0].count, 0);
+
+  await pool.query('DELETE FROM "staff_sso_configurations" WHERE "id" = $1', [staffConfigId]);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM "staff_identities" WHERE "id" = $1', [identityId])).rows[0].count, 0);
+  assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM "staff_sso_audits" WHERE "id" = $1', [auditId])).rows[0].count, 0);
 });
 
 test('legacy protection and empty automation foundation invariants hold before fixtures emit events', async () => {

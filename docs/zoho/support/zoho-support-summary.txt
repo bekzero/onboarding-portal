@@ -1,0 +1,88 @@
+KZero Passwordless - Zoho Marketing Automation API support summary
+Prepared: 2026-11-09
+
+PROBLEM
+
+KZero Passwordless is integrating an onboarding portal with Zoho Marketing Automation 2.0
+in the US data center. The expected organization is org859403413, although the OAuth grant's
+portal/organization binding has not been independently proven by an API response.
+
+The failure occurs during read-only discovery. No contacts have been subscribed, no topics
+or lists have been modified, no journeys have been triggered, and no emails have been sent.
+
+INTENDED FUNCTIONALITY
+
+The portal needs to retrieve existing mailing lists, topic IDs, custom contact fields, and
+journey configuration. Later phases will synchronize approved onboarding contact data and
+initiate approved journeys, but those write operations are disabled and are not part of this
+support reproduction.
+
+EXPECTED OUTCOME
+
+- The existing mailing list "KZero Partner Onboarding" is returned.
+- The existing topic "Partner Onboarding" is returned with its numeric topic ID.
+- The documented read-only APIs accept an OAuth token with the documented permissions.
+
+ACTUAL OUTCOME
+
+1. POST https://marketingautomation.zoho.com/api/v1/getmailinglists
+
+   HTTP status: 200
+   Application status: error
+   Application code: INVALID_OAUTHSCOPE
+
+   The original OAuth refresh response confirmed these actual granted scopes:
+   ZohoMarketingAutomation.lead.READ, ZohoMarketingAutomation.lead.UPDATE, and
+   ZohoMarketingAutomation.journey.READ.
+
+2. GET https://ma.zoho.com/api/v1/topics
+
+   HTTP status: 200
+   Application code: 200
+   Message: Success
+   topicDetails: []
+
+   The same empty topic result was observed using marketingautomation.zoho.com. The Marketing
+   Automation 2.0 UI shows "Partner Onboarding" and "Marketing", both with zero contacts.
+
+REPRODUCTION STEPS
+
+1. Refresh an access token at https://accounts.zoho.com/oauth/v2/token using the refresh-token
+   grant and the US Zoho OAuth client.
+2. Confirm the OAuth refresh response reports ZohoMarketingAutomation.lead.READ.
+3. POST application/x-www-form-urlencoded data to
+   https://marketingautomation.zoho.com/api/v1/getmailinglists with:
+   resfmt=JSON, sort=asc, fromindex=1, range=100.
+4. Include Authorization: Zoho-oauthtoken <ACCESS_TOKEN_REDACTED>.
+5. Observe HTTP 200 with application code INVALID_OAUTHSCOPE.
+6. GET https://ma.zoho.com/api/v1/topics with the URL-encoded query
+   details={from_index:0,range:100} and the same authorization scheme.
+7. Observe HTTP 200, application code 200, message Success, and an empty topicDetails array.
+
+TROUBLESHOOTING ALREADY COMPLETED
+
+- The original token's granted scopes were read from the OAuth refresh response.
+- A second refresh token also returned INVALID_OAUTHSCOPE; its actual granted scopes still
+  require independent verification.
+- The active local credential source was verified and conflicting process credentials were
+  excluded.
+- A forced refresh with a new in-process token manager excluded stale token caching.
+- Both supported/observed topic API hosts were tested.
+- The two topics were manually confirmed in the Marketing Automation 2.0 UI.
+- No write API was called.
+
+QUESTIONS FOR ZOHO SUPPORT
+
+1. Why does Get Mailing Lists return INVALID_OAUTHSCOPE despite the original token's confirmed
+   ZohoMarketingAutomation.lead.READ grant?
+2. Is the OAuth grant associated with the correct Marketing Automation organization,
+   org859403413?
+3. Are these Marketing Automation API v1 endpoints compatible with Marketing Automation 2.0?
+4. Are additional portal permissions, organization headers, account settings, or user roles
+   required?
+5. Why does Get Topics return an empty topicDetails array while the two topics are visible in
+   the UI?
+
+The companion file zoho-api-support-reproduction.txt contains sanitized excerpts of the
+current implementation and a standalone read-only Node.js reproduction. It contains no
+credentials and must be reviewed by KZero before external sharing.
