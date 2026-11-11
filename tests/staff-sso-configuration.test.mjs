@@ -2,6 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { expectedIssuerForRealm, validateStaffSsoInput } from "../lib/staff-sso-validation.ts";
+import {
+  createStaffSsoBootstrapToken,
+  isStaffSsoBootstrapSecretValid,
+  isStaffSsoBootstrapTokenValid,
+  STAFF_SSO_BOOTSTRAP_COOKIE_NAME,
+  STAFF_SSO_BOOTSTRAP_COOKIE_PATH,
+  STAFF_SSO_BOOTSTRAP_MAX_AGE_SECONDS
+} from "../lib/staff-sso-bootstrap-token.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const valid = (overrides = {}) => ({ realmName: "KZeroStaff", clientId: "staff-portal", clientSecret: "secret", issuerUrl: "https://ca.auth.kzero.com/realms/KZeroStaff", applicationOrigin: "https://admin.kzero.example", postLogoutRedirectUri: "https://admin.kzero.example/admin-login", ...overrides });
@@ -32,9 +40,38 @@ test("bootstrap and settings writes require layered, same-origin authorization",
   const bootstrap = await read("lib/staff-sso-bootstrap.ts");
   const admin = await read("lib/staff-sso-admin.ts");
   const route = await read("app/api/admin/settings/sso/route.ts");
-  assert.match(bootstrap, /httpOnly: true/); assert.match(bootstrap, /sameSite: "strict"/); assert.match(bootstrap, /15 \* 60/);
+  assert.match(bootstrap, /httpOnly: true/); assert.match(bootstrap, /sameSite: "strict"/);
+  assert.equal(STAFF_SSO_BOOTSTRAP_MAX_AGE_SECONDS, 15 * 60);
+  assert.equal(STAFF_SSO_BOOTSTRAP_COOKIE_NAME, "kzero_staff_sso_bootstrap_v2");
+  assert.equal(STAFF_SSO_BOOTSTRAP_COOKIE_PATH, "/");
+  assert.match(bootstrap, /path: STAFF_SSO_BOOTSTRAP_COOKIE_PATH/);
+  assert.match(bootstrap, /LEGACY_COOKIE_PATH, maxAge: 0/);
   assert.match(admin, /hasAdminSession/); assert.match(admin, /hasStaffSsoBootstrapAuthorization/); assert.match(admin, /getAuthorizedStaffIdentity\("ADMIN"\)/); assert.match(admin, /isTrustedSameOriginRequest/);
-  assert.match(route, /getStaffSsoSettingsActor/);
+  assert.match(route, /PUT\(request: Request\)/);
+  assert.match(route, /getStaffSsoSettingsActor\(request\)/);
+  assert.match(route, /status: 403/);
+});
+
+test("bootstrap token authorizes Save Draft scope only with the correct secret and before expiry", () => {
+  const expectedSecret = "deployment-owner-bootstrap-secret-fixture";
+  const now = 2_000_000_000;
+  assert.equal(isStaffSsoBootstrapSecretValid(expectedSecret, expectedSecret), true);
+  assert.equal(isStaffSsoBootstrapSecretValid("incorrect-bootstrap-secret-fixture", expectedSecret), false);
+
+  const token = createStaffSsoBootstrapToken(now + STAFF_SSO_BOOTSTRAP_MAX_AGE_SECONDS, "fixed-test-nonce", expectedSecret);
+  assert.equal(isStaffSsoBootstrapTokenValid(token, expectedSecret, now), true);
+  assert.equal(isStaffSsoBootstrapTokenValid(token, "incorrect-bootstrap-secret-fixture", now), false);
+  assert.equal(isStaffSsoBootstrapTokenValid(token, expectedSecret, now + STAFF_SSO_BOOTSTRAP_MAX_AGE_SECONDS), false);
+  assert.equal("/api/admin/settings/sso".startsWith(STAFF_SSO_BOOTSTRAP_COOKIE_PATH), true);
+});
+
+test("bootstrap remains subordinate to shared admin, same-origin, and retirement rules", async () => {
+  const admin = await read("lib/staff-sso-admin.ts");
+  assert.match(admin, /isTrustedSameOriginRequest\(request\)/);
+  assert.match(admin, /hasAdminSession\(\)/);
+  assert.match(admin, /hasStaffSsoBootstrapAuthorization\(\)/);
+  assert.match(admin, /bootstrapRetiredAt/);
+  assert.match(admin, /STAFF_SSO_EMERGENCY_RECOVERY_ENABLED !== "true"/);
 });
 
 test("activation requires discovery, real authentication, a verified ADMIN, and recovery", async () => {
