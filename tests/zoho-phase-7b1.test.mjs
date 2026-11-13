@@ -211,7 +211,7 @@ test("mailing-list and topic parsers preserve identity and privacy evidence", ()
   });
 });
 
-test("mailing-list diagnostic uses an allowlisted read-only POST with documented parameters", async () => {
+test("mailing-list diagnostic uses read-only GET with authorization and bounded pagination", async () => {
   const requested = [];
   const payloads = [
     {
@@ -230,17 +230,29 @@ test("mailing-list diagnostic uses an allowlisted read-only POST with documented
     getAccessToken: async () => "not-logged",
     invalidate: () => undefined
   }, async (url, init) => {
-    requested.push({ body: String(init.body), method: init.method, url: String(url) });
+    requested.push({
+      authorization: new Headers(init.headers).get("authorization"),
+      body: init.body ?? null,
+      method: init.method,
+      url: String(url)
+    });
     return new Response(JSON.stringify(payloads.shift()), { status: 200 });
   });
 
   const result = await client.discoverMailingLists({ pageSize: 1, maxPages: 2 });
-  assert.equal(result.lists[0].listName, "KZero Partner Onboarding");
+  assert.deepEqual(result.lists, [{
+    isPublic: false,
+    listKey: "sensitive-list-key",
+    listName: "KZero Partner Onboarding",
+    owner: "KZero"
+  }]);
+  assert.equal(result.pages[0].containerKey, "list_of_details");
   assert.equal(requested.length, 2);
-  assert.ok(requested.every((request) => request.method === "POST"));
-  assert.ok(requested.every((request) => request.url.endsWith("/api/v1/getmailinglists")));
-  assert.equal(requested[0].body, "fromindex=1&range=1&resfmt=JSON&sort=asc");
-  assert.equal(requested[1].body, "fromindex=2&range=1&resfmt=JSON&sort=asc");
+  assert.ok(requested.every((request) => request.method === "GET"));
+  assert.ok(requested.every((request) => request.body === null));
+  assert.ok(requested.every((request) => request.authorization === "Zoho-oauthtoken not-logged"));
+  assert.equal(requested[0].url, "https://marketingautomation.zoho.com/api/v1/getmailinglists?fromindex=1&range=1&resfmt=JSON&sort=asc");
+  assert.equal(requested[1].url, "https://marketingautomation.zoho.com/api/v1/getmailinglists?fromindex=2&range=1&resfmt=JSON&sort=asc");
 });
 
 test("mailing-list inspection preserves sanitized metadata for an unknown success shape", async () => {

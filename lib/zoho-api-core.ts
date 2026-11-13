@@ -571,19 +571,15 @@ export class ZohoApiClientCore {
   }
 
   async inspectMailingListsPage(input: { fromIndex: number; range: number }) {
-    const body = new URLSearchParams({
+    const query = new URLSearchParams({
       fromindex: String(input.fromIndex),
       range: String(input.range),
       resfmt: "JSON",
       sort: "asc"
     });
     const result = await this.requestResult(
-      "/api/v1/getmailinglists",
-      {
-        body,
-        headers: { "content-type": "application/x-www-form-urlencoded" },
-        method: "POST"
-      },
+      `/api/v1/getmailinglists?${query.toString()}`,
+      { method: "GET" },
       true,
       ZOHO_API_BASE_URL,
       true
