@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Clock3, RefreshCw, Search, ShieldAlert } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, CheckCircle2, ChevronLeft, ChevronRight, Clock3, MailCheck, RefreshCw, Search, ShieldAlert } from "lucide-react";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { StaffIdentityControl, type StaffIdentityView } from "@/components/staff-identity-control";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
-type Tab = "overview" | "events" | "reminders" | "contacts" | "configuration";
+type Tab = "overview" | "events" | "reminders" | "contacts" | "test-sync" | "configuration";
 type Overview = any;
 type EventPayload = { events: any[]; page: number; pageSize: number; total: number };
 type ReminderPayload = { decisions: any[]; evaluationAt: string; summary: any; timezone: string };
@@ -21,6 +21,7 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "events", label: "Event History" },
   { id: "reminders", label: "Reminders" },
   { id: "contacts", label: "Contacts & Conflicts" },
+  { id: "test-sync", label: "Test Contact Sync" },
   { id: "configuration", label: "Configuration" }
 ];
 
@@ -129,11 +130,91 @@ export function ZohoAutomationCenter({ initialPlanFilter = "", initialTab = "ove
       {tab === "events" ? <EventHistory filters={eventFilters} onChange={setEventFilters} onSelect={setSelectedEvent} payload={events} /> : null}
       {tab === "reminders" ? <ReminderPreview filters={reminderFilter} onChange={setReminderFilter} payload={reminders} rows={visibleReminders} /> : null}
       {tab === "contacts" ? <ContactsView onQuery={setContactQuery} payload={contacts} query={contactQuery} sensitiveReason={overview?.sensitiveActions?.reason} /> : null}
+      {tab === "test-sync" && overview ? <TestContactSync overview={overview} /> : null}
       {tab === "configuration" && overview ? <ConfigurationView overview={overview} /> : null}
 
       {selectedEvent ? <EventDetails event={selectedEvent} onClose={() => setSelectedEvent(null)} /> : null}
     </main>
   );
+}
+
+function TestContactSync({ overview }: { overview: any }) {
+  const [email, setEmail] = useState("");
+  const [check, setCheck] = useState<any | null>(null);
+  const [result, setResult] = useState<any | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [requestId, setRequestId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const config = overview.configuration;
+  const test = config.testContactSync;
+  const writeReady = Boolean(
+    config.oauthConfigured && config.listKeyPresent && test?.enabled &&
+    !config.globalKillSwitch && overview.sensitiveActions?.identityAuthorized
+  );
+
+  async function post(path: string, body: Record<string, unknown>) {
+    const response = await fetch(path, {
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload) throw new Error(payload?.error ?? "The Zoho test operation failed.");
+    return payload;
+  }
+
+  async function checkContact() {
+    setBusy(true); setError(null); setResult(null); setCheck(null); setConfirmed(false); setRequestId("");
+    try {
+      const payload = await post("/api/admin/zoho/test-contact/check", { email });
+      setCheck(payload);
+      if (payload.classification === "NOT_FOUND") setRequestId(crypto.randomUUID());
+    } catch (cause) {
+      setCheck({ classification: "UNABLE_TO_VERIFY", reason: "REQUEST_FAILED" });
+      setError(cause instanceof Error ? cause.message : "Unable to verify this contact.");
+    } finally { setBusy(false); }
+  }
+
+  async function syncContact() {
+    if (!confirmed || !requestId || check?.classification !== "NOT_FOUND") return;
+    setBusy(true); setError(null); setResult(null);
+    try {
+      const payload = await post("/api/admin/zoho/test-contact/sync", {
+        confirmation: "SYNC ALLOWLISTED TEST CONTACT",
+        email,
+        requestId
+      });
+      setResult(payload);
+      setConfirmed(false);
+      setRequestId("");
+    } catch (cause) {
+      setResult({ classification: "FAILED" });
+      setError(cause instanceof Error ? cause.message : "The test contact sync failed.");
+    } finally { setBusy(false); }
+  }
+
+  const checkLabel = check?.classification === "EXISTING"
+    ? "Already Exists"
+    : check?.classification === "NOT_FOUND"
+      ? "Not Found"
+      : check?.classification === "UNABLE_TO_VERIFY"
+        ? "Unable to Verify"
+        : null;
+  const resultLabel = result?.classification?.replaceAll("_", " ") ?? null;
+
+  return <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
+    <Card className="border-border bg-surface p-5">
+      <div className="flex items-start gap-3"><MailCheck className="mt-0.5 h-5 w-5 text-primary"/><div><h2 className="text-lg font-semibold text-foreground">Test Contact Sync</h2><p className="mt-1 text-sm text-secondary">Check or add one approved internal test email to the configured mailing list. Names and custom fields are not synchronized.</p></div></div>
+      <label className="mt-5 block text-sm font-medium text-foreground" htmlFor="zoho-test-contact-email">Test email address</label>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row"><input autoComplete="email" className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-input px-3 text-sm text-foreground" id="zoho-test-contact-email" onChange={(event)=>{setEmail(event.target.value);setCheck(null);setResult(null);setConfirmed(false);setRequestId("");}} placeholder="approved.internal@kzero.com" type="email" value={email}/><Button disabled={busy||!email.trim()} onClick={()=>void checkContact()} variant="outline">Check Contact</Button></div>
+      {checkLabel ? <div className="mt-3 flex items-center gap-2 text-sm"><Status value={check.classification}/><span className="text-secondary">{checkLabel}{check.listStatuses?.length ? ` · ${check.listStatuses.join(", ")}` : ""}</span></div> : null}
+      {check?.classification === "NOT_FOUND" ? <div className="mt-4 rounded-xl border border-warning-border bg-warning-surface p-4 text-sm text-warning"><label className="flex items-start gap-2"><input checked={confirmed} className="mt-0.5 h-4 w-4" onChange={(event)=>setConfirmed(event.target.checked)} type="checkbox"/><span>I confirm this is an approved internal test address and authorize one email-only list-add request. This does not create marketing consent.</span></label><Button className="mt-3" disabled={busy||!confirmed||!writeReady} onClick={()=>void syncContact()}>Sync Test Contact</Button>{!writeReady?<p className="mt-2 text-xs">Test writes require an individually authenticated ADMIN, configured OAuth/list access, the test-only flag, and release of the global kill switch.</p>:null}</div> : null}
+      {resultLabel ? <div className="mt-4 rounded-xl border border-border bg-surface-secondary p-4"><div className="flex items-center gap-2"><Status value={result.classification}/><p className="font-medium text-foreground">{resultLabel}</p></div><p className="mt-2 text-xs text-secondary">{result.reason?.replaceAll("_"," ")}. Provider acceptance alone is not verification, consent, journey enrollment, or email delivery.</p></div> : null}
+      {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
+    </Card>
+    <Card className="border-border bg-surface p-5"><h2 className="font-semibold text-foreground">Connection status</h2><div className="mt-4 grid gap-3 text-sm"><div className="flex justify-between gap-3"><span className="text-secondary">OAuth</span><Status value={config.oauthConfigured?"CONFIGURED":"MISSING"}/></div><div className="flex justify-between gap-3"><span className="text-secondary">Mailing list</span><Status value={config.listKeyPresent?"CONFIGURED":"MISSING"}/></div><div><p className="text-xs uppercase tracking-[0.14em] text-muted">Configured list</p><p className="mt-1 font-medium text-foreground">{test?.listName??"KZero Partner Onboarding"}</p></div><div className="flex justify-between gap-3"><span className="text-secondary">Test-only write</span><Status value={test?.enabled?"ENABLED":"DISABLED"}/></div><div className="flex justify-between gap-3"><span className="text-secondary">Global kill switch</span><Status value={config.globalKillSwitch?"ENABLED":"DISABLED"}/></div><p className="rounded-xl border border-border bg-surface-secondary px-3 py-2 text-xs text-muted">The ListKey and OAuth credentials remain server-side and are never returned to this page.</p></div></Card>
+  </div>;
 }
 
 function OverviewView({ overview }: { overview: any }) {

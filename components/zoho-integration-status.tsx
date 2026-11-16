@@ -133,7 +133,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     setMessage(null);
     try {
       const result = await post("/api/admin/zoho/test-sync", {
-        confirmation: "UPSERT ALLOWLISTED TEST CONTACT",
+        confirmation: "ADD ALLOWLISTED TEST EMAIL",
         contactId: selectedContactId,
         planId,
         previewFingerprint: preview.previewFingerprint
@@ -266,16 +266,16 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
         {preview ? (
           <div className="mt-1 grid gap-2 border-t border-border pt-3 text-xs text-secondary">
             <p><span className="font-medium text-foreground">Recipient:</span> {preview.recipient}</p>
-            <p><span className="font-medium text-foreground">Snapshot:</span> {preview.fieldCount} complete mapped fields for {preview.planId}</p>
+            <p><span className="font-medium text-foreground">Preview only:</span> {preview.fieldCount} mapped fields for {preview.planId}; the bulk write sends only the email address.</p>
             <ul className="grid gap-1 text-muted">
               {preview.warnings.map((warning) => <li key={warning}>• {warning}</li>)}
             </ul>
             <label className="flex items-start gap-2 rounded-lg border border-warning-border bg-warning-surface px-3 py-2 text-warning">
               <input checked={confirmed} className="mt-0.5 h-4 w-4" onChange={(event) => setConfirmed(event.target.checked)} type="checkbox" />
-              <span>I reviewed this allowlisted test preview and authorize one listsubscribe call, which may send a confirmation email.</span>
+              <span>I reviewed this allowlisted test preview and authorize one email-only bulk list-add request.</span>
             </label>
             <Button disabled={busy || !confirmed} onClick={() => void performTestSync()}>
-              Upsert Allowlisted Test Contact
+              Add Allowlisted Test Email
             </Button>
           </div>
         ) : null}

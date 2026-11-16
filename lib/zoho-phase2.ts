@@ -5,17 +5,16 @@ import { prisma } from "@/lib/prisma";
 import { getZohoApiClient } from "@/lib/zoho-api";
 import {
   classifyZohoListMembership,
+  type ZohoBulkLeadResult,
   type ZohoJourney,
-  type ZohoLeadField,
-  type ZohoSubscribeResult
+  type ZohoLeadField
 } from "@/lib/zoho-api-core";
 import { getPersistedZohoContactSnapshot } from "@/lib/zoho-contact-snapshot";
 import {
   getZohoConfigurationStatus,
   getZohoJourneyConfiguration,
   getZohoListKey,
-  getZohoTestConfiguration,
-  getZohoTopicId
+  getZohoTestConfiguration
 } from "@/lib/zoho-config";
 import {
   buildZohoFieldDiscoveryReport,
@@ -221,17 +220,15 @@ async function prepareTestSync(planId: string, contactId: string) {
     );
   }
   const listKey = getZohoListKey();
-  const topicId = getZohoTopicId();
-  if (!listKey || !topicId) {
-    throw new ZohoAdminValidationError("Zoho list and topic configuration are required.", 503);
+  if (!listKey) {
+    throw new ZohoAdminValidationError("Zoho list configuration is required.", 503);
   }
   return {
     fields,
     leadInfo,
     listKey,
     persisted,
-    previewFingerprint: fingerprint({ leadInfo, listKey, planId, topicId }),
-    topicId
+    previewFingerprint: fingerprint({ email: persisted.contact.normalizedEmail, listKey, planId })
   };
 }
 
@@ -246,8 +243,9 @@ export async function previewZohoTestSync(planId: string, contactId: string) {
     snapshot: prepared.persisted.snapshot,
     warnings: [
       "This is an allowlisted test contact only.",
-      "A write may send a Zoho double-opt-in confirmation email.",
-      "A successful upsert does not confirm topic eligibility, Marketing status, or delivery."
+      "The approved write adds only the email address to the configured list.",
+      "Names and custom-field snapshot values shown here are not sent by the bulk endpoint.",
+      "Provider acceptance does not confirm topic eligibility, subscription eligibility, or email delivery."
     ]
   };
 }
@@ -259,26 +257,51 @@ export async function performZohoTestSync(input: {
   planId: string;
   previewFingerprint: unknown;
 }) {
-  if (input.confirmation !== "UPSERT ALLOWLISTED TEST CONTACT") {
-    throw new ZohoAdminValidationError("Explicit test-contact confirmation is required.");
+  if (input.confirmation !== "ADD ALLOWLISTED TEST EMAIL") {
+    throw new ZohoAdminValidationError("Explicit test-email confirmation is required.");
   }
   const prepared = await prepareTestSync(input.planId, input.contactId);
   if (input.previewFingerprint !== prepared.previewFingerprint) {
     throw new ZohoAdminValidationError("The test preview has changed. Generate and review a new preview.", 409);
   }
 
-  let result: ZohoSubscribeResult;
+  let result: ZohoBulkLeadResult;
   try {
-    result = await getZohoApiClient().subscribeLead({
-      leadInfo: prepared.leadInfo,
-      listKey: prepared.listKey,
-      topicId: prepared.topicId
-    });
+    const membership = await checkZohoListMembership(prepared.persisted.contact.normalizedEmail);
+    if (membership.truncated && membership.listStatuses.length === 0) {
+      throw new ZohoAdminValidationError(
+        "The bounded list scan could not establish that the test email is absent. Review it manually before a write.",
+        409
+      );
+    } else if (membership.listStatuses.includes("active")) {
+      result = {
+        classification: "EXISTING",
+        email: prepared.persisted.contact.normalizedEmail,
+        providerCode: null,
+        reason: "ALREADY_ACTIVE_IN_LIST"
+      };
+    } else if (membership.listStatuses.includes("unsub") || membership.listStatuses.includes("bounce")) {
+      result = {
+        classification: "IGNORED",
+        email: prepared.persisted.contact.normalizedEmail,
+        providerCode: null,
+        reason: "SUPPRESSED_LIST_CONTACT"
+      };
+    } else {
+      const bulkResult = await getZohoApiClient().addLeadsInBulk({
+        emails: [prepared.persisted.contact.normalizedEmail],
+        listKey: prepared.listKey
+      });
+      result = bulkResult.results[0];
+    }
+    if (!result || result.classification === "ERROR") {
+      throw new ZohoAdminValidationError("Zoho did not accept the test email address.", 502);
+    }
   } catch (error) {
     await recordAudit({
       action: "zoho.test_sync.failed",
       actor: input.actor,
-      evidenceReference: "listsubscribe:failed",
+      evidenceReference: "addleadsinbulk:failed",
       onboardingPlanId: prepared.persisted.plan.id,
       planId: prepared.persisted.plan.planId,
       reason: "The approved test synchronization failed; see the sanitized API response.",
@@ -288,15 +311,15 @@ export async function performZohoTestSync(input: {
   }
 
   const subscriptionStatus: SubscriptionEligibilityStatus =
-    result.classification === "PENDING_CONFIRMATION" ? "PENDING_CONFIRMATION" : "MANUAL_REVIEW";
+    result.reason === "SUPPRESSED_LIST_CONTACT" ? "INELIGIBLE" : "MANUAL_REVIEW";
   try {
     await prisma.$transaction(async (transaction) => {
       await transaction.planContact.update({
         where: { id: input.contactId },
         data: {
-          subscriptionEvidenceReference: `listsubscribe:${result.code}`,
+          subscriptionEvidenceReference: `addleadsinbulk:${result.providerCode ?? "unclassified"}`,
           subscriptionStatus,
-          subscriptionVerificationSource: "ZMA listsubscribe test",
+          subscriptionVerificationSource: "ZMA email-only bulk list test",
           subscriptionVerifiedAt: new Date(),
           subscriptionVerifiedBy: input.actor
         }
@@ -305,10 +328,10 @@ export async function performZohoTestSync(input: {
         data: {
           action: "zoho.test_sync.accepted",
           actor: input.actor,
-          evidenceReference: `listsubscribe:${result.code}`,
+          evidenceReference: `addleadsinbulk:${result.providerCode ?? "unclassified"}`,
           onboardingPlanId: prepared.persisted.plan.id,
           planId: prepared.persisted.plan.planId,
-          reason: `${result.classification}: request accepted; delivery and full eligibility remain unconfirmed.`,
+          reason: `${result.classification}: email-only list request completed; custom fields, delivery, and eligibility remain unconfirmed.`,
           recipientEmailNormalized: prepared.persisted.contact.normalizedEmail
         }
       });
@@ -323,8 +346,8 @@ export async function performZohoTestSync(input: {
 
   return {
     classification: result.classification,
-    code: result.code,
-    message: result.message,
+    code: result.providerCode,
+    message: result.reason,
     subscriptionStatus
   };
 }

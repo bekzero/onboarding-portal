@@ -103,6 +103,17 @@ export function getZohoTestConfiguration() {
   };
 }
 
+export const ZOHO_TEST_MAILING_LIST_NAME = "KZero Partner Onboarding";
+
+export function getZohoTestContactSyncConfiguration() {
+  const test = getZohoTestConfiguration();
+  return {
+    allowedEmails: test.allowedEmails,
+    enabled: enabled("ZOHO_TEST_CONTACT_SYNC_ENABLED"),
+    listName: ZOHO_TEST_MAILING_LIST_NAME
+  };
+}
+
 export function getZohoConfigurationStatus() {
   const oauth = getZohoOAuthConfig();
   const journeys = getZohoJourneyConfiguration();
@@ -131,6 +142,11 @@ export function getZohoConfigurationStatus() {
       allowlistedEmailCount: getZohoTestConfiguration().allowedEmails.size,
       allowlistedPlanCount: getZohoTestConfiguration().allowedPlanIds.size,
       enabled: getZohoTestConfiguration().enabled
+    },
+    testContactSync: {
+      allowlistedEmailCount: getZohoTestContactSyncConfiguration().allowedEmails.size,
+      enabled: getZohoTestContactSyncConfiguration().enabled,
+      listName: getZohoTestContactSyncConfiguration().listName
     },
     topicIdPresent: Boolean(getZohoTopicId())
   };

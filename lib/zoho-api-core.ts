@@ -282,6 +282,24 @@ export type ZohoSubscribeResult = {
   message: string;
 };
 
+export type ZohoBulkLeadClassification = "ACCEPTED" | "EXISTING" | "IGNORED" | "ERROR";
+
+export type ZohoBulkLeadResult = {
+  classification: ZohoBulkLeadClassification;
+  email: string;
+  providerCode: string | null;
+  reason: string;
+};
+
+export type ZohoBulkAddResult = {
+  acceptedCount: number;
+  batchCount: number;
+  errorCount: number;
+  existingCount: number;
+  ignoredCount: number;
+  results: ZohoBulkLeadResult[];
+};
+
 export type ZohoTriggerResult = {
   classification: "TRIGGERED" | "ALREADY_TRIGGERED" | "IGNORED";
   code: string;
@@ -492,6 +510,50 @@ export function parseListLeads(payload: unknown): ZohoListLead[] {
   });
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function bulkResponseEmails(payload: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = payload[key];
+    if (Array.isArray(value)) return emailList(value);
+    if (typeof value === "string") {
+      return value.split(",").map((email) => email.trim().toLowerCase()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+export function parseBulkAddResult(payload: unknown, requestedEmails: string[]): ZohoBulkLeadResult[] {
+  if (!isRecord(payload)) {
+    throw new ZohoApiError("Zoho bulk-add response is invalid.", "INVALID_RESPONSE");
+  }
+  const code = String(payload.code ?? payload.Code ?? "");
+  const status = typeof payload.status === "string" ? payload.status.toLowerCase() : "";
+  if (!code || !status) {
+    throw new ZohoApiError("Zoho bulk-add response is incomplete.", "INVALID_RESPONSE");
+  }
+  if (!["0", "200"].includes(code) || status !== "success") {
+    throw classifyProviderError(new Response(null, { status: 400 }), payload);
+  }
+
+  const added = new Set(bulkResponseEmails(payload, ["added_leads", "added_contacts"]));
+  const existing = new Set(bulkResponseEmails(payload, ["existing_leads", "existing_contacts"]));
+  const ignored = new Set(bulkResponseEmails(payload, ["ignored_leads", "ignored_contacts"]));
+
+  return requestedEmails.map((email) => {
+    if (existing.has(email)) {
+      return { classification: "EXISTING", email, providerCode: code, reason: "ALREADY_IN_LIST" };
+    }
+    if (ignored.has(email)) {
+      return { classification: "IGNORED", email, providerCode: code, reason: "PROVIDER_IGNORED" };
+    }
+    if (added.size > 0 && !added.has(email)) {
+      return { classification: "IGNORED", email, providerCode: code, reason: "NOT_CONFIRMED_BY_PROVIDER" };
+    }
+    return { classification: "ACCEPTED", email, providerCode: code, reason: "PROVIDER_ACCEPTED" };
+  });
+}
+
 export function parseSubscribeResult(payload: unknown): ZohoSubscribeResult {
   if (!isRecord(payload)) throw new ZohoApiError("Zoho subscribe response is invalid.", "INVALID_RESPONSE");
   const code = String(payload.code ?? "");
@@ -685,6 +747,15 @@ export class ZohoApiClientCore {
     range: number;
     status: "active" | "unsub" | "bounce";
   }) {
+    if (!input.listKey.trim()) {
+      throw new ZohoApiError("Zoho list configuration is missing.", "CONFIGURATION");
+    }
+    if (!Number.isInteger(input.fromIndex) || input.fromIndex < 1) {
+      throw new ZohoApiError("Zoho lead pagination start must be a positive integer.", "CONFIGURATION");
+    }
+    if (!Number.isInteger(input.range) || input.range < 1 || input.range > 200) {
+      throw new ZohoApiError("Zoho lead page size must be between 1 and 200.", "CONFIGURATION");
+    }
     const query = new URLSearchParams({
       fromindex: String(input.fromIndex),
       listkey: input.listKey,
@@ -695,6 +766,61 @@ export class ZohoApiClientCore {
     });
     const payload = await this.request(`/api/v1/getleads?${query.toString()}`);
     return parseListLeads(payload);
+  }
+
+  /**
+   * Adds email addresses to an existing list. This endpoint cannot synchronize
+   * names or custom contact fields and its success response does not establish
+   * subscription eligibility or email delivery.
+   */
+  async addLeadsInBulk(input: { emails: string[]; listKey: string }): Promise<ZohoBulkAddResult> {
+    if (!input.listKey.trim()) {
+      throw new ZohoApiError("Zoho list configuration is missing.", "CONFIGURATION");
+    }
+    if (!Array.isArray(input.emails) || input.emails.length === 0) {
+      throw new ZohoApiError("At least one email address is required.", "INVALID_EMAIL");
+    }
+
+    const results: ZohoBulkLeadResult[] = [];
+    const uniqueEmails: string[] = [];
+    const seen = new Set<string>();
+    for (const rawEmail of input.emails) {
+      const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : "";
+      if (!email || email.length > 320 || !EMAIL_PATTERN.test(email)) {
+        results.push({ classification: "ERROR", email, providerCode: null, reason: "INVALID_EMAIL" });
+      } else if (seen.has(email)) {
+        results.push({ classification: "IGNORED", email, providerCode: null, reason: "DUPLICATE_INPUT" });
+      } else {
+        seen.add(email);
+        uniqueEmails.push(email);
+      }
+    }
+
+    let batchCount = 0;
+    for (let index = 0; index < uniqueEmails.length; index += 10) {
+      const batch = uniqueEmails.slice(index, index + 10);
+      const body = new URLSearchParams({
+        emailids: batch.join(","),
+        listkey: input.listKey,
+        resfmt: "JSON"
+      });
+      const payload = await this.request("/api/v1/addleadsinbulk", {
+        body,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: "POST"
+      });
+      results.push(...parseBulkAddResult(payload, batch));
+      batchCount += 1;
+    }
+
+    return {
+      acceptedCount: results.filter((result) => result.classification === "ACCEPTED").length,
+      batchCount,
+      errorCount: results.filter((result) => result.classification === "ERROR").length,
+      existingCount: results.filter((result) => result.classification === "EXISTING").length,
+      ignoredCount: results.filter((result) => result.classification === "IGNORED").length,
+      results
+    };
   }
 
   async subscribeLead(input: {
