@@ -1551,6 +1551,7 @@ export function InternalDashboard({
   const [isFlowReferenceOpen, setIsFlowReferenceOpen] = useState(false);
   const [expandedFlowStageId, setExpandedFlowStageId] = useState<string | null>(null);
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
+  const [enrollmentErrorMessage, setEnrollmentErrorMessage] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditFormState | null>(null);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
   const [rollbackTaskId, setRollbackTaskId] = useState("");
@@ -2152,6 +2153,7 @@ export function InternalDashboard({
     setEditState(null);
     setOidcState(null);
     setEnrollmentState(createEnrollmentState());
+    setEnrollmentErrorMessage(null);
     setPanelMode("enroll");
   }
 
@@ -2166,6 +2168,7 @@ export function InternalDashboard({
     const exactTenantName = enrollmentState.tenantName.trim();
     const trimmedMspName = enrollmentState.mspName.trim();
     const trimmedPrimaryContactEmail = enrollmentState.primaryContactEmail.trim();
+    const permissionEvidenceReference = enrollmentState.zohoContactPermissionEvidence.trim();
     const trimmedClientId = enrollmentState.clientId.trim();
     const hasFullOidcConfig = Boolean(exactTenantName && trimmedClientId && enrollmentState.clientSecret.trim());
     const accessMode: OnboardingCase["accessMode"] =
@@ -2182,6 +2185,13 @@ export function InternalDashboard({
     if (enrollmentState.startingPlanType === "customer" && !trimmedCustomerName) {
       return;
     }
+
+    if (enrollmentState.zohoContactPermissionConfirmed && !permissionEvidenceReference) {
+      setEnrollmentErrorMessage("Permission Evidence Reference is required when Zoho permission is confirmed.");
+      return;
+    }
+
+    setEnrollmentErrorMessage(null);
 
     if (useServerData) {
       try {
@@ -2202,7 +2212,7 @@ export function InternalDashboard({
             slug: caseSlug,
             zohoContactPermission: {
               confirmed: enrollmentState.zohoContactPermissionConfirmed,
-              evidenceReference: enrollmentState.zohoContactPermissionEvidence.trim()
+              evidenceReference: permissionEvidenceReference
             }
           })
         });
@@ -3796,33 +3806,6 @@ export function InternalDashboard({
                             />
                             <span>GMM Partner</span>
                           </label>
-                          <div className="grid gap-3 rounded-2xl border border-border bg-input px-4 py-3">
-                            <label className="flex items-start gap-3 text-sm text-secondary">
-                              <input
-                                checked={enrollmentState.zohoContactPermissionConfirmed}
-                                className="mt-0.5 h-4 w-4 rounded border-border bg-input"
-                                onChange={(event) => setEnrollmentState((current) => ({
-                                  ...current,
-                                  zohoContactPermissionConfirmed: event.target.checked
-                                }))}
-                                type="checkbox"
-                              />
-                              <span>I have documented this contact's permission to add their email to the KZero Partner Onboarding mailing list.</span>
-                            </label>
-                            <label className="grid gap-2 text-sm text-secondary">
-                              <span>Permission evidence reference</span>
-                              <input
-                                className="rounded-xl border border-border bg-surface px-3 py-2 text-foreground outline-none"
-                                onChange={(event) => setEnrollmentState((current) => ({
-                                  ...current,
-                                  zohoContactPermissionEvidence: event.target.value
-                                }))}
-                                placeholder="CRM note, ticket, or consent record"
-                                value={enrollmentState.zohoContactPermissionEvidence}
-                              />
-                            </label>
-                            <p className="text-xs leading-5 text-muted">MSP enrollment alone is not consent. With automation disabled, this is recorded for readiness only and no Zoho write is queued.</p>
-                          </div>
                         </div>
                       </div>
 
@@ -4336,6 +4319,49 @@ export function InternalDashboard({
                             />
                           </label>
                         </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                      <p className="text-xs uppercase tracking-[0.22em] text-muted">Zoho Partner Onboarding</p>
+                      <div className="mt-4 grid gap-4">
+                        <label className="flex items-start gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
+                          <input
+                            checked={enrollmentState.zohoContactPermissionConfirmed}
+                            className="mt-0.5 h-4 w-4 rounded border-border bg-input"
+                            onChange={(event) => {
+                              const confirmed = event.target.checked;
+                              setEnrollmentState((current) => ({
+                                ...current,
+                                zohoContactPermissionConfirmed: confirmed
+                              }));
+                              if (!confirmed) setEnrollmentErrorMessage(null);
+                            }}
+                            type="checkbox"
+                          />
+                          <span>I confirm that appropriate permission has been obtained to add this contact to Zoho Marketing Automation.</span>
+                        </label>
+                        <label className="grid gap-2 text-sm text-secondary">
+                          <span>Permission Evidence Reference</span>
+                          <input
+                            aria-invalid={Boolean(enrollmentErrorMessage)}
+                            className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
+                            onChange={(event) => {
+                              const evidenceReference = event.target.value;
+                              setEnrollmentState((current) => ({
+                                ...current,
+                                zohoContactPermissionEvidence: evidenceReference
+                              }));
+                              if (evidenceReference.trim()) setEnrollmentErrorMessage(null);
+                            }}
+                            placeholder="CRM note, support ticket, or consent record reference"
+                            value={enrollmentState.zohoContactPermissionEvidence}
+                          />
+                        </label>
+                        <p className="text-xs leading-5 text-muted">Recording permission does not automatically subscribe the contact or trigger onboarding emails.</p>
+                        {enrollmentErrorMessage ? (
+                          <p className="text-sm text-danger" role="alert">{enrollmentErrorMessage}</p>
+                        ) : null}
                       </div>
                     </div>
                   </div>

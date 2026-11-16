@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import {
   EmailOnlyContactSyncError,
   evaluateEnrollmentContactSync,
-  synchronizeEmailOnlyContact
+  synchronizeEmailOnlyContact,
+  validateEnrollmentContactPermission
 } from "../lib/zoho-enrollment-sync-core.ts";
 
 const safeBase = {
@@ -43,6 +44,23 @@ test("missing permission evidence and disabled flags create no latent work", () 
   assert.deepEqual(evaluateEnrollmentContactSync({ ...safeBase, eventEmissionEnabled: false }), {
     action: "SKIP",
     reason: "EVENT_EMISSION_DISABLED"
+  });
+});
+
+test("permission evidence is optional unless confirmation is selected", () => {
+  assert.deepEqual(validateEnrollmentContactPermission(), {
+    confirmed: false,
+    evidenceReference: "",
+    valid: true
+  });
+  assert.equal(validateEnrollmentContactPermission({ confirmed: true }).valid, false);
+  assert.deepEqual(validateEnrollmentContactPermission({
+    confirmed: true,
+    evidenceReference: "  CRM-123  "
+  }), {
+    confirmed: true,
+    evidenceReference: "CRM-123",
+    valid: true
   });
 });
 
@@ -139,9 +157,29 @@ test("enrollment integration reuses the primary PlanContact and is post-commit",
   assert.ok(persistence.indexOf("prepareMspEnrollmentContactSync({") > persistence.indexOf("const msp = await prisma.$transaction"));
   assert.match(persistence, /catch\s*\{[\s\S]*PREPARATION_FAILED/);
   assert.match(route, /zohoContactPermission/);
+  assert.match(route, /validateEnrollmentContactPermission/);
   assert.match(route, /formatStaffAuditActor\(staffIdentity\)/);
   assert.match(route, /zohoAuditActorAttributable: Boolean\(staffIdentity\)/);
   assert.match(persistence, /recordMspEnrollmentContactSyncPreparationFailure/);
+});
+
+test("Enroll MSP always renders optional Zoho permission controls and submits their values", async () => {
+  const dashboard = await readFile(new URL("../components/internal-dashboard.tsx", import.meta.url), "utf8");
+  const editStart = dashboard.indexOf('{panelMode === "edit" && selectedCase && editState ? (');
+  const enrollStart = dashboard.indexOf('{panelMode === "enroll" ? (', editStart);
+  const enrollEnd = dashboard.indexOf('onClick={handleEnroll}', enrollStart);
+  assert.ok(editStart >= 0 && enrollStart > editStart && enrollEnd > enrollStart);
+  const editPanel = dashboard.slice(editStart, enrollStart);
+  const enrollPanel = dashboard.slice(enrollStart, enrollEnd);
+  assert.doesNotMatch(editPanel, /Zoho Partner Onboarding/);
+  assert.match(enrollPanel, /Zoho Partner Onboarding/);
+  assert.match(enrollPanel, /I confirm that appropriate permission has been obtained to add this contact to Zoho Marketing Automation\./);
+  assert.match(enrollPanel, /Permission Evidence Reference/);
+  assert.match(enrollPanel, /CRM note, support ticket, or consent record reference/);
+  assert.match(enrollPanel, /Recording permission does not automatically subscribe the contact or trigger onboarding emails\./);
+  assert.match(dashboard, /zohoContactPermissionConfirmed: false/);
+  assert.match(dashboard, /if \(enrollmentState\.zohoContactPermissionConfirmed && !permissionEvidenceReference\)/);
+  assert.match(dashboard, /zohoContactPermission:\s*\{\s*confirmed: enrollmentState\.zohoContactPermissionConfirmed,\s*evidenceReference: permissionEvidenceReference/s);
 });
 
 test("provider uses getleads plus addleadsinbulk and sends email only", async () => {

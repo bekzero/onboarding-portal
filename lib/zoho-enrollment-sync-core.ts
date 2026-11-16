@@ -2,6 +2,19 @@ export type EnrollmentSyncDecision =
   | { action: "SKIP"; reason: string }
   | { action: "PREPARE"; holdReason: string | null; status: "HELD" | "PENDING" };
 
+export function validateEnrollmentContactPermission(input?: {
+  confirmed?: boolean;
+  evidenceReference?: string;
+}) {
+  const confirmed = input?.confirmed === true;
+  const evidenceReference = input?.evidenceReference?.trim() ?? "";
+  return {
+    confirmed,
+    evidenceReference,
+    valid: !confirmed || Boolean(evidenceReference)
+  } as const;
+}
+
 export function evaluateEnrollmentContactSync(input: {
   automaticDispatchEnabled: boolean;
   communicationContextOwned: boolean;

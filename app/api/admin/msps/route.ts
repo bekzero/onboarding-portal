@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminApiAuthError, getAdminAuditActor, getCurrentStaffIdentity } from "@/lib/admin-auth";
 import { createMsp, getAdminDashboardCases, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 import { formatStaffAuditActor } from "@/lib/staff-auth";
+import { validateEnrollmentContactPermission } from "@/lib/zoho-enrollment-sync-core";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,14 +43,22 @@ export async function POST(request: NextRequest) {
       zohoContactPermission?: { confirmed?: boolean; evidenceReference?: string };
     };
 
+    const permission = validateEnrollmentContactPermission(body.zohoContactPermission);
+    if (!permission.valid) {
+      return NextResponse.json(
+        { error: "Permission Evidence Reference is required when Zoho permission is confirmed." },
+        { status: 400 }
+      );
+    }
+
     const staffIdentity = await getCurrentStaffIdentity();
     const adminCase = await createMsp({
       ...body,
       zohoAuditActor: staffIdentity ? formatStaffAuditActor(staffIdentity) : getAdminAuditActor(),
       zohoAuditActorAttributable: Boolean(staffIdentity),
       zohoContactPermission: {
-        confirmed: body.zohoContactPermission?.confirmed === true,
-        evidenceReference: body.zohoContactPermission?.evidenceReference
+        confirmed: permission.confirmed,
+        evidenceReference: permission.evidenceReference
       }
     });
     return NextResponse.json({ msp: adminCase }, { status: 201 });
