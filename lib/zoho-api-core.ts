@@ -22,11 +22,18 @@ export type ZohoErrorKind =
   | "INVALID_TRIGGER"
   | "PROVIDER";
 
+export type ZohoDiagnosticStage = "OAuth" | "getleads" | "parsing" | "pagination";
+
 export class ZohoApiError extends Error {
   constructor(
     message: string,
     readonly kind: ZohoErrorKind,
-    readonly options: { providerCode?: string; retryAfterSeconds?: number; status?: number } = {}
+    readonly options: {
+      diagnosticStage?: ZohoDiagnosticStage;
+      providerCode?: string;
+      retryAfterSeconds?: number;
+      status?: number;
+    } = {}
   ) {
     super(message);
     this.name = "ZohoApiError";
@@ -50,6 +57,25 @@ export type ZohoOAuthRefreshDiagnostic = {
   responseKeys: string[];
   tokenType: string | null;
 };
+
+export function logZohoDiagnostic(input: {
+  classification: string;
+  correlationId?: string;
+  httpStatus?: number;
+  level?: "error" | "warn";
+  providerCode?: string;
+  stage: ZohoDiagnosticStage;
+}) {
+  const entry = {
+    classification: input.classification.slice(0, 80),
+    correlationId: input.correlationId?.match(/^[a-z0-9_-]{1,80}$/i)?.[0] ?? "unavailable",
+    httpStatus: Number.isInteger(input.httpStatus) ? input.httpStatus : null,
+    providerCode: input.providerCode?.match(/^[a-z0-9_-]{1,50}$/i)?.[0] ?? null,
+    stage: input.stage
+  };
+  if (input.level === "warn") console.warn("[zoho-contact-check]", entry);
+  else console.error("[zoho-contact-check]", entry);
+}
 
 function sanitizeProviderMessage(value: unknown) {
   if (typeof value !== "string") return "Zoho returned an error.";
@@ -125,7 +151,15 @@ export class ZohoOAuthTokenManager {
     }
     if (this.refreshPromise) return this.refreshPromise;
 
-    this.refreshPromise = this.refreshAccessToken();
+    this.refreshPromise = this.refreshAccessToken().catch((error) => {
+      if (error instanceof ZohoApiError) {
+        throw new ZohoApiError(error.message, error.kind, {
+          ...error.options,
+          diagnosticStage: "OAuth"
+        });
+      }
+      throw error;
+    });
     try {
       return await this.refreshPromise;
     } finally {
@@ -499,11 +533,18 @@ export function parseListLeads(payload: unknown): ZohoListLead[] {
     throw new ZohoApiError("Zoho list-lead response has no lead list.", "INVALID_RESPONSE");
   }
   return payload.list_of_details.map((item) => {
-    if (!isRecord(item) || typeof item.lead_email !== "string") {
+    const email = isRecord(item)
+      ? typeof item.lead_email === "string" && item.lead_email.trim()
+        ? item.lead_email
+        : typeof item.contact_email === "string" && item.contact_email.trim()
+          ? item.contact_email
+          : null
+      : null;
+    if (!isRecord(item) || !email) {
       throw new ZohoApiError("Zoho returned an invalid lead entry.", "INVALID_RESPONSE");
     }
     return {
-      email: item.lead_email,
+      email,
       firstName: typeof item.firstname === "string" ? item.firstname : null,
       lastName: typeof item.lastname === "string" ? item.lastname : null
     };
@@ -742,6 +783,7 @@ export class ZohoApiClientCore {
   }
 
   async getListLeads(input: {
+    correlationId?: string;
     fromIndex: number;
     listKey: string;
     range: number;
@@ -764,8 +806,43 @@ export class ZohoApiClientCore {
       sort: "asc",
       status: input.status
     });
-    const payload = await this.request(`/api/v1/getleads?${query.toString()}`);
-    return parseListLeads(payload);
+    try {
+      const payload = await this.request(`/api/v1/getleads?${query.toString()}`);
+      return parseListLeads(payload);
+    } catch (error) {
+      const zohoError = error instanceof ZohoApiError ? error : null;
+      const stage: ZohoDiagnosticStage = zohoError?.options.diagnosticStage ?? (zohoError?.kind === "OAUTH" || zohoError?.kind === "CONFIGURATION"
+        ? "OAuth"
+        : zohoError?.kind === "INVALID_RESPONSE"
+          ? "parsing"
+          : "getleads");
+
+      // Some Zoho MA 2.0 portals return 2502 for empty non-active views.
+      // Keep the active view and all other uses of 2502 fail-closed.
+      if (
+        zohoError?.options.providerCode === "2502" &&
+        (input.status === "unsub" || input.status === "bounce")
+      ) {
+        logZohoDiagnostic({
+          classification: "EMPTY_NON_ACTIVE_CATEGORY",
+          correlationId: input.correlationId,
+          httpStatus: zohoError.options.status,
+          level: "warn",
+          providerCode: zohoError.options.providerCode,
+          stage: "getleads"
+        });
+        return [];
+      }
+
+      logZohoDiagnostic({
+        classification: zohoError?.kind ?? "UNEXPECTED_ERROR",
+        correlationId: input.correlationId,
+        httpStatus: zohoError?.options.status,
+        providerCode: zohoError?.options.providerCode,
+        stage
+      });
+      throw error;
+    }
   }
 
   /**

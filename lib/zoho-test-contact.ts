@@ -1,8 +1,9 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { getZohoApiClient } from "@/lib/zoho-api";
+import { logZohoDiagnostic } from "@/lib/zoho-api-core";
 import {
   getZohoDispatchConfiguration,
   getZohoListKey,
@@ -21,22 +22,28 @@ import { prisma } from "@/lib/prisma";
 const CONFIRMATION = "SYNC ALLOWLISTED TEST CONTACT";
 const REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-async function readMembership(email: string): Promise<ZohoTestContactCheck> {
-  const membership = await checkZohoListMembership(email);
+async function readMembership(email: string, correlationId: string): Promise<ZohoTestContactCheck> {
+  const membership = await checkZohoListMembership(email, { correlationId });
   return {
     complete: !membership.truncated,
     listStatuses: membership.listStatuses
   };
 }
 
-export async function checkZohoTestContact(emailValue: unknown) {
+export async function checkZohoTestContact(emailValue: unknown, correlationId = randomUUID()) {
   const { normalizedEmail } = normalizeRequiredEmail(emailValue, "Test contact email");
   try {
-    const result = classifyZohoTestContactCheck(await readMembership(normalizedEmail));
-    return { ...result, normalizedEmail };
+    const result = classifyZohoTestContactCheck(await readMembership(normalizedEmail, correlationId));
+    return { ...result, correlationId, normalizedEmail };
   } catch {
+    logZohoDiagnostic({
+      classification: "ZOHO_CHECK_FAILED",
+      correlationId,
+      stage: "getleads"
+    });
     return {
       classification: "UNABLE_TO_VERIFY" as const,
+      correlationId,
       listStatuses: [],
       normalizedEmail,
       reason: "ZOHO_CHECK_FAILED"
@@ -96,7 +103,7 @@ export async function syncZohoTestContact(input: {
   await claimRequest({ actor: input.actor, normalizedEmail, requestId: input.requestId });
   const result = await executeControlledTestContactSync({
     add: () => getZohoApiClient().addLeadsInBulk({ emails: [normalizedEmail], listKey }),
-    check: () => readMembership(normalizedEmail)
+    check: () => readMembership(normalizedEmail, input.requestId as string)
   });
   await prisma.zohoAutomationAudit.create({
     data: {

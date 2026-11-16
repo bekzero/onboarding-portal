@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getZohoApiClient } from "@/lib/zoho-api";
 import {
   classifyZohoListMembership,
+  logZohoDiagnostic,
   type ZohoBulkLeadResult,
   type ZohoJourney,
   type ZohoLeadField
@@ -352,7 +353,7 @@ export async function performZohoTestSync(input: {
   };
 }
 
-export async function checkZohoListMembership(email: string) {
+export async function checkZohoListMembership(email: string, options: { correlationId?: string } = {}) {
   const normalizedEmail = normalizeZohoRecipientEmail(email);
   const listKey = getZohoListKey();
   if (!listKey) throw new ZohoAdminValidationError("Zoho list configuration is missing.", 503);
@@ -363,6 +364,7 @@ export async function checkZohoListMembership(email: string) {
   for (const status of ["active", "unsub", "bounce"] as const) {
     for (let page = 0; page < 5; page += 1) {
       const leads = await client.getListLeads({
+        correlationId: options.correlationId,
         fromIndex: page * 200 + 1,
         listKey,
         range: 200,
@@ -373,7 +375,15 @@ export async function checkZohoListMembership(email: string) {
         break;
       }
       if (leads.length < 200) break;
-      if (page === 4) truncated = true;
+      if (page === 4) {
+        truncated = true;
+        logZohoDiagnostic({
+          classification: "SCAN_LIMIT_REACHED",
+          correlationId: options.correlationId,
+          level: "warn",
+          stage: "pagination"
+        });
+      }
     }
   }
 

@@ -52,6 +52,133 @@ test("getleads uses the verified GET request and parses list contacts", async ()
   assert.equal(new Headers(calls[0].init.headers).get("authorization"), "Zoho-oauthtoken test-access-token");
 });
 
+test("getleads accepts the Zoho MA 2.0 contact_email response field", async () => {
+  const client = new ZohoApiClientCore(tokenManager(), async () => response({
+    code: "0",
+    list_of_details: [{ contact_email: "contact@kzero.com", firstname: "Contact", lastname: "User" }],
+    status: "success"
+  }));
+
+  assert.deepEqual(await client.getListLeads({
+    correlationId: "contact-field-test",
+    fromIndex: 1,
+    listKey: "secret-list-key",
+    range: 20,
+    status: "active"
+  }), [{ email: "contact@kzero.com", firstName: "Contact", lastName: "User" }]);
+});
+
+test("empty unsubscribed and bounced category code 2502 is handled narrowly", async () => {
+  const diagnostics = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => diagnostics.push(args);
+  try {
+    const client = new ZohoApiClientCore(tokenManager(), async () =>
+      response({ code: "2502", message: "No records", status: "error" })
+    );
+    assert.deepEqual(await client.getListLeads({
+      correlationId: "empty-unsub-test",
+      fromIndex: 1,
+      listKey: "secret-list-key",
+      range: 20,
+      status: "unsub"
+    }), []);
+    assert.equal(diagnostics.length, 1);
+    assert.deepEqual(diagnostics[0][1], {
+      classification: "EMPTY_NON_ACTIVE_CATEGORY",
+      correlationId: "empty-unsub-test",
+      httpStatus: 200,
+      providerCode: "2502",
+      stage: "getleads"
+    });
+    assert.doesNotMatch(JSON.stringify(diagnostics), /secret-list-key|contact@/i);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("code 2502 for active membership remains fail-closed", async () => {
+  const diagnostics = [];
+  const originalError = console.error;
+  console.error = (...args) => diagnostics.push(args);
+  try {
+    const client = new ZohoApiClientCore(tokenManager(), async () =>
+      response({ code: "2502", message: "List key is not found", status: "error" })
+    );
+    await assert.rejects(client.getListLeads({
+      correlationId: "active-2502-test",
+      fromIndex: 1,
+      listKey: "secret-list-key",
+      range: 20,
+      status: "active"
+    }), (error) => error instanceof ZohoApiError && error.kind === "INVALID_LIST");
+    assert.equal(diagnostics[0][1].stage, "getleads");
+    assert.equal(diagnostics[0][1].providerCode, "2502");
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test("getleads logs sanitized HTTP, application, and parsing failures", async () => {
+  const diagnostics = [];
+  const originalError = console.error;
+  console.error = (...args) => diagnostics.push(args);
+  try {
+    const cases = [
+      response({ code: "INVALID_OAUTHSCOPE", message: "Denied", status: "error" }),
+      response({ code: "SERVER_ERROR", message: "Failed", status: "error" }, 503),
+      new Response("not-json", { status: 200 })
+    ];
+    for (const providerResponse of cases) {
+      const client = new ZohoApiClientCore(tokenManager(), async () => providerResponse);
+      await assert.rejects(client.getListLeads({
+        correlationId: "failure-test",
+        fromIndex: 1,
+        listKey: "secret-list-key",
+        range: 20,
+        status: "active"
+      }));
+    }
+    assert.deepEqual(diagnostics.map((entry) => entry[1].stage), ["getleads", "getleads", "parsing"]);
+    assert.deepEqual(diagnostics.map((entry) => entry[1].httpStatus), [200, 503, 200]);
+    assert.doesNotMatch(JSON.stringify(diagnostics), /secret-list-key|Zoho-oauthtoken|authorization/i);
+  } finally {
+    console.error = originalError;
+  }
+});
+
+test("OAuth refresh failures are identified as the OAuth diagnostic stage", async () => {
+  const diagnostics = [];
+  const originalError = console.error;
+  console.error = (...args) => diagnostics.push(args);
+  try {
+    const fetcher = async () => response({ error: "invalid_code", error_description: "Rejected" });
+    const manager = new ZohoOAuthTokenManager({
+      clientId: "client",
+      clientSecret: "secret",
+      refreshToken: "refresh"
+    }, fetcher);
+    const client = new ZohoApiClientCore(manager, fetcher);
+    await assert.rejects(client.getListLeads({
+      correlationId: "oauth-failure-test",
+      fromIndex: 1,
+      listKey: "secret-list-key",
+      range: 20,
+      status: "active"
+    }), (error) => error instanceof ZohoApiError && error.kind === "OAUTH");
+    assert.deepEqual(diagnostics[0][1], {
+      classification: "OAUTH",
+      correlationId: "oauth-failure-test",
+      httpStatus: 200,
+      providerCode: null,
+      stage: "OAuth"
+    });
+    assert.doesNotMatch(JSON.stringify(diagnostics), /clientSecret|refresh|secret-list-key/i);
+  } finally {
+    console.error = originalError;
+  }
+});
+
 test("addleadsinbulk validates, de-duplicates, and batches at ten emails", async () => {
   const calls = [];
   const emails = Array.from({ length: 21 }, (_, index) => `USER${index}@example.com`);

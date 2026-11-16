@@ -102,6 +102,16 @@ test("test writes require allowlisting, explicit flags, kill-switch release, and
   assert.match(env, /ZOHO_TEST_CONTACT_SYNC_ENABLED=false/);
 });
 
+test("membership failures carry sanitized correlation diagnostics and one fail-closed reason", async () => {
+  const service = await readFile(new URL("../lib/zoho-test-contact.ts", import.meta.url), "utf8");
+  const phase2 = await readFile(new URL("../lib/zoho-phase2.ts", import.meta.url), "utf8");
+  assert.equal((service.match(/ZOHO_CHECK_FAILED/g) ?? []).length, 2);
+  assert.match(service, /correlationId = randomUUID\(\)/);
+  assert.match(service, /logZohoDiagnostic/);
+  assert.match(phase2, /SCAN_LIMIT_REACHED/);
+  assert.match(phase2, /correlationId: options\.correlationId/);
+});
+
 test("Admin Center exposes no ListKey and accurately labels email-only synchronization", async () => {
   const ui = await readFile(new URL("../components/zoho-automation-center.tsx", import.meta.url), "utf8");
   assert.match(ui, /Test Contact Sync/);
