@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminApiAuthError } from "@/lib/admin-auth";
+import { getAdminApiAuthError, getAdminAuditActor, getCurrentStaffIdentity } from "@/lib/admin-auth";
 import { createMsp, getAdminDashboardCases, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
+import { formatStaffAuditActor } from "@/lib/staff-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,9 +39,19 @@ export async function POST(request: NextRequest) {
       planType?: "nfr" | "customer";
       primaryContactEmail: string;
       slug?: string;
+      zohoContactPermission?: { confirmed?: boolean; evidenceReference?: string };
     };
 
-    const adminCase = await createMsp(body);
+    const staffIdentity = await getCurrentStaffIdentity();
+    const adminCase = await createMsp({
+      ...body,
+      zohoAuditActor: staffIdentity ? formatStaffAuditActor(staffIdentity) : getAdminAuditActor(),
+      zohoAuditActorAttributable: Boolean(staffIdentity),
+      zohoContactPermission: {
+        confirmed: body.zohoContactPermission?.confirmed === true,
+        evidenceReference: body.zohoContactPermission?.evidenceReference
+      }
+    });
     return NextResponse.json({ msp: adminCase }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not create MSP.";

@@ -4,6 +4,11 @@ import { createTaskCompletedAdminNotification } from "@/lib/admin-notifications"
 import { decryptStoredOidcClientSecret, encryptOidcClientSecret } from "@/lib/oidc-secret-crypto";
 import { getPlanBundle, type FirstCustomerPilot, type PlanBundle, type SaaSApp as MockSaaSApp, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
+import {
+  prepareMspEnrollmentContactSync,
+  recordMspEnrollmentContactSyncPreparationFailure,
+  type EnrollmentContactPermission
+} from "@/lib/zoho-enrollment-sync";
 import { buildKzeroIssuerForTenant, normalizeTenantName } from "@/lib/tenant-routing";
 import {
   didActiveTaskChange,
@@ -527,6 +532,9 @@ type CreateMspInput = {
   planType?: PlanBundle["plan"]["tenantType"];
   primaryContactEmail: string;
   slug?: string;
+  zohoAuditActor?: string;
+  zohoAuditActorAttributable?: boolean;
+  zohoContactPermission?: EnrollmentContactPermission;
 };
 
 type UpdateMspInput = {
@@ -879,6 +887,31 @@ export async function createMsp(input: CreateMspInput) {
     }
     return created;
   });
+
+  const createdPlan = msp.onboardingPlans[0];
+  if (createdPlan) {
+    try {
+      await prepareMspEnrollmentContactSync({
+        actor: input.zohoAuditActor?.trim() || "admin-session",
+        actorAttributable: input.zohoAuditActorAttributable === true,
+        onboardingPlanId: createdPlan.id,
+        permission: input.zohoContactPermission
+      });
+    } catch {
+      // Enrollment is authoritative. Zoho preparation is deliberately
+      // post-commit so an integration failure cannot roll back the MSP.
+      const auditRecorded = await recordMspEnrollmentContactSyncPreparationFailure({
+        actor: input.zohoAuditActor?.trim() || "admin-session",
+        onboardingPlanId: createdPlan.id
+      });
+      console.error("[zoho-enrollment-sync]", {
+        auditRecorded,
+        classification: "PREPARATION_FAILED",
+        planId,
+        stage: "outbox-preparation"
+      });
+    }
+  }
 
   return toAdminDashboardCase(msp);
 }

@@ -114,6 +114,12 @@ export function getZohoTestContactSyncConfiguration() {
   };
 }
 
+export function getZohoMspEnrollmentSyncConfiguration() {
+  return {
+    enabled: enabled("ZOHO_MSP_ENROLLMENT_CONTACT_SYNC_ENABLED")
+  } as const;
+}
+
 export function getZohoConfigurationStatus() {
   const oauth = getZohoOAuthConfig();
   const journeys = getZohoJourneyConfiguration();
@@ -127,6 +133,7 @@ export function getZohoConfigurationStatus() {
     globalKillSwitch: dispatch.globalKillSwitch,
     journeyTriggeringEnabled: dispatch.journeyTriggeringEnabled,
     nudgeEvaluationEnabled: getZohoNudgeConfiguration().enabled,
+    mspEnrollmentContactSyncEnabled: getZohoMspEnrollmentSyncConfiguration().enabled,
     fieldMappingVerified: value("ZMA_FIELD_MAPPING_VERIFIED").toLowerCase() === "true",
     journeys: Object.fromEntries(
       Object.entries(journeys).map(([key, config]) => [

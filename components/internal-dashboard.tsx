@@ -208,6 +208,8 @@ type EnrollmentFormState = {
   status: OnboardingCase["status"];
   submittedSaasAppCount: number;
   tenantName: string;
+  zohoContactPermissionConfirmed: boolean;
+  zohoContactPermissionEvidence: string;
 };
 
 type EditFormState = {
@@ -1019,7 +1021,9 @@ function createEnrollmentState(): EnrollmentFormState {
     startingPlanType: "nfr",
     status: "waiting_on_msp",
     submittedSaasAppCount: 0,
-    tenantName: ""
+    tenantName: "",
+    zohoContactPermissionConfirmed: false,
+    zohoContactPermissionEvidence: ""
   };
 }
 
@@ -2195,7 +2199,11 @@ export function InternalDashboard({
             name: trimmedMspName,
             planType: enrollmentState.startingPlanType,
             primaryContactEmail: trimmedPrimaryContactEmail,
-            slug: caseSlug
+            slug: caseSlug,
+            zohoContactPermission: {
+              confirmed: enrollmentState.zohoContactPermissionConfirmed,
+              evidenceReference: enrollmentState.zohoContactPermissionEvidence.trim()
+            }
           })
         });
 
@@ -3788,6 +3796,33 @@ export function InternalDashboard({
                             />
                             <span>GMM Partner</span>
                           </label>
+                          <div className="grid gap-3 rounded-2xl border border-border bg-input px-4 py-3">
+                            <label className="flex items-start gap-3 text-sm text-secondary">
+                              <input
+                                checked={enrollmentState.zohoContactPermissionConfirmed}
+                                className="mt-0.5 h-4 w-4 rounded border-border bg-input"
+                                onChange={(event) => setEnrollmentState((current) => ({
+                                  ...current,
+                                  zohoContactPermissionConfirmed: event.target.checked
+                                }))}
+                                type="checkbox"
+                              />
+                              <span>I have documented this contact's permission to add their email to the KZero Partner Onboarding mailing list.</span>
+                            </label>
+                            <label className="grid gap-2 text-sm text-secondary">
+                              <span>Permission evidence reference</span>
+                              <input
+                                className="rounded-xl border border-border bg-surface px-3 py-2 text-foreground outline-none"
+                                onChange={(event) => setEnrollmentState((current) => ({
+                                  ...current,
+                                  zohoContactPermissionEvidence: event.target.value
+                                }))}
+                                placeholder="CRM note, ticket, or consent record"
+                                value={enrollmentState.zohoContactPermissionEvidence}
+                              />
+                            </label>
+                            <p className="text-xs leading-5 text-muted">MSP enrollment alone is not consent. With automation disabled, this is recorded for readiness only and no Zoho write is queued.</p>
+                          </div>
                         </div>
                       </div>
 

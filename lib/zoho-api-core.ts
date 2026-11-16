@@ -20,6 +20,7 @@ export type ZohoErrorKind =
   | "INVALID_JOURNEY"
   | "INACTIVE_JOURNEY"
   | "INVALID_TRIGGER"
+  | "INELIGIBLE_RECIPIENT"
   | "PROVIDER";
 
 export type ZohoDiagnosticStage = "OAuth" | "getleads" | "parsing" | "pagination";

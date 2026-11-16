@@ -15,6 +15,7 @@ type ContactOption = {
 type StatusPayload = {
   configuration: {
     contactSynchronizationEnabled: boolean;
+    mspEnrollmentContactSyncEnabled: boolean;
     journeyTriggeringEnabled: boolean;
     fieldMappingVerified: boolean;
     journeys: Record<string, { journeyKeyPresent: boolean; triggerKeyPresent: boolean }>;
@@ -48,6 +49,12 @@ type PlanAutomationSummary = {
   nudge: { status: string; taskKey: string | null };
   readiness: { status: string; readyForDataSync: boolean; readyForJourneyEnrollment: boolean } | null;
   subscriptionStatus: string | null;
+  enrollmentContactSync: {
+    event: { createdAt: string; holdReason: string | null; status: string } | null;
+    individuallyAttributable: boolean;
+    permissionEvidencePresent: boolean;
+    permissionRecordedAt: string | null;
+  };
 };
 
 function yesNo(value: boolean) {
@@ -197,6 +204,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
           <p>Journey triggering: <span className="text-foreground">{status.configuration.journeyTriggeringEnabled ? "Enabled" : "Disabled"}</span></p>
           <p>Journey discovery: <span className="text-foreground">{status.lastJourneyDiscovery ? "Previously tested" : "Not tested"}</span></p>
           <p>Test mode: <span className="text-foreground">{status.configuration.testMode.enabled ? "Enabled" : "Disabled"}</span></p>
+          <p>MSP enrollment sync: <span className="text-foreground">{status.configuration.mspEnrollmentContactSyncEnabled ? "Preparation enabled" : "Disabled"}</span></p>
         </div>
       ) : null}
 
@@ -210,6 +218,8 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
           <p>Last journey outcome: <span className="text-foreground">{planSummary.lastJourneyOutcome ? `${planSummary.lastJourneyOutcome.journey} · ${planSummary.lastJourneyOutcome.providerResult}` : "None"}</span></p>
           <p>Nudge: <span className="text-foreground">{planSummary.nudge.status}</span></p>
           <p>Held / failed events: <span className="text-foreground">{planSummary.heldEventCount} / {planSummary.failedEventCount}</span></p>
+          <p>Enrollment contact permission: <span className="text-foreground">{planSummary.enrollmentContactSync.permissionEvidencePresent ? (planSummary.enrollmentContactSync.individuallyAttributable ? "Documented by staff" : "Recorded; individual staff identity required") : "Missing"}</span></p>
+          <p>Enrollment contact sync: <span className="text-foreground">{planSummary.enrollmentContactSync.event ? `${planSummary.enrollmentContactSync.event.status}${planSummary.enrollmentContactSync.event.holdReason ? ` · ${planSummary.enrollmentContactSync.event.holdReason.replaceAll("_", " ")}` : ""}` : "Not prepared"}</span></p>
         </div>
       ) : null}
 

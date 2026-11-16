@@ -200,7 +200,7 @@ function getJourneyKeys(journey: ZohoJourneyType, mode: "test" | "production") {
 }
 
 async function loadDispatchState(event: ZohoOutboxEvent) {
-  const plan = await prisma.onboardingPlan.findUnique({
+  const [plan, permissionAudit] = await Promise.all([prisma.onboardingPlan.findUnique({
     where: { id: event.onboardingPlanId },
     select: {
       automationEnrollmentState: true,
@@ -215,14 +215,22 @@ async function loadDispatchState(event: ZohoOutboxEvent) {
         select: { id: true, role: true, subscriptionStatus: true }
       }
     }
-  });
+  }), prisma.zohoAutomationAudit.findFirst({
+    where: {
+      action: "msp_enrollment.contact_permission_recorded",
+      actor: { startsWith: "oidc:" },
+      onboardingPlanId: event.onboardingPlanId,
+      recipientEmailNormalized: event.recipientEmailNormalized
+    },
+    select: { id: true }
+  })]);
   if (!plan) return null;
   const contact = plan.planContacts[0];
   const currentTask = plan.onboardingTasks.find((task) => task.status !== "complete") ?? plan.onboardingTasks.at(-1) ?? null;
   const milestoneCompleted = plan.onboardingTasks.some(
     (task) => task.templateKey === "complete-first-customer-rollout" && task.status === "complete"
   );
-  return { contact, currentTask, milestoneCompleted, plan };
+  return { contact, contactPermissionRecorded: Boolean(permissionAudit), currentTask, milestoneCompleted, plan };
 }
 
 async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider) {
@@ -230,6 +238,18 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
   const config = getZohoDispatchConfiguration();
   const done = (input: Omit<Parameters<typeof finishClaim>[1], "durationMs">) =>
     finishClaim(claim, { ...input, durationMs: Date.now() - started });
+  const pendingContactVerification = () => claim.event.attemptCount >= MAX_ATTEMPTS
+    ? done({
+        status: "HELD",
+        reason: "CONTACT_MEMBERSHIP_UNVERIFIED_AFTER_ACCEPTANCE",
+        outcome: "ACCEPTED_PENDING_VERIFICATION"
+      })
+    : done({
+        status: "RETRY",
+        reason: "CONTACT_MEMBERSHIP_PENDING_VERIFICATION",
+        outcome: "ACCEPTED_PENDING_VERIFICATION",
+        retryAt: new Date(Date.now() + getZohoRetryDelayMs(claim.event.attemptCount))
+      });
   if (config.globalKillSwitch) return done({ status: "HELD", reason: "GLOBAL_KILL_SWITCH_ENABLED" });
   if (config.mode === "disabled") return done({ status: "HELD", reason: "DISPATCH_MODE_DISABLED" });
   const state = await loadDispatchState(claim.event);
@@ -250,6 +270,13 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
   if (state.contact.subscriptionStatus === "INELIGIBLE") {
     const reason = claim.event.isStopState ? "CRITICAL_STOP_STATE_RECIPIENT_SUPPRESSED" : "RECIPIENT_INELIGIBLE";
     return done({ status: "HELD", reason });
+  }
+  if (
+    claim.event.eventType === "UPSERT_CONTACT" &&
+    state.contact.subscriptionStatus !== "CONFIRMED" &&
+    !state.contactPermissionRecorded
+  ) {
+    return done({ status: "HELD", reason: "CONTACT_PERMISSION_NOT_DOCUMENTED" });
   }
   if (claim.event.eventType === "TRIGGER_JOURNEY" && state.contact.subscriptionStatus !== "CONFIRMED") {
     return done({ status: "HELD", reason: "SUBSCRIPTION_NOT_CONFIRMED" });
@@ -292,8 +319,14 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     const snapshot = await getPersistedZohoContactSnapshot(state.plan.planId, state.contact.id);
     const contactCapacity = await reserveZohoApiCapacity("CONTACT_SYNC");
     if (!contactCapacity.allowed) return done({ status: "RETRY", reason: "CONTACT_SYNC_RATE_LIMITED", retryAt: contactCapacity.retryAt });
+    const contactOptions = {
+      verificationOnly: claim.event.lastProviderOutcome === "ACCEPTED_PENDING_VERIFICATION"
+    };
     if (claim.event.eventType === "UPSERT_CONTACT") {
-      const result = await executeZohoProviderWorkflow({ provider, snapshot: snapshot.snapshot });
+      const result = await executeZohoProviderWorkflow({ contactOptions, provider, snapshot: snapshot.snapshot });
+      if (result.contact.classification === "PENDING_VERIFICATION") {
+        return pendingContactVerification();
+      }
       return done({ status: "SUCCEEDED", outcome: result.contact.classification });
     }
     if (!config.journeyTriggeringEnabled || !claim.event.journey) return done({ status: "HELD", reason: "JOURNEY_TRIGGERING_DISABLED" });
@@ -302,6 +335,7 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     if (!listKey) return done({ status: "HELD", reason: "LIST_CONFIGURATION_MISSING" });
     apiOperation = "JOURNEY_TRIGGER";
     const workflow = await executeZohoProviderWorkflow({
+      contactOptions,
       provider,
       snapshot: snapshot.snapshot,
       beforeJourneyTrigger: async () => {
@@ -320,6 +354,9 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
         triggerKey: journey.triggerKey
       }
     });
+    if (workflow.contact.classification === "PENDING_VERIFICATION") {
+      return pendingContactVerification();
+    }
     const result = workflow.journey!;
     if (result.classification === "IGNORED") return done({
       status: "DEAD", reason: "ZOHO_IGNORED_LEAD", outcome: result.classification,
@@ -346,7 +383,7 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     if (["INVALID_JOURNEY", "INACTIVE_JOURNEY", "INVALID_TRIGGER", "CONFIGURATION"].includes(sanitized.kind)) {
       return done({ status: "HELD", reason, journeyResult: "FAILED", journeyMetadata: { kind: sanitized.kind } });
     }
-    if (["INVALID_LIST", "INVALID_TOPIC", "INVALID_EMAIL", "GROUP_EMAIL", "MISSING_FIELD"].includes(sanitized.kind)) {
+    if (["INVALID_LIST", "INVALID_TOPIC", "INVALID_EMAIL", "GROUP_EMAIL", "MISSING_FIELD", "INELIGIBLE_RECIPIENT"].includes(sanitized.kind)) {
       return done({ status: "HELD", reason });
     }
     if (claim.event.attemptCount >= MAX_ATTEMPTS) return done({ status: "DEAD", reason });

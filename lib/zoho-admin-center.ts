@@ -265,7 +265,7 @@ export async function getZohoPlanAutomationSummary(planId: string) {
   });
   if (!plan) return null;
   const owner = plan.planContacts[0];
-  const [readiness, context, lastSync, lastJourney, eventCounts] = await Promise.all([
+  const [readiness, context, lastSync, lastJourney, eventCounts, permissionAudit, enrollmentEvent] = await Promise.all([
     getZohoAutomationReadiness(planId),
     owner ? prisma.zohoCommunicationContext.findUnique({ where: { recipientEmailNormalized: owner.normalizedEmail }, select: { activePlanId: true, state: true } }) : null,
     prisma.zohoOutboxEvent.findFirst({ where: { onboardingPlanId: plan.id, eventType: "UPSERT_CONTACT", status: "SUCCEEDED" }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true, lastProviderOutcome: true } }),
@@ -273,7 +273,21 @@ export async function getZohoPlanAutomationSummary(planId: string) {
     Promise.all([
       prisma.zohoOutboxEvent.count({ where: { onboardingPlanId: plan.id, status: "HELD" } }),
       prisma.zohoOutboxEvent.count({ where: { onboardingPlanId: plan.id, status: { in: ["DEAD", "RETRY"] } } })
-    ])
+    ]),
+    owner ? prisma.zohoAutomationAudit.findFirst({
+      where: {
+        action: "msp_enrollment.contact_permission_recorded",
+        onboardingPlanId: plan.id,
+        recipientEmailNormalized: owner?.normalizedEmail
+      },
+      orderBy: { createdAt: "desc" },
+      select: { actor: true, createdAt: true, evidenceReference: true }
+    }) : null,
+    prisma.zohoOutboxEvent.findFirst({
+      where: { onboardingPlanId: plan.id, eventKey: { startsWith: "contact-sync:msp-enrolled:" } },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true, holdReason: true, status: true }
+    })
   ]);
   return {
     automationEnrollmentState: plan.automationEnrollmentState,
@@ -284,6 +298,12 @@ export async function getZohoPlanAutomationSummary(planId: string) {
     lastSuccessfulContactSync: lastSync,
     lastJourneyOutcome: lastJourney,
     nudge: { status: plan.nudgeStatus, taskKey: plan.nudgeTaskKey },
+    enrollmentContactSync: {
+      event: enrollmentEvent,
+      individuallyAttributable: permissionAudit?.actor.startsWith("oidc:") ?? false,
+      permissionEvidencePresent: Boolean(permissionAudit?.evidenceReference),
+      permissionRecordedAt: permissionAudit?.createdAt ?? null
+    },
     heldEventCount: eventCounts[0], failedEventCount: eventCounts[1]
   };
 }
