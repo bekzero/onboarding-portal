@@ -1,8 +1,13 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
-import { getZohoConfigurationStatus, getZohoDispatchConfiguration, getZohoMspEnrollmentSyncConfiguration } from "@/lib/zoho-config";
-import { evaluateEnrollmentContactSyncReadiness } from "@/lib/zoho-enrollment-sync-core";
+import {
+  getZohoConfigurationStatus,
+  getZohoDispatchConfiguration,
+  getZohoMspEnrollmentPilotConfiguration,
+  getZohoMspEnrollmentSyncConfiguration
+} from "@/lib/zoho-config";
+import { evaluateEnrollmentContactSyncReadiness, evaluateEnrollmentPilotReadiness } from "@/lib/zoho-enrollment-sync-core";
 import { isZohoEventEmissionEnabled } from "@/lib/zoho-foundation";
 import { getZohoNudgeSummary } from "@/lib/zoho-nudge-engine";
 import { getZohoAutomationReadiness } from "@/lib/zoho-readiness";
@@ -260,7 +265,7 @@ export async function getZohoAdminContacts(searchParams: URLSearchParams) {
 
 export async function getZohoPlanAutomationSummary(
   planId: string,
-  options: { includePermissionEvidenceReference?: boolean } = {}
+  options: { currentStaffRole?: string | null; includePermissionEvidenceReference?: boolean } = {}
 ) {
   const plan = await prisma.onboardingPlan.findUnique({
     where: { planId },
@@ -304,6 +309,7 @@ export async function getZohoPlanAutomationSummary(
   ]);
   const configuration = getZohoConfigurationStatus();
   const dispatch = getZohoDispatchConfiguration();
+  const pilot = getZohoMspEnrollmentPilotConfiguration();
   const permissionEvidenceReference = permissionAudit?.evidenceReference?.trim() ?? "";
   const primaryEmailNormalized = plan.msp.primaryContactEmail.trim().toLowerCase();
   const contactValid = Boolean(
@@ -336,6 +342,24 @@ export async function getZohoPlanAutomationSummary(
     subscriptionStatus: owner?.subscriptionStatus ?? null,
     syncOnEnrollmentEnabled: getZohoMspEnrollmentSyncConfiguration().enabled
   });
+  const pilotReadiness = evaluateEnrollmentPilotReadiness({
+    alreadySynchronized: enrollmentEvent?.status === "SUCCEEDED",
+    automaticDispatchEnabled: dispatch.automaticDispatchEnabled,
+    communicationContextOwned: context?.state === "ACTIVE" && context.activePlanId === plan.id,
+    contactAutomationEnabled: owner?.automationEnabled === true,
+    contactValid,
+    emailOnlyProviderReady: configuration.oauthConfigured && configuration.listKeyPresent,
+    evidenceReference: permissionEvidenceReference,
+    globalKillSwitch: dispatch.globalKillSwitch,
+    hasUnresolvedEnrollmentEvent: Boolean(enrollmentEvent && !["SUCCEEDED", "CANCELLED", "DEAD"].includes(enrollmentEvent.status)),
+    listPrivacyVerified: configuration.listPrivacyVerified,
+    permissionConfirmed: Boolean(permissionAudit),
+    pilotTargetConfigured: pilot.configured,
+    pilotTargetMatches: pilot.configured && pilot.planId === plan.planId && pilot.email === primaryEmailNormalized,
+    planAutomationActive: plan.automationEnrollmentState === "ACTIVE",
+    staffAdminAuthorized: options.currentStaffRole === "ADMIN",
+    subscriptionStatus: owner?.subscriptionStatus ?? null
+  });
   return {
     automationEnrollmentState: plan.automationEnrollmentState,
     automationOrigin: plan.automationOrigin,
@@ -357,6 +381,7 @@ export async function getZohoPlanAutomationSummary(
       permissionRecordedAt: permissionAudit?.createdAt ?? null,
       primaryContactEmail: plan.msp.primaryContactEmail,
       primaryContactMatchesOwner: contactValid,
+      pilotReadiness,
       readiness: syncReadiness,
       staffIdentityVerified: permissionAudit?.actor.startsWith("oidc:") ?? false,
       synchronizationState: enrollmentEvent?.status ?? "NOT_PREPARED"

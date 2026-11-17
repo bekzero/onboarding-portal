@@ -8,6 +8,7 @@ async function loadAuthorizedSummary(context: { params: Promise<{ planId: string
   const { planId } = await context.params;
   const staffIdentity = await getCurrentStaffIdentity();
   return getZohoPlanAutomationSummary(planId, {
+    currentStaffRole: staffIdentity?.role ?? null,
     includePermissionEvidenceReference: Boolean(staffIdentity)
   });
 }

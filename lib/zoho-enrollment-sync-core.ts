@@ -30,6 +30,63 @@ export type EnrollmentSyncReadiness = {
   wouldPrepareNow: boolean;
 };
 
+export type EnrollmentPilotReadiness = {
+  blockers: string[];
+  candidateEligible: boolean;
+  classification: "ELIGIBLE_FOR_CONTROLLED_PILOT" | "NOT_TARGETED" | "NEEDS_ATTENTION" | "ALREADY_SYNCHRONIZED";
+  liveSynchronizationAvailable: false;
+};
+
+export function evaluateEnrollmentPilotReadiness(input: {
+  alreadySynchronized: boolean;
+  automaticDispatchEnabled: boolean;
+  communicationContextOwned: boolean;
+  contactAutomationEnabled: boolean;
+  contactValid: boolean;
+  emailOnlyProviderReady: boolean;
+  evidenceReference: string;
+  globalKillSwitch: boolean;
+  hasUnresolvedEnrollmentEvent: boolean;
+  listPrivacyVerified: boolean;
+  permissionConfirmed: boolean;
+  pilotTargetConfigured: boolean;
+  pilotTargetMatches: boolean;
+  planAutomationActive: boolean;
+  staffAdminAuthorized: boolean;
+  subscriptionStatus: EnrollmentSyncReadinessInput["subscriptionStatus"];
+}): EnrollmentPilotReadiness {
+  const blockers: string[] = [];
+  if (!input.pilotTargetConfigured) blockers.push("PILOT_TARGET_NOT_CONFIGURED");
+  else if (!input.pilotTargetMatches) blockers.push("PILOT_TARGET_NOT_ALLOWLISTED");
+  if (!input.staffAdminAuthorized) blockers.push("INDIVIDUAL_ADMIN_IDENTITY_REQUIRED");
+  if (!input.permissionConfirmed) blockers.push("CONTACT_PERMISSION_NOT_DOCUMENTED");
+  if (input.permissionConfirmed && !input.evidenceReference.trim()) blockers.push("PERMISSION_EVIDENCE_MISSING");
+  if (!input.contactValid) blockers.push("INVALID_PRIMARY_CONTACT");
+  if (!input.planAutomationActive || !input.contactAutomationEnabled) blockers.push("AUTOMATION_APPROVAL_REQUIRED");
+  if (!input.communicationContextOwned) blockers.push("COMMUNICATION_CONTEXT_REQUIRED");
+  if (input.subscriptionStatus === "INELIGIBLE") blockers.push("RECIPIENT_INELIGIBLE");
+  if (!input.emailOnlyProviderReady) blockers.push("EMAIL_ONLY_PROVIDER_CONFIGURATION_INCOMPLETE");
+  if (!input.listPrivacyVerified) blockers.push("LIST_PRIVACY_UNVERIFIED");
+  if (input.hasUnresolvedEnrollmentEvent) blockers.push("UNRESOLVED_ENROLLMENT_EVENT");
+  if (!input.globalKillSwitch) blockers.push("GLOBAL_KILL_SWITCH_MUST_REMAIN_ENABLED");
+  if (input.automaticDispatchEnabled) blockers.push("AUTOMATIC_DISPATCH_MUST_REMAIN_DISABLED");
+
+  const candidateEligible = !input.alreadySynchronized && blockers.length === 0;
+  return {
+    blockers,
+    candidateEligible,
+    classification: input.alreadySynchronized
+      ? "ALREADY_SYNCHRONIZED"
+      : !input.pilotTargetConfigured || !input.pilotTargetMatches
+        ? "NOT_TARGETED"
+        : candidateEligible
+          ? "ELIGIBLE_FOR_CONTROLLED_PILOT"
+          : "NEEDS_ATTENTION",
+    // Phase 7B.6A intentionally has no execution path.
+    liveSynchronizationAvailable: false
+  };
+}
+
 export function validateEnrollmentContactPermission(input?: {
   confirmed?: boolean;
   evidenceReference?: string;

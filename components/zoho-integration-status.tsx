@@ -22,6 +22,7 @@ type StatusPayload = {
     listKeyPresent: boolean;
     listPrivacyVerified: boolean;
     mspEnrollmentContactSyncEnabled: boolean;
+    mspEnrollmentPilotTargetConfigured: boolean;
     oauthConfigured: boolean;
     testMode: { allowlistedEmailCount: number; allowlistedPlanCount: number; enabled: boolean };
     topicIdPresent: boolean;
@@ -52,6 +53,12 @@ type PlanAutomationSummary = {
     permissionRecordedAt: string | null;
     primaryContactEmail: string;
     primaryContactMatchesOwner: boolean;
+    pilotReadiness: {
+      blockers: string[];
+      candidateEligible: boolean;
+      classification: string;
+      liveSynchronizationAvailable: false;
+    };
     readiness: {
       blockers: string[];
       classification: string;
@@ -80,14 +87,21 @@ const blockerCopy: Record<string, { category: BlockerCategory; kind: BlockerKind
   CONTACT_PERMISSION_NOT_DOCUMENTED: { category: "contact", kind: "action", label: "Record appropriate contact permission and its supporting evidence." },
   CONTACT_SYNCHRONIZATION_DISABLED: { category: "flags", kind: "intentional", label: "Contact synchronization is intentionally disabled." },
   EVENT_EMISSION_DISABLED: { category: "flags", kind: "intentional", label: "Zoho event preparation is intentionally disabled." },
+  EMAIL_ONLY_PROVIDER_CONFIGURATION_INCOMPLETE: { category: "provider", kind: "unverified", label: "Configure OAuth and the KZero Partner Onboarding ListKey for email-only list synchronization." },
   GLOBAL_KILL_SWITCH_ENABLED: { category: "flags", kind: "intentional", label: "The global Zoho kill switch is enabled." },
   INDIVIDUAL_STAFF_IDENTITY_REQUIRED: { category: "identity", kind: "action", label: "Sign in with an individually attributable staff identity." },
   INVALID_PRIMARY_CONTACT: { category: "contact", kind: "action", label: "Make the primary MSP contact match a valid Onboarding Owner email." },
   MSP_ENROLLMENT_SYNC_DISABLED: { category: "flags", kind: "intentional", label: "MSP enrollment contact-sync preparation is intentionally disabled." },
+  LIST_PRIVACY_UNVERIFIED: { category: "provider", kind: "unverified", label: "Verify that the selected KZero Partner Onboarding mailing list has the approved privacy setting." },
+  PILOT_TARGET_NOT_ALLOWLISTED: { category: "contact", kind: "intentional", label: "This plan and primary contact are not the single server-side pilot target." },
+  PILOT_TARGET_NOT_CONFIGURED: { category: "contact", kind: "intentional", label: "No single MSP pilot target is configured server-side." },
   PERMISSION_EVIDENCE_MISSING: { category: "contact", kind: "action", label: "Add a permission evidence reference for the primary contact." },
   PRODUCTION_DISPATCH_NOT_APPROVED: { category: "flags", kind: "intentional", label: "Production dispatch has not been approved." },
   PROVIDER_CONFIGURATION_INCOMPLETE: { category: "provider", kind: "unverified", label: "Complete and verify the required Zoho provider configuration." },
-  RECIPIENT_INELIGIBLE: { category: "contact", kind: "action", label: "The contact is unsubscribed, bounced, suppressed, or otherwise ineligible." }
+  RECIPIENT_INELIGIBLE: { category: "contact", kind: "action", label: "The contact is unsubscribed, bounced, suppressed, or otherwise ineligible." },
+  UNRESOLVED_ENROLLMENT_EVENT: { category: "plan", kind: "action", label: "Resolve the existing enrollment outbox event before considering a pilot." },
+  GLOBAL_KILL_SWITCH_MUST_REMAIN_ENABLED: { category: "flags", kind: "intentional", label: "Phase 7B.6A requires the global kill switch to remain enabled." },
+  AUTOMATIC_DISPATCH_MUST_REMAIN_DISABLED: { category: "flags", kind: "intentional", label: "Phase 7B.6A requires automatic dispatch to remain disabled." }
 };
 
 const categoryLabels: Record<BlockerCategory, string> = {
@@ -264,6 +278,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   }, [planSummary]);
 
   const readiness = planSummary?.enrollmentContactSync.readiness;
+  const pilotReadiness = planSummary?.enrollmentContactSync.pilotReadiness;
   const primaryStatus = displayStatus(readiness?.classification ?? "UNABLE_TO_VERIFY");
   const PrimaryIcon = primaryStatus.icon;
   const configuredJourneys = status
@@ -302,6 +317,33 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
         </p>
       ) : null}
       {error ? <p className="rounded-xl border border-danger-border/60 bg-danger-surface px-3 py-2 text-sm text-danger">{error}</p> : null}
+
+      <section className="rounded-xl border border-border bg-input p-4" aria-labelledby="zoho-pilot-readiness-heading">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-[0.16em] text-muted">Phase 7B.6A · preview only</p>
+            <h5 className="mt-1 text-sm font-semibold text-foreground" id="zoho-pilot-readiness-heading">Single-contact pilot readiness</h5>
+            <p className="mt-1 text-xs leading-5 text-secondary">
+              Evaluates this MSP against one server-side plan and email allowlist. It cannot create an event or contact Zoho.
+            </p>
+          </div>
+          <Badge status={pilotReadiness?.candidateEligible ? "complete" : "waiting_on_kzero"}>
+            {pilotReadiness?.candidateEligible ? "Eligible for future pilot" : pilotReadiness?.classification === "ALREADY_SYNCHRONIZED" ? "Already synchronized" : "Not eligible"}
+          </Badge>
+        </div>
+        <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+          <div><dt className="text-muted">Selected MSP</dt><dd className="mt-1 truncate text-foreground">{planSummary?.enrollmentContactSync.mspName ?? "Unavailable"}</dd></div>
+          <div><dt className="text-muted">Primary contact</dt><dd className="mt-1 break-all text-foreground">{planSummary?.enrollmentContactSync.primaryContactEmail ?? "Unavailable"}</dd></div>
+          <div><dt className="text-muted">Current staff</dt><dd className="mt-1 text-foreground">{pilotReadiness?.blockers.includes("INDIVIDUAL_ADMIN_IDENTITY_REQUIRED") ? "ADMIN identity required" : "Individually authenticated ADMIN"}</dd></div>
+          <div><dt className="text-muted">Email-only provider</dt><dd className="mt-1 text-foreground">{pilotReadiness?.blockers.includes("EMAIL_ONLY_PROVIDER_CONFIGURATION_INCOMPLETE") ? "Incomplete" : "OAuth and ListKey present"}</dd></div>
+        </dl>
+        {pilotReadiness?.blockers.length ? (
+          <ul className="mt-3 grid gap-1 border-t border-border pt-3 text-xs leading-5 text-secondary sm:grid-cols-2">
+            {pilotReadiness.blockers.map((code) => <li className="break-words" key={code}>• {blockerCopy[code]?.label ?? humanize(code)}</li>)}
+          </ul>
+        ) : null}
+        <p className="mt-3 text-xs font-medium text-warning">No live Sync control is available in this phase. Production automation and the global kill switch remain authoritative.</p>
+      </section>
 
       <div>
         <h5 className="text-sm font-semibold text-foreground">Items requiring attention</h5>
@@ -351,7 +393,9 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
           <p>Last journey outcome: <span className="text-foreground">{planSummary?.lastJourneyOutcome ? `${planSummary.lastJourneyOutcome.journey} · ${planSummary.lastJourneyOutcome.providerResult}` : "None"}</span></p>
           <p>Nudge state: <span className="text-foreground">{planSummary?.nudge.status ?? "Unavailable"}</span></p>
           <p>OAuth / list configuration: <span className="text-foreground">{status?.configuration.oauthConfigured && status.configuration.listKeyPresent ? "Present" : "Incomplete"}</span></p>
+          <p>Email-only list readiness: <span className="text-foreground">{status?.configuration.oauthConfigured && status.configuration.listKeyPresent ? "Configured" : "Incomplete"}</span></p>
           <p>Field / private-list verification: <span className="text-foreground">{status?.configuration.fieldMappingVerified && status.configuration.listPrivacyVerified ? "Verified" : "Unverified"}</span></p>
+          <p>Single-contact pilot target: <span className="text-foreground">{status?.configuration.mspEnrollmentPilotTargetConfigured ? "Configured server-side" : "Not configured"}</span></p>
           <p>Configured journeys: <span className="text-foreground">{configuredJourneys} of 4</span></p>
           <p>Journey triggering: <span className="text-foreground">{status?.configuration.journeyTriggeringEnabled ? "Enabled" : "Disabled"}</span></p>
           {planSummary?.enrollmentContactSync.permissionEvidenceReference ? (

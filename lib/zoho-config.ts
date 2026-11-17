@@ -120,6 +120,16 @@ export function getZohoMspEnrollmentSyncConfiguration() {
   } as const;
 }
 
+export function getZohoMspEnrollmentPilotConfiguration() {
+  const planId = value("ZOHO_MSP_ENROLLMENT_PILOT_PLAN_ID");
+  const email = value("ZOHO_MSP_ENROLLMENT_PILOT_EMAIL").toLowerCase();
+  return {
+    configured: Boolean(planId && email),
+    email,
+    planId
+  } as const;
+}
+
 export function getZohoConfigurationStatus() {
   const oauth = getZohoOAuthConfig();
   const journeys = getZohoJourneyConfiguration();
@@ -134,6 +144,7 @@ export function getZohoConfigurationStatus() {
     journeyTriggeringEnabled: dispatch.journeyTriggeringEnabled,
     nudgeEvaluationEnabled: getZohoNudgeConfiguration().enabled,
     mspEnrollmentContactSyncEnabled: getZohoMspEnrollmentSyncConfiguration().enabled,
+    mspEnrollmentPilotTargetConfigured: getZohoMspEnrollmentPilotConfiguration().configured,
     fieldMappingVerified: value("ZMA_FIELD_MAPPING_VERIFIED").toLowerCase() === "true",
     journeys: Object.fromEntries(
       Object.entries(journeys).map(([key, config]) => [

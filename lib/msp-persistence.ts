@@ -20,6 +20,7 @@ import {
   recordZohoPlanCreatedEventsInTransaction,
   shouldFinishNudge
 } from "@/lib/zoho-lifecycle-events";
+import { normalizeChangedRequiredEmail, normalizeRequiredEmail } from "@/lib/zoho-validation";
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 
@@ -809,7 +810,8 @@ export async function createMsp(input: CreateMspInput) {
   const templateTasks = templateBundle ? getOrderedTemplateTasks(templateBundle) : [];
   const createdAt = new Date();
   const assignedSalesEngineer = input.assignedSalesEngineer?.trim() || DEFAULT_SALES_ENGINEER;
-  const primaryContactEmail = input.primaryContactEmail.trim();
+  const { email: primaryContactEmail, normalizedEmail: primaryContactEmailNormalized } =
+    normalizeRequiredEmail(input.primaryContactEmail, "Primary contact email");
 
   const msp = await prisma.$transaction(async (transaction) => {
     const created = await transaction.msp.create({
@@ -848,7 +850,7 @@ export async function createMsp(input: CreateMspInput) {
             create: {
               automationEnabled: false,
               email: primaryContactEmail,
-              normalizedEmail: primaryContactEmail.toLowerCase(),
+              normalizedEmail: primaryContactEmailNormalized,
               role: "ONBOARDING_OWNER",
               subscriptionStatus: "UNKNOWN"
             }
@@ -922,15 +924,20 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
   const trimmedName = input.name?.trim();
   const nextPlanType = input.planType === "customer" ? "customer" : input.planType === "nfr" ? "nfr" : undefined;
   const nextCustomerName = input.customerName?.trim();
-
   const msp = await prisma.$transaction(async (transaction) => {
     const before = await transaction.msp.findUnique({
       where: { id: mspId },
       select: {
         assignedSalesEngineer: true,
+        primaryContactEmail: true,
         onboardingPlans: { orderBy: { createdAt: "asc" }, select: onboardingPlanSelection, take: 1 }
       }
     });
+    const primaryContactEmail = before
+      ? normalizeChangedRequiredEmail(input.primaryContactEmail, before.primaryContactEmail, "Primary contact email")
+      : input.primaryContactEmail === undefined
+        ? undefined
+        : normalizeRequiredEmail(input.primaryContactEmail, "Primary contact email").email;
     const updated = await transaction.msp.update({
     where: { id: mspId },
     data: {
@@ -967,7 +974,7 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
           }
         }
       },
-      primaryContactEmail: input.primaryContactEmail?.trim(),
+      primaryContactEmail,
       slug: input.slug?.trim() || undefined
     },
     include: {

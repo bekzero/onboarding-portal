@@ -1,8 +1,12 @@
 import "server-only";
 import type { PlanContactRole } from "@prisma/client";
+import {
+  isValidEmailAddress,
+  normalizeChangedRequiredEmailValue,
+  normalizeRequiredEmailValue
+} from "@/lib/email-validation-core";
 import { normalizeZohoRecipientEmail } from "@/lib/zoho-foundation";
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const CONTACT_ROLES = new Set<PlanContactRole>([
   "ONBOARDING_OWNER",
   "EXECUTIVE_SPONSOR",
@@ -33,24 +37,32 @@ function normalizeOptionalText(value: unknown, label: string, maxLength: number)
   return trimmed || null;
 }
 
-export function isValidEmailAddress(value: string) {
-  return EMAIL_PATTERN.test(value.trim());
-}
+export { isValidEmailAddress };
 
 export function normalizeRequiredEmail(value: unknown, label = "Email address") {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new ZohoAdminValidationError(`${label} is required.`);
-  }
-
-  const email = value.trim();
-  if (email.length > 320 || !isValidEmailAddress(email)) {
-    throw new ZohoAdminValidationError(`Enter a valid ${label.toLowerCase()}.`);
+  let email: string;
+  try {
+    email = normalizeRequiredEmailValue(value, label);
+  } catch (error) {
+    throw new ZohoAdminValidationError(error instanceof Error ? error.message : `Enter a valid ${label.toLowerCase()}.`);
   }
 
   return {
     email,
     normalizedEmail: normalizeZohoRecipientEmail(email)
   };
+}
+
+export function normalizeChangedRequiredEmail(
+  value: unknown,
+  currentValue: string,
+  label = "Email address"
+) {
+  try {
+    return normalizeChangedRequiredEmailValue(value, currentValue, label);
+  } catch (error) {
+    throw new ZohoAdminValidationError(error instanceof Error ? error.message : `Enter a valid ${label.toLowerCase()}.`);
+  }
 }
 
 export function normalizeOptionalEmail(value: unknown, label: string) {
