@@ -81,9 +81,11 @@ function emptyContactForm(): ContactFormState {
 }
 
 export function OnboardingContactsAdmin({
+  activeSection,
   onChanged,
   planId
 }: {
+  activeSection: "overview" | "contacts" | "applications" | "zoho";
   onChanged?: () => void | Promise<void>;
   planId: string;
 }) {
@@ -199,8 +201,8 @@ export function OnboardingContactsAdmin({
   }
 
   return (
-    <section className="rounded-2xl border border-border bg-surface-secondary px-4 py-4 md:px-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className={activeSection === "applications" ? "hidden" : activeSection === "zoho" ? "" : "rounded-2xl border border-border bg-surface-secondary p-4 md:p-5"}>
+      <div className={activeSection === "contacts" ? "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between" : "hidden"}>
         <div>
           <p className="text-xs uppercase tracking-[0.22em] text-muted">Onboarding Contacts</p>
           <p className="mt-1 text-sm text-secondary">Plan-specific contacts used for future onboarding communications.</p>
@@ -216,7 +218,7 @@ export function OnboardingContactsAdmin({
 
       {!isLoading && details ? (
         <>
-          <div className="mt-4 grid gap-2">
+          <div className={activeSection === "contacts" ? "mt-4 grid gap-2" : "hidden"}>
             {details.contacts.length > 0 ? (
               details.contacts.map((contact) => (
                 <div className="flex flex-col gap-3 rounded-xl border border-border bg-input px-3 py-3 sm:flex-row sm:items-center sm:justify-between" key={contact.id}>
@@ -268,16 +270,16 @@ export function OnboardingContactsAdmin({
             )}
           </div>
 
-          {!details.readiness?.readyForDataSync ? (
+          {activeSection === "contacts" && !details.readiness?.readyForDataSync ? (
             <p className="mt-3 text-sm text-secondary">
               Contact details need to be completed before email automation can be enabled.
             </p>
           ) : null}
 
-          <div className="mt-4 border-t border-border pt-4">
+          <div className={activeSection === "overview" ? "" : "hidden"}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">Automation readiness</p>
+                <p className="text-sm font-medium text-foreground">Automation readiness summary</p>
                 <p className="mt-1 text-sm text-secondary">{readinessLabel(details.readiness?.status)}</p>
               </div>
               <Badge status={details.readiness?.readyForJourneyEnrollment ? "complete" : "in_progress"}>
@@ -285,17 +287,20 @@ export function OnboardingContactsAdmin({
               </Badge>
             </div>
             {details.readiness?.reasons.length ? (
-              <ul className="mt-3 grid gap-1 text-xs leading-5 text-muted">
+              <ul className="hidden">
                 {details.readiness.reasons.slice(0, 4).map((reason) => (
                   <li key={reason.code}>• {reason.message}</li>
                 ))}
               </ul>
             ) : null}
+            <p className="mt-2 text-xs leading-5 text-muted">Open Zoho Automation for detailed eligibility and actionable blockers.</p>
           </div>
 
-          <ZohoIntegrationStatus contacts={details.contacts} planId={planId} />
+          <div className={activeSection === "zoho" ? "" : "hidden"}>
+            <ZohoIntegrationStatus contacts={details.contacts} planId={planId} />
+          </div>
 
-          <div className="mt-4 border-t border-border pt-4">
+          <div className={activeSection === "overview" ? "mt-4 border-t border-border pt-4" : "hidden"}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium text-foreground">Kickoff booking</p>

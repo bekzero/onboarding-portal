@@ -165,12 +165,16 @@ test("stable enrollment identity and unique outbox keys prevent duplicate prepar
   assert.match(enrollment, /eventCreated: event\.created/);
 });
 
-test("case preview presents a compact read-only evaluation without exposing shared evidence", async () => {
+test("case preview presents grouped readiness with progressive diagnostics", async () => {
   const ui = await read("components/zoho-integration-status.tsx");
   assert.match(ui, /Evaluate Zoho Sync/);
   assert.match(ui, /No event or provider request was created/);
   assert.match(ui, /Eligible if explicitly enabled/);
-  assert.match(ui, /Blocked by:/);
+  assert.match(ui, /Items requiring attention/);
+  assert.match(ui, /Contact and permission/);
+  assert.match(ui, /Staff identity/);
+  assert.match(ui, /Automation feature flags/);
+  assert.match(ui, /Advanced Diagnostics/);
   assert.match(ui, /permissionEvidenceReference/);
   assert.match(ui, /enrollmentContactSync\.mspName/);
   assert.match(ui, /enrollmentContactSync\.primaryContactEmail/);
@@ -178,6 +182,35 @@ test("case preview presents a compact read-only evaluation without exposing shar
   assert.match(route, /includePermissionEvidenceReference: Boolean\(staffIdentity\)/);
   const service = await read("lib/zoho-admin-center.ts");
   assert.match(service, /mspName: plan\.msp\.name/);
+});
+
+test("case preview uses four accessible tabs while preserving one stateful contact implementation", async () => {
+  const dashboard = await read("components/internal-dashboard.tsx");
+  const contacts = await read("components/onboarding-contacts-admin.tsx");
+  for (const label of ["Overview", "Contacts", "Applications", "Zoho Automation"]) {
+    assert.match(dashboard, new RegExp(`label: "${label}"`));
+  }
+  assert.match(dashboard, /role="tablist"/);
+  assert.match(dashboard, /role="tab"/);
+  assert.match(dashboard, /role="tabpanel"/);
+  assert.match(dashboard, /aria-controls="case-preview-panel"/);
+  assert.match(dashboard, /aria-labelledby=\{`case-preview-tab-\$\{casePreviewTab\}`\}/);
+  assert.match(dashboard, /activeSection=\{casePreviewTab\}/);
+  assert.equal((dashboard.match(/<OnboardingContactsAdmin/g) ?? []).length, 1);
+  assert.match(contacts, /activeSection === "contacts"/);
+  assert.match(contacts, /activeSection === "overview"/);
+  assert.match(contacts, /activeSection === "zoho"/);
+  assert.match(dashboard, /Complete App Review/);
+});
+
+test("legacy diagnostic controls remain available but collapsed and global tools link to the admin center", async () => {
+  const ui = await read("components/zoho-integration-status.tsx");
+  assert.match(ui, /Advanced test and discovery tools/);
+  assert.match(ui, /Run Read-only Discovery/);
+  assert.match(ui, /Preview Test Sync/);
+  assert.match(ui, /Check List Membership/);
+  assert.match(ui, /\/admin\/zoho\?tab=test-sync/);
+  assert.match(ui, /\/admin\/zoho\?tab=configuration/);
 });
 
 test("production automation remains disabled and no Phase 7B.5 provider call exists", async () => {

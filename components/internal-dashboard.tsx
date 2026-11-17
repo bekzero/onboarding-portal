@@ -43,6 +43,7 @@ const LOCAL_REDIRECT_URI = "http://localhost:3000/api/oidc/callback";
 const SERVER_API_UNAVAILABLE_MESSAGE = "Server API unavailable. Check database migration and environment variables.";
 
 type PanelMode = "preview" | "edit" | "oidc" | "enroll" | "delete" | "rollback";
+type CasePreviewTab = "overview" | "contacts" | "applications" | "zoho";
 type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oidc_not_configured" | "completed";
 type DashboardSortColumn = "msp" | "customer" | "gmm" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
 type DashboardSortDirection = "asc" | "desc";
@@ -177,6 +178,13 @@ type FlowReferenceStage = {
   }>;
   title: string;
 };
+
+const CASE_PREVIEW_TABS: Array<{ id: CasePreviewTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "contacts", label: "Contacts" },
+  { id: "applications", label: "Applications" },
+  { id: "zoho", label: "Zoho Automation" }
+];
 
 type RollbackStageOption = {
   id: string;
@@ -1536,6 +1544,7 @@ export function InternalDashboard({
   const [serverErrorKind, setServerErrorKind] = useState<ServerErrorKind | null>(null);
   const [isEmbedded, setIsEmbedded] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("preview");
+  const [casePreviewTab, setCasePreviewTab] = useState<CasePreviewTab>("overview");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -2011,6 +2020,7 @@ export function InternalDashboard({
 
   function closePanel() {
     setPanelMode("preview");
+    setCasePreviewTab("overview");
     setSelectedCaseId(null);
     setEditState(null);
     setOidcState(null);
@@ -2020,6 +2030,7 @@ export function InternalDashboard({
 
   function openPreview(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
+    setCasePreviewTab("overview");
     setPanelMode("preview");
   }
 
@@ -2116,6 +2127,7 @@ export function InternalDashboard({
 
   function openCaseFromNotification(notification: AdminNotification) {
     setSelectedCaseId(notification.planId);
+    setCasePreviewTab("overview");
     setPanelMode("preview");
     setIsNotificationDrawerOpen(false);
   }
@@ -2271,6 +2283,7 @@ export function InternalDashboard({
 
         await loadDashboardCases();
         setSelectedCaseId(createdPlanId);
+        setCasePreviewTab("overview");
         setPanelMode("preview");
         return;
       } catch {
@@ -2308,6 +2321,7 @@ export function InternalDashboard({
     });
 
     setSelectedCaseId(nextPlanId);
+    setCasePreviewTab("overview");
     setPanelMode("preview");
   }
 
@@ -3179,7 +3193,7 @@ export function InternalDashboard({
                 : "max-h-[95vh] max-w-[520px] overflow-y-auto md:max-h-[90vh]"
             }`}
           >
-            <div className={`shrink-0 flex items-start justify-between gap-4 border-b border-border bg-surface px-4 py-4 md:px-6 ${(panelMode === "preview" || panelMode === "rollback") ? "sticky top-0 z-20" : panelMode === "edit" || panelMode === "enroll" ? "z-10" : "mb-5"}`}>
+            <div className={`shrink-0 flex items-start justify-between gap-4 border-b border-border bg-surface px-4 ${panelMode === "preview" ? "py-3 md:px-6" : "py-4 md:px-6"} ${(panelMode === "preview" || panelMode === "rollback") ? "sticky top-0 z-20" : panelMode === "edit" || panelMode === "enroll" ? "z-10" : "mb-5"}`}>
               <div>
                 <p className="text-xs uppercase tracking-[0.24em] text-info">
                   {panelMode === "preview"
@@ -3194,7 +3208,7 @@ export function InternalDashboard({
                         ? "Configure OIDC"
                         : "Enroll MSP"}
                 </p>
-                <h3 className="mt-2 text-2xl font-semibold text-foreground">
+                <h3 className={`${panelMode === "preview" ? "mt-1 text-xl" : "mt-2 text-2xl"} font-semibold text-foreground`}>
                   {panelMode === "enroll" ? "Enroll MSP" : selectedCase?.mspName}
                 </h3>
                 <p className="mt-1 text-sm text-secondary">
@@ -3237,103 +3251,79 @@ export function InternalDashboard({
 
             {panelMode === "preview" && selectedCase ? (
               <>
-                <div className="sticky top-[89px] z-10 border-b border-border bg-surface/95 px-4 py-4 backdrop-blur md:px-6">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0">
-                      <p className="text-xs uppercase tracking-[0.22em] text-muted">Case Actions</p>
-                      <p className="mt-1 text-sm text-secondary">
-                        {canOpenPortalAsAdmin
-                          ? "Advance, update, or open this onboarding case with admin access."
-                          : "Advance or update this MSP case from here."}
-                      </p>
+                <div className="shrink-0 border-b border-border bg-surface px-4 py-3 md:px-6">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0 overflow-x-auto">
+                      <div aria-label="Case preview sections" className="flex min-w-max gap-1" role="tablist">
+                        {CASE_PREVIEW_TABS.map((tab, index) => (
+                          <button
+                            aria-controls="case-preview-panel"
+                            aria-selected={casePreviewTab === tab.id}
+                            className={`h-10 rounded-xl px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                              casePreviewTab === tab.id ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/30" : "text-secondary hover:bg-input hover:text-foreground"
+                            }`}
+                            id={`case-preview-tab-${tab.id}`}
+                            key={tab.id}
+                            onClick={() => {
+                              setCasePreviewTab(tab.id);
+                              setIsCaseActionsMenuOpen(false);
+                            }}
+                            onKeyDown={(event) => {
+                              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                              event.preventDefault();
+                              const nextIndex = event.key === 'Home'
+                                ? 0
+                                : event.key === 'End'
+                                  ? CASE_PREVIEW_TABS.length - 1
+                                  : (index + (event.key === 'ArrowRight' ? 1 : -1) + CASE_PREVIEW_TABS.length) % CASE_PREVIEW_TABS.length;
+                              const nextTab = CASE_PREVIEW_TABS[nextIndex];
+                              setCasePreviewTab(nextTab.id);
+                              setIsCaseActionsMenuOpen(false);
+                              document.getElementById(`case-preview-tab-${nextTab.id}`)?.focus();
+                            }}
+                            role="tab"
+                            tabIndex={casePreviewTab === tab.id ? 0 : -1}
+                            type="button"
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+                    <div className="flex shrink-0 flex-wrap gap-2">
                       {canOpenPortalAsAdmin && adminPortalOpenHref ? (
-                        <a className="w-full sm:w-auto" href={adminPortalOpenHref} rel="noreferrer" target="_blank">
-                          <Button className="w-full sm:w-auto">Open Onboarding Case</Button>
+                        <a href={adminPortalOpenHref} rel="noreferrer" target="_blank">
+                          <Button className="h-10">Open Onboarding Case</Button>
                         </a>
                       ) : null}
-                      {selectedCase.activeTaskOwner === "kzero_se" || selectedCase.status === "waiting_on_kzero" ? (
-                        <Button className="w-full sm:w-auto" onClick={handleCompleteKzeroStep} variant="outline">
-                          <Clock3 className="mr-2 h-4 w-4" />
-                          {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
-                        </Button>
-                      ) : null}
-                      <div className="relative w-full sm:w-auto">
-                        <Button
-                          aria-expanded={isCaseActionsMenuOpen}
-                          aria-haspopup="menu"
-                          className="w-full sm:w-auto"
-                          onClick={() => setIsCaseActionsMenuOpen((current) => !current)}
-                          variant="outline"
-                        >
-                          More Actions
-                          <ChevronDown className="ml-2 h-4 w-4" />
+                      <div className="relative">
+                        <Button aria-expanded={isCaseActionsMenuOpen} aria-haspopup="menu" className="h-10" onClick={() => setIsCaseActionsMenuOpen((current) => !current)} variant="outline">
+                          More Actions <ChevronDown className="ml-2 h-4 w-4" />
                         </Button>
                         {isCaseActionsMenuOpen ? (
-                          <div
-                            className="mt-2 grid gap-2 rounded-2xl border border-border bg-surface-secondary p-2 sm:absolute sm:right-0 sm:mt-2 sm:min-w-[220px] sm:shadow-xl"
-                            role="menu"
-                          >
-                            <Button
-                              className="justify-start"
-                              disabled={!canRollbackCase}
-                              onClick={() => {
-                                setIsCaseActionsMenuOpen(false);
-                                openRollback(selectedCase);
-                              }}
-                              variant="outline"
-                            >
-                              <TimerReset className="mr-2 h-4 w-4" />
-                              Reopen Step
-                            </Button>
-                            <Button
-                              className="justify-start"
-                              onClick={() => {
-                                setIsCaseActionsMenuOpen(false);
-                                openEdit(selectedCase);
-                              }}
-                              variant="outline"
-                            >
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Edit MSP
-                            </Button>
-                            <Button
-                              className="justify-start"
-                              onClick={() => {
-                                setIsCaseActionsMenuOpen(false);
-                                openOidc(selectedCase);
-                              }}
-                              variant="outline"
-                            >
-                              <KeyRound className="mr-2 h-4 w-4" />
-                              Configure OIDC
-                            </Button>
-                            <Button
-                              className="justify-start border-danger-border/60 text-danger hover:bg-danger-surface"
-                              onClick={() => {
-                                setIsCaseActionsMenuOpen(false);
-                                openDelete(selectedCase);
-                              }}
-                              variant="outline"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete MSP
-                            </Button>
+                          <div className="absolute right-0 z-30 mt-2 grid min-w-[220px] gap-2 rounded-2xl border border-border bg-surface-secondary p-2 shadow-xl" role="menu">
+                            <Button className="justify-start" disabled={!canRollbackCase} onClick={() => { setIsCaseActionsMenuOpen(false); openRollback(selectedCase); }} variant="outline"><TimerReset className="mr-2 h-4 w-4" />Reopen Step</Button>
+                            <Button className="justify-start" onClick={() => { setIsCaseActionsMenuOpen(false); openEdit(selectedCase); }} variant="outline"><Pencil className="mr-2 h-4 w-4" />Edit MSP</Button>
+                            <Button className="justify-start" onClick={() => { setIsCaseActionsMenuOpen(false); openOidc(selectedCase); }} variant="outline"><KeyRound className="mr-2 h-4 w-4" />Configure OIDC</Button>
+                            <Button className="justify-start border-danger-border/60 text-danger hover:bg-danger-surface" onClick={() => { setIsCaseActionsMenuOpen(false); openDelete(selectedCase); }} variant="outline"><Trash2 className="mr-2 h-4 w-4" />Delete MSP</Button>
                           </div>
                         ) : null}
                       </div>
                     </div>
                   </div>
-                  {!canOpenPortalAsAdmin ? (
-                    <p className="mt-3 text-xs text-muted">
-                      Open Onboarding Case is available for server-backed MSP records and uses admin-authenticated portal access.
-                    </p>
-                  ) : null}
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                  <div className="grid gap-6 px-4 py-4 pb-10 md:px-6 md:py-6 md:pb-12">
+                  <div
+                    aria-labelledby={`case-preview-tab-${casePreviewTab}`}
+                    className="grid gap-6 px-4 py-4 pb-10 md:px-6 md:py-6 md:pb-12"
+                    id="case-preview-panel"
+                    role="tabpanel"
+                    tabIndex={0}
+                  >
+                    <section
+                      className={casePreviewTab === "overview" ? "grid gap-4" : "hidden"}
+                    >
                     <div className="grid gap-6 lg:grid-cols-[1.45fr_0.95fr]">
                       <div className="grid gap-4">
                         <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
@@ -3351,6 +3341,12 @@ export function InternalDashboard({
                           </div>
                           <p className="mt-3 text-lg font-semibold text-foreground">{selectedCase.activeTaskTitle ?? "No active task"}</p>
                           <p className="mt-2 text-sm leading-6 text-secondary">{getNextStepDescription(selectedCase)}</p>
+                          {(selectedCase.activeTaskOwner === "kzero_se" || selectedCase.status === "waiting_on_kzero") ? (
+                            <Button className="mt-4 w-full sm:w-auto" disabled={isCompletingKzeroStep} onClick={handleCompleteKzeroStep}>
+                              <Clock3 className="mr-2 h-4 w-4" />
+                              {isCompletingKzeroStep ? "Saving..." : getKzeroActionLabel(selectedCase)}
+                            </Button>
+                          ) : null}
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2">
@@ -3418,6 +3414,10 @@ export function InternalDashboard({
                               <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Plan Type</p>
                               <p className="mt-1 text-sm text-secondary">{formatDashboardPlanTypeLabel(selectedCase.startingPlanType)}</p>
                             </div>
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Primary Contact</p>
+                              <p className="mt-1 break-all text-sm text-secondary">{selectedCase.primaryContactEmail}</p>
+                            </div>
                             {selectedCase.customerName && isCustomerPlanCase(selectedCase) ? (
                               <div>
                                 <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Customer Name</p>
@@ -3468,15 +3468,61 @@ export function InternalDashboard({
                       </div>
                     </div>
 
+                    {selectedCaseComments.length > 0 ? (
+                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                        <p className="text-sm font-semibold text-foreground">Notes / Activity</p>
+                        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                          {selectedCaseComments.slice(0, 3).map((comment) => (
+                            <div key={comment.id} className="rounded-xl border border-border bg-input px-3 py-2.5">
+                              <p className="text-sm font-medium text-foreground">{comment.author}</p>
+                              <p className="mt-1 text-sm leading-6 text-secondary">{comment.body}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <DocumentsReviewCard
+                      downloadUrlBase={`/api/admin/plans/${selectedCase.onboardingPlanId}/documents`}
+                      emptyStateTitle="No documents added yet."
+                      listUrl={`/api/admin/plans/${selectedCase.onboardingPlanId}/documents`}
+                      planType={selectedCase.startingPlanType}
+                      subtitle="Uploaded supporting files for this onboarding case."
+                    />
+
+                    <div>
+                      <Link href={selectedCase.actionHref}>
+                        <Button className="w-full md:w-auto">Open Full Onboarding Plan</Button>
+                      </Link>
+                    </div>
+                    </section>
+
+                    <section
+                      className={casePreviewTab === "contacts" ? "grid gap-4" : "hidden"}
+                    >
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.2em] text-muted">Primary Contact</p>
+                          <p className="mt-2 break-all text-sm font-semibold text-foreground">{selectedCase.primaryContactEmail}</p>
+                        </div>
+                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                          <p className="text-xs uppercase tracking-[0.2em] text-muted">Assigned Sales Engineer</p>
+                          <p className="mt-2 text-sm font-semibold text-foreground">{selectedCase.assignedSalesEngineer || "Not assigned"}</p>
+                          {selectedCase.assignedSeEmail ? <p className="mt-1 break-all text-xs text-muted">{selectedCase.assignedSeEmail}</p> : null}
+                        </div>
+                      </div>
+                    </section>
+
                     {useServerData ? (
                       <OnboardingContactsAdmin
+                        activeSection={casePreviewTab}
                         onChanged={async () => {
                           await loadDashboardCases();
                         }}
                         planId={selectedCase.onboardingPlanId}
                       />
                     ) : (
-                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                      <div className={casePreviewTab === "contacts" || casePreviewTab === "overview" || casePreviewTab === "zoho" ? "rounded-2xl border border-border bg-surface-secondary px-5 py-4" : "hidden"}>
                         <p className="text-sm font-semibold text-foreground">Onboarding Contacts</p>
                         <p className="mt-2 text-sm text-secondary">
                           Contact management is available for server-backed onboarding cases.
@@ -3484,15 +3530,22 @@ export function InternalDashboard({
                       </div>
                     )}
 
-                    <div className="grid gap-4 lg:grid-cols-3">
+                    <section
+                      className={casePreviewTab === "applications" ? "grid gap-4" : "hidden"}
+                    >
                       <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
-                        <div className="flex items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-sm font-semibold text-foreground">Submitted Apps</p>
-                          <span className="text-xs uppercase tracking-[0.2em] text-muted">{selectedCase.submittedSaasAppCount}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs uppercase tracking-[0.2em] text-muted">{selectedCase.submittedSaasAppCount}</span>
+                            {getKzeroActionLabel(selectedCase) === "Complete App Review" ? (
+                              <Button className="h-9 px-3" disabled={isCompletingKzeroStep} onClick={handleCompleteKzeroStep}>{isCompletingKzeroStep ? "Saving..." : "Complete App Review"}</Button>
+                            ) : null}
+                          </div>
                         </div>
-                        <div className="mt-3 grid gap-2">
+                        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                           {selectedCaseApps.length > 0 ? (
-                            selectedCaseApps.slice(0, 4).map((app) => (
+                            selectedCaseApps.map((app) => (
                               <div key={app.id} className="rounded-xl border border-border bg-input px-3 py-2.5">
                                 <p className="text-sm text-foreground">{app.name}</p>
                                 <p className="mt-1 text-xs uppercase tracking-[0.18em] text-muted">{app.status.replaceAll("_", " ")}</p>
@@ -3513,35 +3566,8 @@ export function InternalDashboard({
                           )}
                         </div>
                       </div>
+                    </section>
 
-                      {selectedCaseComments.length > 0 ? (
-                        <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
-                          <p className="text-sm font-semibold text-foreground">Notes / Activity</p>
-                          <div className="mt-3 grid gap-2">
-                            {selectedCaseComments.slice(0, 3).map((comment) => (
-                              <div key={comment.id} className="rounded-xl border border-border bg-input px-3 py-2.5">
-                                <p className="text-sm font-medium text-foreground">{comment.author}</p>
-                                <p className="mt-1 text-sm leading-6 text-secondary">{comment.body}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    <DocumentsReviewCard
-                      downloadUrlBase={`/api/admin/plans/${selectedCase.onboardingPlanId}/documents`}
-                      emptyStateTitle="No documents added yet."
-                      listUrl={`/api/admin/plans/${selectedCase.onboardingPlanId}/documents`}
-                      planType={selectedCase.startingPlanType}
-                      subtitle="Uploaded supporting files for this onboarding case."
-                    />
-
-                    <div>
-                      <Link href={selectedCase.actionHref}>
-                        <Button className="w-full md:w-auto">Open Full Onboarding Plan</Button>
-                      </Link>
-                    </div>
                   </div>
                 </div>
               </>
