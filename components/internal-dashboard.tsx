@@ -233,6 +233,16 @@ type EditFormState = {
   status: OnboardingCase["status"];
   submittedSaasAppCount: number;
   tenantName: string;
+  zohoContactPermissionConfirmed: boolean;
+  zohoContactPermissionEvidence: string;
+};
+
+type EditZohoPermissionStatus = {
+  individuallyAttributable: boolean;
+  permissionAttested: boolean;
+  permissionEvidencePresent: boolean;
+  permissionEvidenceReference: string | null;
+  permissionRecordedAt: string | null;
 };
 
 type OidcFormState = {
@@ -1048,7 +1058,9 @@ function createEditState(item: DashboardCase): EditFormState {
     startingPlanType: item.startingPlanType,
     status: item.status,
     submittedSaasAppCount: item.submittedSaasAppCount,
-    tenantName: item.tenantName ?? ""
+    tenantName: item.tenantName ?? "",
+    zohoContactPermissionConfirmed: false,
+    zohoContactPermissionEvidence: ""
   };
 }
 
@@ -1558,6 +1570,11 @@ export function InternalDashboard({
   const [enrollmentState, setEnrollmentState] = useState<EnrollmentFormState>(createEnrollmentState);
   const [enrollmentErrorMessage, setEnrollmentErrorMessage] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditFormState | null>(null);
+  const [editZohoPermissionStatus, setEditZohoPermissionStatus] = useState<EditZohoPermissionStatus | null>(null);
+  const [editZohoPermissionMessage, setEditZohoPermissionMessage] = useState<string | null>(null);
+  const [editZohoPermissionError, setEditZohoPermissionError] = useState<string | null>(null);
+  const [isLoadingEditZohoPermission, setIsLoadingEditZohoPermission] = useState(false);
+  const [isRecordingEditZohoPermission, setIsRecordingEditZohoPermission] = useState(false);
   const [oidcState, setOidcState] = useState<OidcFormState | null>(null);
   const [rollbackTaskId, setRollbackTaskId] = useState("");
   const [rollbackErrorMessage, setRollbackErrorMessage] = useState<string | null>(null);
@@ -2023,6 +2040,9 @@ export function InternalDashboard({
     setCasePreviewTab("overview");
     setSelectedCaseId(null);
     setEditState(null);
+    setEditZohoPermissionStatus(null);
+    setEditZohoPermissionMessage(null);
+    setEditZohoPermissionError(null);
     setOidcState(null);
     setRollbackTaskId("");
     setRollbackErrorMessage(null);
@@ -2132,10 +2152,81 @@ export function InternalDashboard({
     setIsNotificationDrawerOpen(false);
   }
 
+  async function loadEditZohoPermission(planId: string) {
+    setIsLoadingEditZohoPermission(true);
+    setEditZohoPermissionError(null);
+    try {
+      const response = await fetch(`/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as {
+        enrollmentContactSync?: EditZohoPermissionStatus;
+        error?: string;
+      } | null;
+      if (!response.ok || !payload?.enrollmentContactSync) {
+        throw new Error(payload?.error ?? "Could not load Zoho permission status.");
+      }
+      setEditZohoPermissionStatus(payload.enrollmentContactSync);
+    } catch (error) {
+      setEditZohoPermissionStatus(null);
+      setEditZohoPermissionError(error instanceof Error ? error.message : "Could not load Zoho permission status.");
+    } finally {
+      setIsLoadingEditZohoPermission(false);
+    }
+  }
+
   function openEdit(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
     setEditState(createEditState(item));
+    setEditZohoPermissionStatus(null);
+    setEditZohoPermissionMessage(null);
+    setEditZohoPermissionError(null);
+    if (useServerData) void loadEditZohoPermission(item.onboardingPlanId);
     setPanelMode("edit");
+  }
+
+  async function handleRecordEditZohoPermission() {
+    if (!selectedCase || !editState) return;
+    const evidenceReference = editState.zohoContactPermissionEvidence.trim();
+    setEditZohoPermissionMessage(null);
+    setEditZohoPermissionError(null);
+    if (!editState.zohoContactPermissionConfirmed || !evidenceReference) {
+      setEditZohoPermissionError("Confirm permission and provide an evidence reference before recording it.");
+      return;
+    }
+
+    setIsRecordingEditZohoPermission(true);
+    try {
+      const response = await fetch(
+        `/api/admin/zoho/automation/plans/${encodeURIComponent(selectedCase.onboardingPlanId)}/permission`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ confirmed: true, evidenceReference })
+        }
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        created?: boolean;
+        individuallyAttributable?: boolean;
+        error?: string;
+      } | null;
+      if (!response.ok) throw new Error(payload?.error ?? "Could not record Zoho permission evidence.");
+      setEditState((current) => current ? {
+        ...current,
+        zohoContactPermissionConfirmed: false,
+        zohoContactPermissionEvidence: ""
+      } : current);
+      setEditZohoPermissionMessage(
+        payload?.created === false
+          ? "This permission evidence was already recorded; no duplicate audit decision was created."
+          : payload?.individuallyAttributable
+            ? "Permission evidence recorded with your verified staff identity."
+            : "Permission evidence recorded. A shared-admin record cannot authorize Zoho dispatch."
+      );
+      await loadEditZohoPermission(selectedCase.onboardingPlanId);
+    } catch (error) {
+      setEditZohoPermissionError(error instanceof Error ? error.message : "Could not record Zoho permission evidence.");
+    } finally {
+      setIsRecordingEditZohoPermission(false);
+    }
   }
 
   function openOidc(item: DashboardCase) {
@@ -3962,6 +4053,114 @@ export function InternalDashboard({
                         </div>
                       </div>
                     </div>
+
+                    <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.22em] text-muted">Zoho Partner Onboarding</p>
+                          <p className="mt-2 text-sm text-secondary">
+                            Review the current documented permission status or record a new, auditable reference for this plan.
+                          </p>
+                        </div>
+                        <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
+                          editZohoPermissionStatus?.permissionAttested
+                            ? "border-success/40 bg-success/10 text-success"
+                            : "border-warning/40 bg-warning/10 text-warning"
+                        }`}>
+                          {isLoadingEditZohoPermission
+                            ? "Loading status"
+                            : !editZohoPermissionStatus
+                              ? "Unable to verify"
+                              : editZohoPermissionStatus.permissionAttested
+                                ? "Permission documented"
+                                : "Permission not documented"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-border bg-input px-4 py-3">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Supporting evidence</p>
+                          <p className="mt-2 text-sm text-foreground">
+                            {!editZohoPermissionStatus
+                              ? "Unable to verify"
+                              : editZohoPermissionStatus.permissionEvidencePresent ? "Recorded" : "Missing"}
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-border bg-input px-4 py-3">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Audit identity</p>
+                          <p className="mt-2 text-sm text-foreground">
+                            {editZohoPermissionStatus?.individuallyAttributable
+                              ? "Verified staff identity"
+                              : editZohoPermissionStatus?.permissionAttested
+                                ? "Shared admin — not dispatch-authorizing"
+                                : "Not recorded"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {editZohoPermissionStatus?.permissionEvidenceReference ? (
+                        <div className="mt-3 rounded-2xl border border-border bg-input px-4 py-3">
+                          <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Existing evidence reference</p>
+                          <p className="mt-2 break-words text-sm text-foreground">
+                            {editZohoPermissionStatus.permissionEvidenceReference}
+                          </p>
+                        </div>
+                      ) : editZohoPermissionStatus?.permissionEvidencePresent ? (
+                        <p className="mt-3 text-xs leading-5 text-muted">
+                          Evidence is recorded. Its reference is restricted to an individually authenticated staff session.
+                        </p>
+                      ) : null}
+                      {editZohoPermissionStatus?.permissionRecordedAt ? (
+                        <p className="mt-3 text-xs leading-5 text-muted">
+                          Last recorded {new Date(editZohoPermissionStatus.permissionRecordedAt).toLocaleString()}.
+                        </p>
+                      ) : null}
+
+                      <div className="mt-4 grid gap-4">
+                        <label className="flex items-start gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
+                          <input
+                            checked={editState.zohoContactPermissionConfirmed}
+                            className="mt-1 h-4 w-4 rounded border-border bg-surface accent-primary"
+                            onChange={(event) => setEditState((current) => current ? {
+                              ...current,
+                              zohoContactPermissionConfirmed: event.target.checked
+                            } : current)}
+                            type="checkbox"
+                          />
+                          <span>I confirm that appropriate permission has been obtained to add this contact to Zoho Marketing Automation.</span>
+                        </label>
+                        <label className="grid gap-2 text-sm text-secondary">
+                          <span>Permission Evidence Reference</span>
+                          <input
+                            className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
+                            onChange={(event) => setEditState((current) => current ? {
+                              ...current,
+                              zohoContactPermissionEvidence: event.target.value
+                            } : current)}
+                            placeholder="CRM note, support ticket, or consent record reference"
+                            value={editState.zohoContactPermissionEvidence}
+                          />
+                        </label>
+                        <p className="text-xs leading-5 text-muted">
+                          Recording permission is optional for normal MSP edits. It does not subscribe the contact, create an outbox event, or trigger onboarding emails.
+                        </p>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <Button
+                            disabled={isRecordingEditZohoPermission || isLoadingEditZohoPermission || !useServerData}
+                            onClick={handleRecordEditZohoPermission}
+                            type="button"
+                            variant="outline"
+                          >
+                            {isRecordingEditZohoPermission ? "Recording…" : "Record Permission Evidence"}
+                          </Button>
+                          <div aria-live="polite" className="text-sm">
+                            {editZohoPermissionError ? <p className="text-danger">{editZohoPermissionError}</p> : null}
+                            {editZohoPermissionMessage ? <p className="text-success">{editZohoPermissionMessage}</p> : null}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
 

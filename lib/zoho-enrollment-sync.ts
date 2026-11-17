@@ -7,7 +7,11 @@ import {
   createZohoContactSyncEventInTransaction,
   isZohoEventEmissionEnabled
 } from "@/lib/zoho-foundation";
-import { evaluateEnrollmentContactSync } from "@/lib/zoho-enrollment-sync-core";
+import {
+  evaluateEnrollmentContactSync,
+  shouldRecordEnrollmentContactPermission,
+  validateEnrollmentContactPermission
+} from "@/lib/zoho-enrollment-sync-core";
 import { prisma } from "@/lib/prisma";
 
 export type EnrollmentContactPermission = {
@@ -126,4 +130,67 @@ export async function recordMspEnrollmentContactSyncPreparationFailure(input: {
   } catch {
     return false;
   }
+}
+
+export async function recordExistingMspContactPermission(input: {
+  actor: string;
+  evidenceReference: string;
+  permissionConfirmed: boolean;
+  planId: string;
+}) {
+  const permission = validateEnrollmentContactPermission({
+    confirmed: input.permissionConfirmed,
+    evidenceReference: input.evidenceReference
+  });
+  if (!permission.confirmed || !permission.valid) {
+    throw new Error("Permission confirmation and an evidence reference are required.");
+  }
+
+  return prisma.$transaction(async (transaction) => {
+    const plan = await transaction.onboardingPlan.findUnique({
+      where: { planId: input.planId },
+      select: {
+        id: true,
+        msp: { select: { primaryContactEmail: true } },
+        planContacts: {
+          where: { role: "ONBOARDING_OWNER" },
+          orderBy: { createdAt: "asc" },
+          take: 1,
+          select: { email: true, normalizedEmail: true }
+        }
+      }
+    });
+    const owner = plan?.planContacts[0];
+    const primaryEmail = plan?.msp.primaryContactEmail.trim().toLowerCase();
+    if (!plan || !owner || owner.normalizedEmail !== primaryEmail) {
+      throw new Error("The MSP primary contact must match the plan's Onboarding Owner before permission can be recorded.");
+    }
+
+    const lockKey = `msp-contact-permission:${plan.id}:${owner.normalizedEmail}`;
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
+    const existing = await transaction.zohoAutomationAudit.findMany({
+      where: {
+        action: "msp_enrollment.contact_permission_recorded",
+        onboardingPlanId: plan.id,
+        recipientEmailNormalized: owner.normalizedEmail
+      },
+      select: { evidenceReference: true }
+    });
+    if (!shouldRecordEnrollmentContactPermission({
+      evidenceReference: permission.evidenceReference,
+      existingEvidenceReferences: existing.map((audit) => audit.evidenceReference)
+    })) {
+      return { created: false } as const;
+    }
+
+    await createZohoAutomationAuditInTransaction(transaction, {
+      action: "msp_enrollment.contact_permission_recorded",
+      actor: input.actor,
+      evidenceReference: permission.evidenceReference,
+      onboardingPlanId: plan.id,
+      reason: "Administrator-recorded permission evidence for an email-only list add; this does not independently prove marketing consent or provider subscription eligibility.",
+      recipientEmail: owner.email
+    });
+    return { created: true } as const;
+  });
 }

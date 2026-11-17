@@ -100,6 +100,16 @@ export function validateEnrollmentContactPermission(input?: {
   } as const;
 }
 
+export function shouldRecordEnrollmentContactPermission(input: {
+  evidenceReference: string;
+  existingEvidenceReferences: Array<string | null>;
+}) {
+  const evidenceReference = input.evidenceReference.trim();
+  return Boolean(evidenceReference) && !input.existingEvidenceReferences.some(
+    (existing) => existing?.trim() === evidenceReference
+  );
+}
+
 export function evaluateEnrollmentContactSync(input: {
   automaticDispatchEnabled: boolean;
   communicationContextOwned: boolean;

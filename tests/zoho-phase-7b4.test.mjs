@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import {
   EmailOnlyContactSyncError,
   evaluateEnrollmentContactSync,
+  shouldRecordEnrollmentContactPermission,
   synchronizeEmailOnlyContact,
   validateEnrollmentContactPermission
 } from "../lib/zoho-enrollment-sync-core.ts";
@@ -62,6 +63,17 @@ test("permission evidence is optional unless confirmation is selected", () => {
     evidenceReference: "CRM-123",
     valid: true
   });
+});
+
+test("repeated permission submissions do not create duplicate decisions", () => {
+  assert.equal(shouldRecordEnrollmentContactPermission({
+    evidenceReference: "  CRM-123  ",
+    existingEvidenceReferences: [null, "CRM-123"]
+  }), false);
+  assert.equal(shouldRecordEnrollmentContactPermission({
+    evidenceReference: "SUPPORT-456",
+    existingEvidenceReferences: ["CRM-123"]
+  }), true);
 });
 
 test("kill switch, plan approval, and context gates prepare held work only", () => {
@@ -162,7 +174,7 @@ test("enrollment integration reuses the primary PlanContact and is post-commit",
   assert.match(persistence, /recordMspEnrollmentContactSyncPreparationFailure/);
 });
 
-test("Enroll MSP always renders optional Zoho permission controls and submits their values", async () => {
+test("Enroll and Edit MSP render optional Zoho permission controls", async () => {
   const dashboard = await readFile(new URL("../components/internal-dashboard.tsx", import.meta.url), "utf8");
   const editStart = dashboard.indexOf('{panelMode === "edit" && selectedCase && editState ? (');
   const enrollStart = dashboard.indexOf('{panelMode === "enroll" ? (', editStart);
@@ -170,7 +182,10 @@ test("Enroll MSP always renders optional Zoho permission controls and submits th
   assert.ok(editStart >= 0 && enrollStart > editStart && enrollEnd > enrollStart);
   const editPanel = dashboard.slice(editStart, enrollStart);
   const enrollPanel = dashboard.slice(enrollStart, enrollEnd);
-  assert.doesNotMatch(editPanel, /Zoho Partner Onboarding/);
+  assert.match(editPanel, /Zoho Partner Onboarding/);
+  assert.match(editPanel, /Current documented permission status|Permission documented/);
+  assert.match(editPanel, /Record Permission Evidence/);
+  assert.match(dashboard, /onboardingPlanId\)}\/permission/);
   assert.match(enrollPanel, /Zoho Partner Onboarding/);
   assert.match(enrollPanel, /I confirm that appropriate permission has been obtained to add this contact to Zoho Marketing Automation\./);
   assert.match(enrollPanel, /Permission Evidence Reference/);
@@ -179,6 +194,26 @@ test("Enroll MSP always renders optional Zoho permission controls and submits th
   assert.match(dashboard, /zohoContactPermissionConfirmed: false/);
   assert.match(dashboard, /if \(enrollmentState\.zohoContactPermissionConfirmed && !permissionEvidenceReference\)/);
   assert.match(dashboard, /zohoContactPermission:\s*\{\s*confirmed: enrollmentState\.zohoContactPermissionConfirmed,\s*evidenceReference: permissionEvidenceReference/s);
+});
+
+test("existing MSP permission recording is audited, idempotent, and cannot prepare Zoho work", async () => {
+  const service = await readFile(new URL("../lib/zoho-enrollment-sync.ts", import.meta.url), "utf8");
+  const route = await readFile(
+    new URL("../app/api/admin/zoho/automation/plans/[planId]/permission/route.ts", import.meta.url),
+    "utf8"
+  );
+  const functionStart = service.indexOf("export async function recordExistingMspContactPermission");
+  const functionBody = service.slice(functionStart);
+  assert.ok(functionStart >= 0);
+  assert.match(functionBody, /pg_advisory_xact_lock/);
+  assert.match(functionBody, /shouldRecordEnrollmentContactPermission/);
+  assert.match(functionBody, /createZohoAutomationAuditInTransaction/);
+  assert.doesNotMatch(functionBody, /createZohoContactSyncEventInTransaction\(/);
+  assert.doesNotMatch(functionBody, /prepareMspEnrollmentContactSync\(/);
+  assert.match(route, /getAdminApiAuthError\("SALES_ENGINEER"\)/);
+  assert.match(route, /isTrustedSameOriginRequest/);
+  assert.match(route, /formatStaffAuditActor\(staffIdentity\) : getAdminAuditActor\(\)/);
+  assert.match(route, /validateEnrollmentContactPermission/);
 });
 
 test("Enroll MSP modal keeps a bounded single scroller, persistent footer, and responsive section layout", async () => {
