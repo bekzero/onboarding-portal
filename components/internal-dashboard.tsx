@@ -5,29 +5,25 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowUpDown,
-  Bell,
   Building2,
   ChevronDown,
   ChevronUp,
   Clock3,
-  FileText,
   Gauge,
   KeyRound,
   Pencil,
   PlusCircle,
   Printer,
   Search,
-  Settings,
   TimerReset,
-  Workflow,
   Trash2,
   X
 } from "lucide-react";
 import { DocumentsReviewCard } from "@/components/documents-review-card";
+import { AdminDashboardHeader } from "@/components/admin-dashboard-header";
 import { KzeroLogo } from "@/components/kzero-logo";
 import { OnboardingContactsAdmin } from "@/components/onboarding-contacts-admin";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { StaffIdentityControl, type StaffIdentityView } from "@/components/staff-identity-control";
+import type { StaffIdentityView } from "@/components/staff-identity-control";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -2651,60 +2647,13 @@ export function InternalDashboard({
   return (
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-4">
       <section className="min-w-0 grid gap-3">
-        <Card className="border-border bg-surface p-4 md:p-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
-            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              <KzeroLogo className="shrink-0" />
-              <div className="min-w-0">
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Sales Engineer Dashboard</h1>
-                <p className="mt-1 text-sm text-secondary">Manage MSP Onboarding</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-              <StaffIdentityControl identity={staffIdentity} />
-              <ThemeToggle />
-              <Link
-                className="inline-flex h-10 items-center px-2 text-sm font-medium text-muted transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                href="/"
-              >
-                Back to Main Page
-              </Link>
-              <Button
-                className="relative h-10 rounded-xl px-3.5"
-                onClick={() => setIsNotificationDrawerOpen(true)}
-                variant="outline"
-              >
-                <Bell className="mr-2 h-4 w-4" />
-                Notifications
-                {unreadNotificationCount > 0 ? (
-                  <span className="ml-2 inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">
-                    {unreadNotificationCount}
-                  </span>
-                ) : null}
-              </Button>
-              <Button className="h-10 rounded-xl px-3.5" onClick={() => setIsReportOpen(true)} variant="outline">
-                <FileText className="mr-2 h-4 w-4" />
-                Reports
-              </Button>
-              <Link href="/admin/zoho">
-                <Button className="h-10 rounded-xl px-3.5" variant="outline">
-                  <Workflow className="mr-2 h-4 w-4" />
-                  Zoho Automation
-                </Button>
-              </Link>
-              <Link href="/admin/settings/sso">
-                <Button className="h-10 rounded-xl px-3.5" variant="outline">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Staff SSO
-                </Button>
-              </Link>
-              <Button className="h-10 whitespace-nowrap rounded-xl px-4" onClick={openEnroll}>
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Enroll MSP
-              </Button>
-            </div>
-          </div>
-        </Card>
+        <AdminDashboardHeader
+          onEnroll={openEnroll}
+          onNotifications={() => setIsNotificationDrawerOpen(true)}
+          onReports={() => setIsReportOpen(true)}
+          staffIdentity={staffIdentity}
+          unreadNotificationCount={unreadNotificationCount}
+        />
 
         {isLoading ? (
           <Card className="border-border bg-surface px-5 py-8">

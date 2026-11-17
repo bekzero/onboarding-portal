@@ -86,12 +86,28 @@ test("stop-state and contact conflict monitoring do not claim success prematurel
 
 test("case preview links to filtered automation history", async () => {
   const component = await read("components/zoho-integration-status.tsx");
-  const dashboard = await read("components/internal-dashboard.tsx");
+  const header = await read("components/admin-dashboard-header.tsx");
+  const staffActions = await read("app/admin/staff/actions.ts");
+  const adminAuth = await read("lib/admin-auth.ts");
   assert.match(component, /View Automation History/);
   assert.match(component, /automationEnrollmentState/);
   assert.match(component, /lastSuccessfulContactSync/);
-  assert.match(dashboard, /Zoho Automation/);
-  assert.match(dashboard, /href="\/admin\/zoho"/);
+  assert.match(header, /Zoho Automation/);
+  assert.match(header, /href="\/admin\/zoho"/);
+  assert.match(header, /Staff SSO/);
+  assert.match(header, /Enroll MSP/);
+  assert.match(header, /admin-mobile-navigation/);
+  assert.match(header, /aria-expanded/);
+  assert.match(header, /Shared administrator/);
+  assert.match(header, /Shared access/);
+  assert.match(header, /href="\/admin\/staff-login"/);
+  assert.match(header, /signOutSharedAdmin/);
+  assert.match(header, /mobileMenuButtonRef/);
+  assert.match(header, /openNotifications/);
+  assert.match(staffActions, /export async function signOutSharedAdmin/);
+  assert.match(adminAuth, /export async function clearAdminSession/);
+  assert.match(adminAuth, /maxAge:\s*0/);
+  assert.match(adminAuth, /path:\s*"\/"/);
 });
 
 test("configuration is read-only and production flags remain dormant", async () => {

@@ -61,6 +61,19 @@ export async function createAdminSession() {
   return true;
 }
 
+export async function clearAdminSession() {
+  const cookieStore = await cookies();
+  cookieStore.set({
+    name: getCookieName(),
+    value: "",
+    httpOnly: true,
+    maxAge: 0,
+    path: "/",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: process.env.NODE_ENV === "production"
+  });
+}
+
 export async function hasAdminSession() {
   const accessCode = getAccessCode();
 
