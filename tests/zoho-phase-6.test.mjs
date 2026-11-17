@@ -23,14 +23,27 @@ test("manually enrolled legacy plans use enrollment state and truthful timestamp
   assert.equal(evaluateZohoNudgeEligibility(legacy({ nextTaskSince: null })).reason, "MISSING_TASK_TIMESTAMP");
 });
 
-test("admin center includes the five required responsive sections and monitoring language", async () => {
+test("admin center includes the six required responsive sections and monitoring language", async () => {
   const ui = await read("components/zoho-automation-center.tsx");
-  for (const label of ["Overview", "Event History", "Reminders", "Contacts & Conflicts", "Configuration"]) assert.match(ui, new RegExp(label));
+  for (const label of ["Overview", "Event History", "Reminders", "Contacts & Conflicts", "Test Contact Sync", "Configuration"]) assert.match(ui, new RegExp(label));
   assert.match(ui, /overflow-x-auto/);
   assert.match(ui, /External automation remains dormant/);
   assert.match(ui, /not proof that an email was delivered/i);
   assert.match(ui, /Viewing it does not send emails or change onboarding state/);
   assert.match(ui, /bg-surface|text-foreground/);
+});
+
+test("admin center keeps the page grid, tab bar, metrics and controls compact", async () => {
+  const ui = await read("components/zoho-automation-center.tsx");
+  assert.match(ui, /min-h-screen[^\"]*content-start/);
+  assert.match(ui, /aria-label="Zoho Automation sections"[^>]*h-14[^>]*items-center/);
+  assert.match(ui, /aria-current=\{tab === item\.id \? "page"/);
+  assert.match(ui, /className=\{`h-10 shrink-0 rounded-lg/);
+  assert.match(ui, /repeat\(auto-fit,minmax\(min\(100%,9rem\),1fr\)\)/);
+  assert.doesNotMatch(ui, /xl:grid-cols-7/);
+  assert.match(ui, /const panelClass = "min-w-0 border-border bg-surface p-4 md:p-5"/);
+  assert.match(ui, /const controlClass = "h-10 w-full min-w-0/);
+  assert.match(ui, /const tableWrapClass = "mt-4 max-w-full overflow-x-auto/);
 });
 
 test("monitoring APIs require the existing server-side admin session", async () => {

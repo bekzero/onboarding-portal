@@ -25,6 +25,11 @@ const tabs: Array<{ id: Tab; label: string }> = [
   { id: "configuration", label: "Configuration" }
 ];
 
+const panelClass = "min-w-0 border-border bg-surface p-4 md:p-5";
+const controlClass = "h-10 w-full min-w-0 rounded-xl border border-border bg-input px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-primary";
+const tableWrapClass = "mt-4 max-w-full overflow-x-auto rounded-xl border border-border";
+const tableClass = "w-full text-left text-sm";
+
 function formatDate(value: string | null | undefined) {
   return value ? new Date(value).toLocaleString() : "—";
 }
@@ -42,15 +47,15 @@ function Status({ value }: { value: string }) {
 
 function Metric({ label, value, warning = false }: { label: string; value: string | number; warning?: boolean }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-secondary px-4 py-3">
+    <div className="flex min-h-24 flex-col justify-between rounded-xl border border-border bg-surface-secondary p-4">
       <p className="text-xs uppercase tracking-[0.14em] text-muted">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${warning ? "text-danger" : "text-foreground"}`}>{value}</p>
+      <p className={`mt-3 text-3xl font-semibold leading-none ${warning ? "text-danger" : "text-foreground"}`}>{value}</p>
     </div>
   );
 }
 
 function Empty({ children }: { children: string }) {
-  return <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted">{children}</p>;
+  return <p className="rounded-xl border border-dashed border-border bg-surface-secondary/40 px-4 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
 function Loading() {
@@ -111,27 +116,41 @@ export function ZohoAutomationCenter({ initialPlanFilter = "", initialTab = "ove
   ), [reminderFilter, reminders]);
 
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-7xl min-w-0 gap-4 px-4 py-5 md:px-6 md:py-6">
-      <Card className="border-border bg-surface p-4 md:p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-center gap-4"><KzeroLogo className="shrink-0" /><div><p className="text-xs uppercase tracking-[0.2em] text-muted">Sales Engineer Dashboard</p><h1 className="mt-1 text-2xl font-semibold text-foreground">Zoho Automation</h1><p className="mt-1 text-sm text-secondary">Monitoring and launch readiness. External automation remains dormant.</p></div></div>
-          <div className="flex flex-wrap items-center gap-2"><StaffIdentityControl identity={staffIdentity}/><ThemeToggle /><Button disabled={busy} onClick={() => void refresh()} variant="outline"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button><Link className="inline-flex h-10 items-center rounded-xl px-3 text-sm font-medium text-muted hover:text-foreground" href="/admin">Back to Dashboard</Link></div>
+    <main className="mx-auto grid min-h-screen w-full max-w-7xl min-w-0 content-start gap-4 px-4 py-5 md:px-6 md:py-6">
+      <Card className="overflow-visible border-[#20395f] bg-[#0b1730] p-0 text-white shadow-[0_18px_50px_rgba(2,8,23,0.24)]">
+        <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-5">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <KzeroLogo className="shrink-0" imageClassName="!w-[148px] ![filter:brightness(0)_invert(1)] sm:!w-[164px]" />
+            <div className="min-w-0 border-l border-white/15 pl-3 sm:pl-4">
+              <p className="truncate text-[11px] font-medium uppercase tracking-[0.16em] text-blue-200">Sales Engineer Dashboard</p>
+              <h1 className="truncate text-xl font-semibold tracking-tight text-white sm:text-2xl">Zoho Automation</h1>
+              <p className="mt-0.5 text-xs text-slate-300 sm:text-sm">Monitoring and launch readiness. External automation remains dormant.</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <StaffIdentityControl identity={staffIdentity}/>
+            <ThemeToggle className="border-white/15 bg-white/5 text-white hover:border-white/30 hover:bg-white/10" />
+            <Button className="h-10 rounded-xl border-white/15 text-white hover:border-white/30 hover:bg-white/10" disabled={busy} onClick={() => void refresh()} variant="outline"><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+            <Link className="inline-flex h-10 items-center rounded-xl border border-white/15 px-3 text-sm font-medium text-slate-100 transition hover:border-white/30 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400" href="/admin">Back to Dashboard</Link>
+          </div>
         </div>
       </Card>
 
-      <nav aria-label="Zoho Automation sections" className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1">
-        {tabs.map((item) => <button aria-current={tab === item.id ? "page" : undefined} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium transition ${tab === item.id ? "bg-primary text-primary-foreground" : "text-secondary hover:bg-input hover:text-foreground"}`} key={item.id} onClick={() => setTab(item.id)}>{item.label}</button>)}
+      <nav aria-label="Zoho Automation sections" className="flex h-14 max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-border bg-surface px-1.5">
+        {tabs.map((item) => <button aria-current={tab === item.id ? "page" : undefined} className={`h-10 shrink-0 rounded-lg px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${tab === item.id ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/30" : "text-secondary hover:bg-input hover:text-foreground"}`} key={item.id} onClick={() => setTab(item.id)} type="button">{item.label}</button>)}
       </nav>
 
       {error ? <Card className="border-danger-border bg-danger-surface p-4 text-sm text-danger">{error}</Card> : null}
       {busy && !overview && !events && !reminders && !contacts ? <Loading /> : null}
 
-      {tab === "overview" && overview ? <OverviewView overview={overview} /> : null}
-      {tab === "events" ? <EventHistory filters={eventFilters} onChange={setEventFilters} onSelect={setSelectedEvent} payload={events} /> : null}
-      {tab === "reminders" ? <ReminderPreview filters={reminderFilter} onChange={setReminderFilter} payload={reminders} rows={visibleReminders} /> : null}
-      {tab === "contacts" ? <ContactsView onQuery={setContactQuery} payload={contacts} query={contactQuery} sensitiveReason={overview?.sensitiveActions?.reason} /> : null}
-      {tab === "test-sync" && overview ? <TestContactSync overview={overview} /> : null}
-      {tab === "configuration" && overview ? <ConfigurationView overview={overview} /> : null}
+      <section className="min-w-0 [&_input]:min-w-0 [&_select]:min-w-0">
+        {tab === "overview" && overview ? <OverviewView overview={overview} /> : null}
+        {tab === "events" ? <EventHistory filters={eventFilters} onChange={setEventFilters} onSelect={setSelectedEvent} payload={events} /> : null}
+        {tab === "reminders" ? <ReminderPreview filters={reminderFilter} onChange={setReminderFilter} payload={reminders} rows={visibleReminders} /> : null}
+        {tab === "contacts" ? <ContactsView onQuery={setContactQuery} payload={contacts} query={contactQuery} sensitiveReason={overview?.sensitiveActions?.reason} /> : null}
+        {tab === "test-sync" && overview ? <TestContactSync overview={overview} /> : null}
+        {tab === "configuration" && overview ? <ConfigurationView overview={overview} /> : null}
+      </section>
 
       {selectedEvent ? <EventDetails event={selectedEvent} onClose={() => setSelectedEvent(null)} /> : null}
     </main>
@@ -203,29 +222,29 @@ function TestContactSync({ overview }: { overview: any }) {
         : null;
   const resultLabel = result?.classification?.replaceAll("_", " ") ?? null;
 
-  return <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)]">
-    <Card className="border-border bg-surface p-5">
+  return <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr))]">
+    <Card className={panelClass}>
       <div className="flex items-start gap-3"><MailCheck className="mt-0.5 h-5 w-5 text-primary"/><div><h2 className="text-lg font-semibold text-foreground">Test Contact Sync</h2><p className="mt-1 text-sm text-secondary">Check or add one approved internal test email to the configured mailing list. Names and custom fields are not synchronized.</p></div></div>
       <label className="mt-5 block text-sm font-medium text-foreground" htmlFor="zoho-test-contact-email">Test email address</label>
-      <div className="mt-2 flex flex-col gap-2 sm:flex-row"><input autoComplete="email" className="h-10 min-w-0 flex-1 rounded-xl border border-border bg-input px-3 text-sm text-foreground" id="zoho-test-contact-email" onChange={(event)=>{setEmail(event.target.value);setCheck(null);setResult(null);setConfirmed(false);setRequestId("");}} placeholder="approved.internal@kzero.com" type="email" value={email}/><Button disabled={busy||!email.trim()} onClick={()=>void checkContact()} variant="outline">Check Contact</Button></div>
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row"><input autoComplete="email" className={`${controlClass} flex-1`} id="zoho-test-contact-email" onChange={(event)=>{setEmail(event.target.value);setCheck(null);setResult(null);setConfirmed(false);setRequestId("");}} placeholder="approved.internal@kzero.com" type="email" value={email}/><Button className="h-10 shrink-0 rounded-xl" disabled={busy||!email.trim()} onClick={()=>void checkContact()} variant="outline">Check Contact</Button></div>
       {checkLabel ? <div className="mt-3 flex items-center gap-2 text-sm"><Status value={check.classification}/><span className="text-secondary">{checkLabel}{check.listStatuses?.length ? ` · ${check.listStatuses.join(", ")}` : ""}</span></div> : null}
       {check?.classification === "NOT_FOUND" ? <div className="mt-4 rounded-xl border border-warning-border bg-warning-surface p-4 text-sm text-warning"><label className="flex items-start gap-2"><input checked={confirmed} className="mt-0.5 h-4 w-4" onChange={(event)=>setConfirmed(event.target.checked)} type="checkbox"/><span>I confirm this is an approved internal test address and authorize one email-only list-add request. This does not create marketing consent.</span></label><Button className="mt-3" disabled={busy||!confirmed||!writeReady} onClick={()=>void syncContact()}>Sync Test Contact</Button>{!writeReady?<p className="mt-2 text-xs">Test writes require an individually authenticated ADMIN, configured OAuth/list access, the test-only flag, and release of the global kill switch.</p>:null}</div> : null}
       {resultLabel ? <div className="mt-4 rounded-xl border border-border bg-surface-secondary p-4"><div className="flex items-center gap-2"><Status value={result.classification}/><p className="font-medium text-foreground">{resultLabel}</p></div><p className="mt-2 text-xs text-secondary">{result.reason?.replaceAll("_"," ")}. Provider acceptance alone is not verification, consent, journey enrollment, or email delivery.</p></div> : null}
       {error ? <p className="mt-3 text-sm text-danger">{error}</p> : null}
     </Card>
-    <Card className="border-border bg-surface p-5"><h2 className="font-semibold text-foreground">Connection status</h2><div className="mt-4 grid gap-3 text-sm"><div className="flex justify-between gap-3"><span className="text-secondary">OAuth</span><Status value={config.oauthConfigured?"CONFIGURED":"MISSING"}/></div><div className="flex justify-between gap-3"><span className="text-secondary">Mailing list</span><Status value={config.listKeyPresent?"CONFIGURED":"MISSING"}/></div><div><p className="text-xs uppercase tracking-[0.14em] text-muted">Configured list</p><p className="mt-1 font-medium text-foreground">{test?.listName??"KZero Partner Onboarding"}</p></div><div className="flex justify-between gap-3"><span className="text-secondary">Test-only write</span><Status value={test?.enabled?"ENABLED":"DISABLED"}/></div><div className="flex justify-between gap-3"><span className="text-secondary">Global kill switch</span><Status value={config.globalKillSwitch?"ENABLED":"DISABLED"}/></div><p className="rounded-xl border border-border bg-surface-secondary px-3 py-2 text-xs text-muted">The ListKey and OAuth credentials remain server-side and are never returned to this page.</p></div></Card>
+    <Card className={panelClass}><h2 className="font-semibold text-foreground">Connection status</h2><div className="mt-4 grid gap-3 text-sm"><div className="flex justify-between gap-3"><span className="text-secondary">OAuth</span><Status value={config.oauthConfigured?"CONFIGURED":"MISSING"}/></div><div className="flex justify-between gap-3"><span className="text-secondary">Mailing list</span><Status value={config.listKeyPresent?"CONFIGURED":"MISSING"}/></div><div><p className="text-xs uppercase tracking-[0.14em] text-muted">Configured list</p><p className="mt-1 font-medium text-foreground">{test?.listName??"KZero Partner Onboarding"}</p></div><div className="flex justify-between gap-3"><span className="text-secondary">Test-only write</span><Status value={test?.enabled?"ENABLED":"DISABLED"}/></div><div className="flex justify-between gap-3"><span className="text-secondary">Global kill switch</span><Status value={config.globalKillSwitch?"ENABLED":"DISABLED"}/></div><p className="rounded-xl border border-border bg-surface-secondary px-3 py-2 text-xs text-muted">The ListKey and OAuth credentials remain server-side and are never returned to this page.</p></div></Card>
   </div>;
 }
 
 function OverviewView({ overview }: { overview: any }) {
   const c = overview.counts;
   return <div className="grid gap-4">
-    <section className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7"><Metric label="Pending" value={c.pending}/><Metric label="Held" value={c.held} warning={c.held > 0}/><Metric label="Retrying" value={c.retrying}/><Metric label="Failed" value={c.failed} warning={c.failed > 0}/><Metric label="Processing" value={c.processing}/><Metric label="Uncertain" value={c.uncertain} warning={c.uncertain > 0}/><Metric label="Active nudges" value={overview.nudgeSummary.activeNudgeCount}/></section>
+    <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr))]"><Metric label="Pending" value={c.pending}/><Metric label="Held" value={c.held} warning={c.held > 0}/><Metric label="Retrying" value={c.retrying}/><Metric label="Failed" value={c.failed} warning={c.failed > 0}/><Metric label="Processing" value={c.processing}/><Metric label="Uncertain" value={c.uncertain} warning={c.uncertain > 0}/><Metric label="Active nudges" value={overview.nudgeSummary.activeNudgeCount}/></section>
     <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="border-border bg-surface p-5"><h2 className="text-lg font-semibold text-foreground">Operational health</h2><div className="mt-4 grid gap-3 text-sm text-secondary sm:grid-cols-2"><p>Last successful contact sync<br/><span className="text-foreground">{formatDate(overview.lastSuccessfulSynchronization)}</span></p><p>Last nudge evaluation<br/><span className="text-foreground">{formatDate(overview.nudgeSummary.lastEvaluationTimestamp)} · {overview.nudgeSummary.lastEvaluationOutcome ?? "Never run"}</span></p><p>Pending nudges<br/><span className="text-foreground">{overview.nudgeSummary.preparedWaitingNudgeCount}</span></p><p>Urgent stop failures<br/><span className="text-foreground">{overview.nudgeSummary.urgentStopSyncFailureCount}</span></p></div><p className="mt-4 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning">Queued or provider-accepted events are not proof that an email was delivered.</p></Card>
-      <Card className="border-border bg-surface p-5"><h2 className="text-lg font-semibold text-foreground">Journey readiness</h2><div className="mt-4 grid gap-3">{overview.journeys.map((journey: any) => <div className="flex items-center justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0" key={journey.id}><div><p className="font-medium text-foreground">{journey.id.replace("_", "-")} · {journey.name}</p><p className="text-xs text-muted">Configuration only; membership and completion are not inferred.</p></div><Status value={journey.configured ? "CONFIGURED" : "UNVERIFIED"}/></div>)}</div></Card>
+      <Card className={panelClass}><h2 className="text-lg font-semibold text-foreground">Operational health</h2><div className="mt-4 grid gap-3 text-sm text-secondary sm:grid-cols-2"><p>Last successful contact sync<br/><span className="text-foreground">{formatDate(overview.lastSuccessfulSynchronization)}</span></p><p>Last nudge evaluation<br/><span className="text-foreground">{formatDate(overview.nudgeSummary.lastEvaluationTimestamp)} · {overview.nudgeSummary.lastEvaluationOutcome ?? "Never run"}</span></p><p>Pending nudges<br/><span className="text-foreground">{overview.nudgeSummary.preparedWaitingNudgeCount}</span></p><p>Urgent stop failures<br/><span className="text-foreground">{overview.nudgeSummary.urgentStopSyncFailureCount}</span></p></div><p className="mt-4 rounded-xl border border-warning-border bg-warning-surface px-3 py-2 text-xs text-warning">Queued or provider-accepted events are not proof that an email was delivered.</p></Card>
+      <Card className={panelClass}><h2 className="text-lg font-semibold text-foreground">Journey readiness</h2><div className="mt-4 grid gap-3">{overview.journeys.map((journey: any) => <div className="flex items-center justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0" key={journey.id}><div><p className="font-medium text-foreground">{journey.id.replace("_", "-")} · {journey.name}</p><p className="text-xs text-muted">Configuration only; membership and completion are not inferred.</p></div><Status value={journey.configured ? "CONFIGURED" : "UNVERIFIED"}/></div>)}</div></Card>
     </div>
-      <Card className="border-border bg-surface p-5"><div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-warning"/><div><h2 className="font-semibold text-foreground">Urgent stop-state monitoring</h2><p className="mt-1 text-sm text-secondary">A local task change does not prove Zoho received the update that stops a wait or reminder.</p></div></div>{overview.stopEvents.length ? <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[820px] text-left text-sm"><thead className="text-xs uppercase text-muted"><tr><th className="pb-2">Plan</th><th>Recipient</th><th>Journey</th><th>Required stop condition</th><th>Status</th><th>Last attempt</th><th>Age</th></tr></thead><tbody>{overview.stopEvents.map((event:any)=><tr className="border-t border-border" key={event.id}><td className="py-3"><span className="font-medium text-foreground">{event.onboardingPlan.msp.name}</span><br/><span className="text-xs text-muted">{event.onboardingPlan.customerName ?? event.planId}</span></td><td>{event.recipientEmailNormalized}</td><td>{event.journey?.replace("_","-") ?? "Contact state"}</td><td>{event.holdReason ?? event.lastSanitizedError ?? "Synchronize the current stop state"}</td><td><Status value={event.status}/></td><td>{formatDate(event.lastAttemptAt)}</td><td>{Math.max(0, Math.floor((Date.now()-new Date(event.createdAt).getTime())/3600000))}h</td></tr>)}</tbody></table></div>:<Empty>No unresolved stop-state updates.</Empty>}</Card>
+      <Card className={panelClass}><div className="flex items-start gap-3"><ShieldAlert className="mt-0.5 h-5 w-5 text-warning"/><div><h2 className="font-semibold text-foreground">Urgent stop-state monitoring</h2><p className="mt-1 text-sm text-secondary">A local task change does not prove Zoho received the update that stops a wait or reminder.</p></div></div>{overview.stopEvents.length ? <div className={tableWrapClass}><table className={`${tableClass} min-w-[820px]`}><thead className="bg-surface-secondary text-xs uppercase text-muted"><tr><th className="px-3 py-2">Plan</th><th className="px-3 py-2">Recipient</th><th className="px-3 py-2">Journey</th><th className="px-3 py-2">Required stop condition</th><th className="px-3 py-2">Status</th><th className="px-3 py-2">Last attempt</th><th className="px-3 py-2">Age</th></tr></thead><tbody>{overview.stopEvents.map((event:any)=><tr className="border-t border-border" key={event.id}><td className="px-3 py-3"><span className="font-medium text-foreground">{event.onboardingPlan.msp.name}</span><br/><span className="text-xs text-muted">{event.onboardingPlan.customerName ?? event.planId}</span></td><td className="px-3 py-3">{event.recipientEmailNormalized}</td><td className="px-3 py-3">{event.journey?.replace("_","-") ?? "Contact state"}</td><td className="px-3 py-3">{event.holdReason ?? event.lastSanitizedError ?? "Synchronize the current stop state"}</td><td className="px-3 py-3"><Status value={event.status}/></td><td className="px-3 py-3">{formatDate(event.lastAttemptAt)}</td><td className="px-3 py-3">{Math.max(0, Math.floor((Date.now()-new Date(event.createdAt).getTime())/3600000))}h</td></tr>)}</tbody></table></div>:<div className="mt-4"><Empty>No unresolved stop-state updates.</Empty></div>}</Card>
   </div>;
 }
 
