@@ -21,6 +21,7 @@
     "test:zoho-phase-7b2": "node --test --experimental-transform-types tests/zoho-phase-7b2.test.mjs",
     "test:zoho-phase-7b3": "node --test --experimental-transform-types tests/zoho-phase-7b3.test.mjs",
     "test:zoho-phase-7b4": "node --test --experimental-transform-types tests/zoho-phase-7b4.test.mjs",
+    "test:zoho-phase-7b5": "node --test --experimental-transform-types tests/zoho-phase-7b5.test.mjs",
     "check:zoho-phase-7a-config": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs config",
     "initialize:zoho-phase-7a-empty": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs initialize",
     "test:zoho-phase-7a-db": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs verify",

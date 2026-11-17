@@ -1,9 +1,12 @@
 import "server-only";
 
 import { Prisma } from "@prisma/client";
-import { getZohoConfigurationStatus } from "@/lib/zoho-config";
+import { getZohoConfigurationStatus, getZohoDispatchConfiguration, getZohoMspEnrollmentSyncConfiguration } from "@/lib/zoho-config";
+import { evaluateEnrollmentContactSyncReadiness } from "@/lib/zoho-enrollment-sync-core";
+import { isZohoEventEmissionEnabled } from "@/lib/zoho-foundation";
 import { getZohoNudgeSummary } from "@/lib/zoho-nudge-engine";
 import { getZohoAutomationReadiness } from "@/lib/zoho-readiness";
+import { isValidEmailAddress } from "@/lib/zoho-validation";
 import { prisma } from "@/lib/prisma";
 import { getAuthorizedStaffIdentity, isStaffOidcConfigured } from "@/lib/staff-auth";
 
@@ -255,12 +258,22 @@ export async function getZohoAdminContacts(searchParams: URLSearchParams) {
   };
 }
 
-export async function getZohoPlanAutomationSummary(planId: string) {
+export async function getZohoPlanAutomationSummary(
+  planId: string,
+  options: { includePermissionEvidenceReference?: boolean } = {}
+) {
   const plan = await prisma.onboardingPlan.findUnique({
     where: { planId },
     select: {
       id: true, planId: true, automationEnrollmentState: true, automationOrigin: true, nudgeStatus: true,
-      nudgeTaskKey: true, planContacts: { where: { role: "ONBOARDING_OWNER" }, take: 1, select: { normalizedEmail: true, subscriptionStatus: true } }
+      nudgeTaskKey: true,
+      msp: { select: { name: true, primaryContactEmail: true } },
+      planContacts: {
+        where: { role: "ONBOARDING_OWNER" },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+        select: { automationEnabled: true, email: true, normalizedEmail: true, subscriptionStatus: true }
+      }
     }
   });
   if (!plan) return null;
@@ -286,9 +299,43 @@ export async function getZohoPlanAutomationSummary(planId: string) {
     prisma.zohoOutboxEvent.findFirst({
       where: { onboardingPlanId: plan.id, eventKey: { startsWith: "contact-sync:msp-enrolled:" } },
       orderBy: { createdAt: "desc" },
-      select: { createdAt: true, holdReason: true, status: true }
+      select: { createdAt: true, holdReason: true, lastProviderOutcome: true, status: true }
     })
   ]);
+  const configuration = getZohoConfigurationStatus();
+  const dispatch = getZohoDispatchConfiguration();
+  const permissionEvidenceReference = permissionAudit?.evidenceReference?.trim() ?? "";
+  const primaryEmailNormalized = plan.msp.primaryContactEmail.trim().toLowerCase();
+  const contactValid = Boolean(
+    owner &&
+    isValidEmailAddress(plan.msp.primaryContactEmail) &&
+    isValidEmailAddress(owner.email) &&
+    owner.normalizedEmail === primaryEmailNormalized
+  );
+  const syncReadiness = evaluateEnrollmentContactSyncReadiness({
+    alreadySynchronized: enrollmentEvent?.status === "SUCCEEDED",
+    automaticDispatchEnabled: dispatch.automaticDispatchEnabled,
+    communicationContextOwned: context?.state === "ACTIVE" && context.activePlanId === plan.id,
+    contactAutomationEnabled: owner?.automationEnabled === true,
+    contactSyncEnabled: dispatch.contactSyncEnabled,
+    contactValid,
+    eventEmissionEnabled: isZohoEventEmissionEnabled(),
+    evidenceReference: permissionEvidenceReference,
+    globalKillSwitch: dispatch.globalKillSwitch,
+    individualStaffIdentity: permissionAudit?.actor.startsWith("oidc:") ?? false,
+    permissionConfirmed: Boolean(permissionAudit),
+    planAutomationActive: plan.automationEnrollmentState === "ACTIVE",
+    productionApproved: dispatch.productionApproved,
+    productionMode: dispatch.mode === "production",
+    providerConfigurationReady: Boolean(
+      configuration.oauthConfigured &&
+      configuration.listKeyPresent &&
+      configuration.listPrivacyVerified &&
+      configuration.fieldMappingVerified
+    ),
+    subscriptionStatus: owner?.subscriptionStatus ?? null,
+    syncOnEnrollmentEnabled: getZohoMspEnrollmentSyncConfiguration().enabled
+  });
   return {
     automationEnrollmentState: plan.automationEnrollmentState,
     automationOrigin: plan.automationOrigin,
@@ -301,8 +348,18 @@ export async function getZohoPlanAutomationSummary(planId: string) {
     enrollmentContactSync: {
       event: enrollmentEvent,
       individuallyAttributable: permissionAudit?.actor.startsWith("oidc:") ?? false,
+      mspName: plan.msp.name,
+      permissionAttested: Boolean(permissionAudit),
       permissionEvidencePresent: Boolean(permissionAudit?.evidenceReference),
-      permissionRecordedAt: permissionAudit?.createdAt ?? null
+      permissionEvidenceReference: options.includePermissionEvidenceReference
+        ? sanitizeZohoAdminText(permissionAudit?.evidenceReference)
+        : null,
+      permissionRecordedAt: permissionAudit?.createdAt ?? null,
+      primaryContactEmail: plan.msp.primaryContactEmail,
+      primaryContactMatchesOwner: contactValid,
+      readiness: syncReadiness,
+      staffIdentityVerified: permissionAudit?.actor.startsWith("oidc:") ?? false,
+      synchronizationState: enrollmentEvent?.status ?? "NOT_PREPARED"
     },
     heldEventCount: eventCounts[0], failedEventCount: eventCounts[1]
   };

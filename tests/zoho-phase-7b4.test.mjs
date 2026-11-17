@@ -70,11 +70,10 @@ test("kill switch, plan approval, and context gates prepare held work only", () 
   assert.equal(evaluateEnrollmentContactSync({ ...safeBase, communicationContextOwned: false }).holdReason, "COMMUNICATION_CONTEXT_REQUIRED");
 });
 
-test("shared admin evidence is retained but cannot create dispatchable work", () => {
+test("shared admin evidence is retained but cannot prepare outbox work", () => {
   assert.deepEqual(evaluateEnrollmentContactSync({ ...safeBase, individualStaffIdentity: false }), {
-    action: "PREPARE",
-    holdReason: "INDIVIDUAL_STAFF_IDENTITY_REQUIRED",
-    status: "HELD"
+    action: "SKIP",
+    reason: "INDIVIDUAL_STAFF_IDENTITY_REQUIRED"
   });
 });
 

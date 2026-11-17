@@ -2,6 +2,34 @@ export type EnrollmentSyncDecision =
   | { action: "SKIP"; reason: string }
   | { action: "PREPARE"; holdReason: string | null; status: "HELD" | "PENDING" };
 
+export type EnrollmentSyncReadinessClassification =
+  | "READY_FOR_PREPARATION"
+  | "MISSING_PERMISSION"
+  | "MISSING_EVIDENCE"
+  | "STAFF_IDENTITY_REQUIRED"
+  | "INVALID_CONTACT"
+  | "PLAN_NOT_READY"
+  | "AUTOMATION_DISABLED"
+  | "ALREADY_SYNCHRONIZED"
+  | "BLOCKED"
+  | "UNABLE_TO_VERIFY";
+
+export type EnrollmentSyncReadinessInput = Parameters<typeof evaluateEnrollmentContactSync>[0] & {
+  alreadySynchronized: boolean;
+  contactValid: boolean;
+  providerConfigurationReady: boolean;
+  subscriptionStatus: "UNKNOWN" | "PENDING_CONFIRMATION" | "CONFIRMED" | "INELIGIBLE" | "MANUAL_REVIEW" | null;
+};
+
+export type EnrollmentSyncReadiness = {
+  blockers: string[];
+  classification: EnrollmentSyncReadinessClassification;
+  decision: EnrollmentSyncDecision;
+  eligibleIfEnabled: boolean;
+  flagBlockers: string[];
+  wouldPrepareNow: boolean;
+};
+
 export function validateEnrollmentContactPermission(input?: {
   confirmed?: boolean;
   evidenceReference?: string;
@@ -40,7 +68,7 @@ export function evaluateEnrollmentContactSync(input: {
     return { action: "SKIP", reason: "EVENT_EMISSION_DISABLED" };
   }
   if (!input.individualStaffIdentity) {
-    return { action: "PREPARE", holdReason: "INDIVIDUAL_STAFF_IDENTITY_REQUIRED", status: "HELD" };
+    return { action: "SKIP", reason: "INDIVIDUAL_STAFF_IDENTITY_REQUIRED" };
   }
   if (input.globalKillSwitch) {
     return { action: "PREPARE", holdReason: "GLOBAL_KILL_SWITCH_ENABLED", status: "HELD" };
@@ -58,6 +86,55 @@ export function evaluateEnrollmentContactSync(input: {
     return { action: "PREPARE", holdReason: "COMMUNICATION_CONTEXT_REQUIRED", status: "HELD" };
   }
   return { action: "PREPARE", holdReason: null, status: "PENDING" };
+}
+
+export function evaluateEnrollmentContactSyncReadiness(
+  input: EnrollmentSyncReadinessInput
+): EnrollmentSyncReadiness {
+  const decision = evaluateEnrollmentContactSync(input);
+  const blockers: string[] = [];
+  const flagBlockers: string[] = [];
+
+  if (!input.permissionConfirmed) blockers.push("CONTACT_PERMISSION_NOT_DOCUMENTED");
+  if (input.permissionConfirmed && !input.evidenceReference.trim()) blockers.push("PERMISSION_EVIDENCE_MISSING");
+  if (!input.individualStaffIdentity) blockers.push("INDIVIDUAL_STAFF_IDENTITY_REQUIRED");
+  if (!input.contactValid) blockers.push("INVALID_PRIMARY_CONTACT");
+  if (input.subscriptionStatus === "INELIGIBLE") blockers.push("RECIPIENT_INELIGIBLE");
+  if (!input.planAutomationActive || !input.contactAutomationEnabled) blockers.push("AUTOMATION_APPROVAL_REQUIRED");
+  if (!input.communicationContextOwned) blockers.push("COMMUNICATION_CONTEXT_REQUIRED");
+  if (!input.providerConfigurationReady) blockers.push("PROVIDER_CONFIGURATION_INCOMPLETE");
+
+  if (!input.syncOnEnrollmentEnabled) flagBlockers.push("MSP_ENROLLMENT_SYNC_DISABLED");
+  if (!input.eventEmissionEnabled) flagBlockers.push("EVENT_EMISSION_DISABLED");
+  if (input.globalKillSwitch) flagBlockers.push("GLOBAL_KILL_SWITCH_ENABLED");
+  if (!input.contactSyncEnabled) flagBlockers.push("CONTACT_SYNCHRONIZATION_DISABLED");
+  if (!input.productionMode || !input.productionApproved || !input.automaticDispatchEnabled) {
+    flagBlockers.push("PRODUCTION_DISPATCH_NOT_APPROVED");
+  }
+
+  const mandatoryBlockers = blockers.filter((reason) => reason !== "PROVIDER_CONFIGURATION_INCOMPLETE");
+  const eligibleIfEnabled = mandatoryBlockers.length === 0 && input.providerConfigurationReady && !input.alreadySynchronized;
+  let classification: EnrollmentSyncReadinessClassification;
+  if (input.alreadySynchronized) classification = "ALREADY_SYNCHRONIZED";
+  else if (!input.permissionConfirmed) classification = "MISSING_PERMISSION";
+  else if (!input.evidenceReference.trim()) classification = "MISSING_EVIDENCE";
+  else if (!input.individualStaffIdentity) classification = "STAFF_IDENTITY_REQUIRED";
+  else if (!input.contactValid) classification = "INVALID_CONTACT";
+  else if (input.subscriptionStatus === "INELIGIBLE") classification = "BLOCKED";
+  else if (!input.planAutomationActive || !input.contactAutomationEnabled || !input.communicationContextOwned) classification = "PLAN_NOT_READY";
+  else if (!input.providerConfigurationReady) classification = "BLOCKED";
+  else if (flagBlockers.length > 0) classification = "AUTOMATION_DISABLED";
+  else if (decision.action === "PREPARE") classification = "READY_FOR_PREPARATION";
+  else classification = "UNABLE_TO_VERIFY";
+
+  return {
+    blockers: [...blockers, ...flagBlockers],
+    classification,
+    decision,
+    eligibleIfEnabled,
+    flagBlockers,
+    wouldPrepareNow: !input.alreadySynchronized && decision.action === "PREPARE"
+  };
 }
 
 export type EmailOnlyMembership = {

@@ -52,8 +52,22 @@ type PlanAutomationSummary = {
   enrollmentContactSync: {
     event: { createdAt: string; holdReason: string | null; status: string } | null;
     individuallyAttributable: boolean;
+    mspName: string;
+    permissionAttested: boolean;
     permissionEvidencePresent: boolean;
+    permissionEvidenceReference: string | null;
     permissionRecordedAt: string | null;
+    primaryContactEmail: string;
+    primaryContactMatchesOwner: boolean;
+    readiness: {
+      blockers: string[];
+      classification: string;
+      eligibleIfEnabled: boolean;
+      flagBlockers: string[];
+      wouldPrepareNow: boolean;
+    };
+    staffIdentityVerified: boolean;
+    synchronizationState: string;
   };
 };
 
@@ -110,6 +124,33 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
       await loadStatus();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Discovery failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function evaluateEnrollmentSync() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}`, {
+        method: "POST"
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        enrollmentContactSync?: PlanAutomationSummary["enrollmentContactSync"];
+        error?: string;
+        evaluatedAt?: string;
+      } | null;
+      if (!response.ok || !payload?.enrollmentContactSync) {
+        throw new Error(payload?.error ?? "Could not evaluate enrollment contact synchronization.");
+      }
+      setPlanSummary((current) => current ? {
+        ...current,
+        enrollmentContactSync: payload.enrollmentContactSync as PlanAutomationSummary["enrollmentContactSync"]
+      } : current);
+      setMessage(`Read-only enrollment synchronization evaluation completed${payload.evaluatedAt ? ` at ${new Date(payload.evaluatedAt).toLocaleString()}` : ""}. No event or provider request was created.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Enrollment synchronization evaluation failed.");
     } finally {
       setBusy(false);
     }
@@ -210,6 +251,8 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
 
       {planSummary ? (
         <div className="mt-3 grid gap-x-4 gap-y-2 rounded-xl border border-border bg-input p-3 text-xs text-secondary sm:grid-cols-2">
+          <p>MSP: <span className="text-foreground">{planSummary.enrollmentContactSync.mspName}</span></p>
+          <p>Primary contact: <span className="break-all text-foreground">{planSummary.enrollmentContactSync.primaryContactEmail}</span></p>
           <p>Enrollment: <span className="text-foreground">{planSummary.automationEnrollmentState}</span></p>
           <p>Readiness: <span className="text-foreground">{planSummary.readiness?.status ?? "Unavailable"}</span></p>
           <p>Subscription: <span className="text-foreground">{planSummary.subscriptionStatus ?? "No owner"}</span></p>
@@ -220,6 +263,12 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
           <p>Held / failed events: <span className="text-foreground">{planSummary.heldEventCount} / {planSummary.failedEventCount}</span></p>
           <p>Enrollment contact permission: <span className="text-foreground">{planSummary.enrollmentContactSync.permissionEvidencePresent ? (planSummary.enrollmentContactSync.individuallyAttributable ? "Documented by staff" : "Recorded; individual staff identity required") : "Missing"}</span></p>
           <p>Enrollment contact sync: <span className="text-foreground">{planSummary.enrollmentContactSync.event ? `${planSummary.enrollmentContactSync.event.status}${planSummary.enrollmentContactSync.event.holdReason ? ` · ${planSummary.enrollmentContactSync.event.holdReason.replaceAll("_", " ")}` : ""}` : "Not prepared"}</span></p>
+          <p>Sync readiness: <span className="text-foreground">{planSummary.enrollmentContactSync.readiness.classification.replaceAll("_", " ")}</span></p>
+          <p>Staff identity: <span className="text-foreground">{planSummary.enrollmentContactSync.staffIdentityVerified ? "Individually verified" : "Individual identity required"}</span></p>
+          <p>Contact / owner: <span className="text-foreground">{planSummary.enrollmentContactSync.primaryContactMatchesOwner ? "Matches Onboarding Owner" : "Invalid or mismatched"}</span></p>
+          <p>Eligible if explicitly enabled: <span className="text-foreground">{planSummary.enrollmentContactSync.readiness.eligibleIfEnabled ? "Yes" : "No"}</span></p>
+          {planSummary.enrollmentContactSync.permissionEvidenceReference ? <p className="sm:col-span-2">Permission evidence: <span className="break-words text-foreground">{planSummary.enrollmentContactSync.permissionEvidenceReference}</span></p> : null}
+          {planSummary.enrollmentContactSync.readiness.blockers.length ? <p className="sm:col-span-2">Blocked by: <span className="text-foreground">{planSummary.enrollmentContactSync.readiness.blockers.map((reason) => reason.replaceAll("_", " ")).join(" · ")}</span></p> : null}
         </div>
       ) : null}
 
@@ -239,6 +288,9 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
       {message ? <p className="mt-3 rounded-xl border border-border bg-input px-3 py-2 text-xs leading-5 text-secondary">{message}</p> : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
+        <Button className="h-9" disabled={busy || !planSummary} onClick={() => void evaluateEnrollmentSync()} variant="outline">
+          Evaluate Zoho Sync
+        </Button>
         <Button className="h-9" disabled={busy || !status?.configuration.oauthConfigured} onClick={() => void runDiscovery()} variant="outline">
           Run Read-only Discovery
         </Button>
