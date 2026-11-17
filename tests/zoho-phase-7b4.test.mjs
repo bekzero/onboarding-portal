@@ -182,6 +182,21 @@ test("Enroll MSP always renders optional Zoho permission controls and submits th
   assert.match(dashboard, /zohoContactPermission:\s*\{\s*confirmed: enrollmentState\.zohoContactPermissionConfirmed,\s*evidenceReference: permissionEvidenceReference/s);
 });
 
+test("Enroll MSP modal keeps a bounded single scroller, persistent footer, and responsive section layout", async () => {
+  const dashboard = await readFile(new URL("../components/internal-dashboard.tsx", import.meta.url), "utf8");
+  const enrollStart = dashboard.indexOf('{panelMode === "enroll" ? (');
+  const enrollEnd = dashboard.indexOf("</Card>", enrollStart);
+  const enrollPanel = dashboard.slice(enrollStart, enrollEnd);
+
+  assert.match(dashboard, /panelMode === "edit" \|\| panelMode === "enroll"[\s\S]*?flex max-h-\[90vh\] max-w-\[940px\] flex-col p-0/);
+  assert.match(enrollPanel, /min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-6 md:py-5/);
+  assert.doesNotMatch(enrollPanel, /pb-28|pb-32|min-h-\[|h-screen/);
+  assert.match(enrollPanel, /grid gap-4 \[grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,26rem\),1fr\)\)\]/);
+  assert.match(enrollPanel, /mt-3 grid gap-4 sm:grid-cols-2/);
+  assert.match(enrollPanel, /mt-3 grid items-start gap-4 \[grid-template-columns:repeat\(auto-fit,minmax\(min\(100%,26rem\),1fr\)\)\]/);
+  assert.match(enrollPanel, /shrink-0 border-t border-border bg-surface/);
+});
+
 test("provider uses getleads plus addleadsinbulk and sends email only", async () => {
   const provider = await readFile(new URL("../lib/zoho-dispatch-provider.ts", import.meta.url), "utf8");
   const dispatcher = await readFile(new URL("../lib/zoho-dispatcher.ts", import.meta.url), "utf8");

@@ -3214,13 +3214,17 @@ export function InternalDashboard({
       ) : null}
 
       {isModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-overlay/80 p-4 md:p-6">
+        <div
+          className={`fixed inset-0 z-50 flex justify-center bg-overlay/80 p-4 md:p-6 ${
+            panelMode === "edit" || panelMode === "enroll" ? "items-center" : "items-start"
+          }`}
+        >
           <Card
             className={`w-full overflow-hidden border-border bg-surface ${
               panelMode === "preview"
                 ? "flex max-h-[95vh] max-w-[1040px] flex-col md:max-h-[90vh]"
                 : panelMode === "edit" || panelMode === "enroll"
-                  ? "flex max-h-[95vh] max-w-[940px] flex-col md:max-h-[90vh]"
+                  ? "flex max-h-[90vh] max-w-[940px] flex-col p-0"
                   : panelMode === "rollback"
                     ? "max-h-[95vh] max-w-[920px] md:max-h-[90vh]"
                 : "max-h-[95vh] max-w-[520px] overflow-y-auto md:max-h-[90vh]"
@@ -3735,7 +3739,7 @@ export function InternalDashboard({
 
             {panelMode === "edit" && selectedCase && editState ? (
               <>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-28 md:px-6 md:py-6 md:pb-32">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-6 md:py-5">
                   <div className="grid gap-5">
                     <div className="grid gap-5 lg:grid-cols-2">
                       <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
@@ -4109,12 +4113,12 @@ export function InternalDashboard({
 
             {panelMode === "enroll" ? (
               <>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-28 md:px-6 md:py-6 md:pb-32">
-                  <div className="grid gap-5">
-                    <div className="grid gap-5 lg:grid-cols-2">
-                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 md:px-6 md:py-5">
+                  <div className="grid gap-4">
+                    <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))]">
+                      <div className="rounded-2xl border border-border bg-surface-secondary p-4 md:p-5">
                         <p className="text-xs uppercase tracking-[0.22em] text-muted">MSP Account</p>
-                        <div className="mt-4 grid gap-4">
+                        <div className="mt-3 grid gap-4">
                           <label className="grid gap-2 text-sm text-secondary">
                             <span>MSP Name</span>
                             <input
@@ -4152,9 +4156,9 @@ export function InternalDashboard({
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                      <div className="rounded-2xl border border-border bg-surface-secondary p-4 md:p-5">
                         <p className="text-xs uppercase tracking-[0.22em] text-muted">Access & Tenant</p>
-                        <div className="mt-4 grid gap-4">
+                        <div className="mt-3 grid gap-4">
                           <label className="grid gap-2 text-sm text-secondary">
                             <span>Access Mode</span>
                             <select
@@ -4197,11 +4201,11 @@ export function InternalDashboard({
                       </div>
                     </div>
 
-                    <div className="grid gap-5 lg:grid-cols-2">
-                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                    <div className="grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))]">
+                      <div className="rounded-2xl border border-border bg-surface-secondary p-4 md:p-5">
                         <p className="text-xs uppercase tracking-[0.22em] text-muted">Onboarding Status</p>
-                        <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <label className="grid gap-2 text-sm text-secondary md:col-span-2">
+                        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                          <label className="grid gap-2 text-sm text-secondary sm:col-span-2">
                             <span>Current Stage</span>
                             <select
                               className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
@@ -4255,10 +4259,10 @@ export function InternalDashboard({
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                      <div className="rounded-2xl border border-border bg-surface-secondary p-4 md:p-5">
                         <p className="text-xs uppercase tracking-[0.22em] text-muted">Reporting Details</p>
-                        <div className="mt-4 grid gap-4 md:grid-cols-2">
-                          <label className="grid gap-2 text-sm text-secondary md:col-span-2">
+                        <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                          <label className="grid gap-2 text-sm text-secondary sm:col-span-2">
                             <span>Plan Type</span>
                             <select
                               className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
@@ -4278,7 +4282,7 @@ export function InternalDashboard({
                             </select>
                           </label>
                           {enrollmentState.startingPlanType === "customer" ? (
-                            <label className="grid gap-2 text-sm text-secondary md:col-span-2">
+                            <label className="grid gap-2 text-sm text-secondary sm:col-span-2">
                               <span>Customer Name</span>
                               <input
                                 className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
@@ -4322,10 +4326,10 @@ export function InternalDashboard({
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-border bg-surface-secondary px-5 py-4">
+                    <div className="rounded-2xl border border-border bg-surface-secondary p-4 md:p-5">
                       <p className="text-xs uppercase tracking-[0.22em] text-muted">Zoho Partner Onboarding</p>
-                      <div className="mt-4 grid gap-4">
-                        <label className="flex items-start gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
+                      <div className="mt-3 grid items-start gap-4 [grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))]">
+                        <label className="flex h-full items-start gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm leading-5 text-secondary">
                           <input
                             checked={enrollmentState.zohoContactPermissionConfirmed}
                             className="mt-0.5 h-4 w-4 rounded border-border bg-input"
@@ -4358,11 +4362,11 @@ export function InternalDashboard({
                             value={enrollmentState.zohoContactPermissionEvidence}
                           />
                         </label>
-                        <p className="text-xs leading-5 text-muted">Recording permission does not automatically subscribe the contact or trigger onboarding emails.</p>
-                        {enrollmentErrorMessage ? (
-                          <p className="text-sm text-danger" role="alert">{enrollmentErrorMessage}</p>
-                        ) : null}
                       </div>
+                      <p className="mt-3 text-xs leading-5 text-muted">Recording permission does not automatically subscribe the contact or trigger onboarding emails.</p>
+                      {enrollmentErrorMessage ? (
+                        <p className="mt-2 text-sm text-danger" role="alert">{enrollmentErrorMessage}</p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
