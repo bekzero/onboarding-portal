@@ -281,9 +281,15 @@ test("UI shows compact preview, exact confirmation, outcomes, and no browser Lis
 });
 
 test("configuration is dormant by default and documents the manual flag", async () => {
-  const [config, env] = await Promise.all([read("lib/zoho-config.ts"), read(".env.example")]);
+  const [config, env, runbook] = await Promise.all([
+    read("lib/zoho-config.ts"),
+    read(".env.example"),
+    read("docs/zoho/phase-7b6b-controlled-single-contact-pilot.md")
+  ]);
   assert.match(config, /enabled\("ZOHO_SINGLE_CONTACT_PILOT_ENABLED"\)/);
   assert.match(env, /ZOHO_SINGLE_CONTACT_PILOT_ENABLED=false/);
+  assert.match(runbook, /without changing shared `PlanContact\.subscriptionStatus`/);
+  assert.match(runbook, /Leave the shared status unchanged/);
 });
 
 test("pilot evidence controls are exact-target, ADMIN-only, audited, idempotent, and side-effect isolated", async () => {

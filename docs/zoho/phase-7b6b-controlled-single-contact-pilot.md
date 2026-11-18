@@ -17,7 +17,7 @@ Execution requires all of the following at the time of the request and again whi
 - individually attributable permission evidence;
 - active native plan and automation-enabled owner;
 - active communication context owned by the selected plan;
-- subscription status explicitly verified as `CONFIRMED`;
+- a pilot-specific, evidence-backed subscription decision recorded without changing shared `PlanContact.subscriptionStatus`;
 - OAuth and the server-side ListKey configured;
 - persisted private-list verification and a fresh read-only list lookup returning exactly one `KZero Partner Onboarding` list with `is_public=false`;
 - manually recorded evidence that the Zoho list has no unintended active journey, workflow, campaign, or email side effect;
@@ -35,7 +35,7 @@ The preview and execution use the existing bounded `getleads` scanner for active
 - Any incomplete scan returns `UNABLE_TO_VERIFY`.
 - Unsubscribed or bounced membership returns `BLOCKED` without a write.
 - Active membership returns `ALREADY_EXISTS` without a write.
-- Local `UNKNOWN`, `PENDING_CONFIRMATION`, or `MANUAL_REVIEW` subscription state blocks execution even when the contact is absent from the list.
+- Local `INELIGIBLE` always blocks execution. `UNKNOWN`, `PENDING_CONFIRMATION`, and `MANUAL_REVIEW` remain unchanged; the exact pilot instead requires its separate evidence-backed decision.
 - Deletion from the list is not treated as consent to resubscribe.
 
 The pilot panel now provides a plan-scoped **Record Subscription Decision** workflow. It requires an individually authenticated Staff SSO `ADMIN`, the exact server-configured plan/contact, the exact private-list-add confirmation, a supporting evidence reference, an independently supportable authorization basis, and an explicit attestation that the evidence is not inferred from onboarding, an NFR agreement, or absence from the list. It appends `msp_pilot.subscription_confirmed` to `ZohoAutomationAudit` without changing the shared `PlanContact.subscriptionStatus`. This prevents the narrow pilot decision from authorizing general journeys, nudges, contact synchronization, or other automation. `INELIGIBLE` contacts remain blocked, and a fresh provider suppression scan remains mandatory before execution.
@@ -76,7 +76,7 @@ Deployment alone cannot execute the pilot.
 
 Do not proceed until a change owner separately approves the maintenance window.
 
-1. Verify subscription eligibility as `CONFIRMED` using authoritative evidence; retain `UNKNOWN` if that evidence is unavailable.
+1. Record the exact pilot subscription decision using authoritative evidence. Leave the shared status unchanged; if independent evidence is unavailable, retain the blocker.
 2. In Zoho, verify the exact private list has no active list-entry journey, workflow, campaign, autoresponder, or other email side effect. Record the approved evidence reference while the global kill switch remains on.
 3. Confirm there is no prior reservation and no unresolved enrollment event.
 4. Confirm all non-pilot flags remain false, nudge/test-write modes are disabled, and dispatch mode is `disabled`.
