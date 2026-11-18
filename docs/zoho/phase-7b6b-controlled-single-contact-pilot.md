@@ -38,7 +38,9 @@ The preview and execution use the existing bounded `getleads` scanner for active
 - Local `UNKNOWN`, `PENDING_CONFIRMATION`, or `MANUAL_REVIEW` subscription state blocks execution even when the contact is absent from the list.
 - Deletion from the list is not treated as consent to resubscribe.
 
-The current BenMSP diagnostic reported `UNKNOWN`; therefore a separately reviewed, evidence-backed subscription verification remains a live-pilot blocker. Permission attestation is not automatically treated as independent marketing-subscription proof.
+The pilot panel now provides a plan-scoped **Record Subscription Decision** workflow. It requires an individually authenticated Staff SSO `ADMIN`, the exact server-configured plan/contact, the exact private-list-add confirmation, a supporting evidence reference, an independently supportable authorization basis, and an explicit attestation that the evidence is not inferred from onboarding, an NFR agreement, or absence from the list. It appends `msp_pilot.subscription_confirmed` to `ZohoAutomationAudit` without changing the shared `PlanContact.subscriptionStatus`. This prevents the narrow pilot decision from authorizing general journeys, nudges, contact synchronization, or other automation. `INELIGIBLE` contacts remain blocked, and a fresh provider suppression scan remains mandatory before execution.
+
+Historical permission or generic subscription records are not automatically promoted into this pilot decision. An administrator may reference valid historical evidence only after independently reviewing it for this exact list-add operation.
 
 ## Durable one-shot behavior
 
@@ -58,7 +60,8 @@ The ledger records the plan, normalized recipient, Staff SSO actor, unique reque
 
 - **Preview Sync** is read-only. It may call Zoho read APIs but creates no reservation or audit/outbox event.
 - **Run Single-Contact Pilot** is disabled until the local readiness gates and a fresh complete preview pass. It requires the exact confirmation phrase.
-- **Record Review** records an individually attributable, evidence-referenced Zoho UI review of downstream automation. It does not call Zoho or authorize subscription consent.
+- **Record Complete Review** requires explicit review of list-associated journeys, campaigns, account-level workflows, autoresponders, and other list-entry-triggered email actions. It records the exact list, Staff SSO actor, timestamp, result, and evidence reference. An `ACTIVE_AUTOMATION_FOUND` result remains blocked; only the latest complete `NO_UNINTENDED_AUTOMATION` result satisfies readiness. It does not call Zoho or authorize subscription consent.
+- **Record Subscription Decision** records the separate evidence-backed subscription decision described above. It cannot override provider unsubscribe/bounce evidence and creates no outbox work or provider request.
 
 ## Safe deployment
 

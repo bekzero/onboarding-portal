@@ -14,9 +14,12 @@ import {
 import { createZohoAutomationAuditInTransaction, isZohoEventEmissionEnabled } from "@/lib/zoho-foundation";
 import { checkZohoListMembership } from "@/lib/zoho-phase2";
 import {
+  DOWNSTREAM_AUTOMATION_REVIEW_BLOCKED_ACTION,
+  DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION,
   getIndividuallyRecordedPermission,
   getPersistedListPrivacyVerification,
   getPilotDownstreamAutomationVerification,
+  getPilotSubscriptionConfirmation,
   loadConfiguredPilotPlan
 } from "@/lib/zoho-pilot-admin";
 import { prisma } from "@/lib/prisma";
@@ -36,7 +39,7 @@ type PilotState = Awaited<ReturnType<typeof loadPilotState>>;
 
 async function loadPilotState(planId: string) {
   const loaded = await loadConfiguredPilotPlan(planId);
-  const [permission, context, listPrivacy, downstream, reservation, lastOutcome, lastVerification, unresolvedEvent] = await Promise.all([
+  const [permission, context, listPrivacy, downstream, subscriptionConfirmation, reservation, lastOutcome, lastVerification, unresolvedEvent] = await Promise.all([
     getIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail),
     prisma.zohoCommunicationContext.findUnique({
       where: { recipientEmailNormalized: loaded.owner.normalizedEmail },
@@ -44,6 +47,7 @@ async function loadPilotState(planId: string) {
     }),
     getPersistedListPrivacyVerification(),
     getPilotDownstreamAutomationVerification(loaded.plan.id, loaded.owner.normalizedEmail),
+    getPilotSubscriptionConfirmation(loaded.plan.id, loaded.owner.normalizedEmail),
     prisma.zohoAutomationAudit.findFirst({
       where: {
         action: PILOT_RESERVATION_ACTION,
@@ -85,7 +89,7 @@ async function loadPilotState(planId: string) {
       select: { id: true }
     })
   ]);
-  return { ...loaded, context, downstream, lastOutcome, lastVerification, listPrivacy, permission, reservation, unresolvedEvent };
+  return { ...loaded, context, downstream, lastOutcome, lastVerification, listPrivacy, permission, reservation, subscriptionConfirmation, unresolvedEvent };
 }
 
 function evaluateState(state: PilotState, staffAdminAuthorized: boolean): PilotReadiness {
@@ -97,7 +101,7 @@ function evaluateState(state: PilotState, staffAdminAuthorized: boolean): PilotR
     communicationContextOwned: state.context?.state === "ACTIVE" && state.context.activePlanId === state.plan.id,
     contactSyncEnabled: dispatch.contactSyncEnabled,
     dispatchMode: dispatch.mode,
-    downstreamAutomationVerified: Boolean(state.downstream),
+    downstreamAutomationVerified: state.downstream?.verified === true,
     eventEmissionEnabled: isZohoEventEmissionEnabled(),
     globalKillSwitch: dispatch.globalKillSwitch,
     journeyTriggeringEnabled: dispatch.journeyTriggeringEnabled,
@@ -112,6 +116,7 @@ function evaluateState(state: PilotState, staffAdminAuthorized: boolean): PilotR
     productionApproved: dispatch.productionApproved,
     providerConfigured: configuration.oauthConfigured && configuration.listKeyPresent,
     staffAdminAuthorized,
+    subscriptionEvidenceVerified: Boolean(state.subscriptionConfirmation?.evidenceReference),
     subscriptionStatus: state.owner.subscriptionStatus,
     syncOnEnrollmentEnabled: getZohoMspEnrollmentSyncConfiguration().enabled,
     testWritePathsEnabled: configuration.testContactSync.enabled || configuration.testMode.enabled,
@@ -148,13 +153,22 @@ export async function getSingleContactPilotStatus(planId: string, staffAdminAuth
     const readiness = evaluateState(state, staffAdminAuthorized);
     return {
       destinationList: ZOHO_TEST_MAILING_LIST_NAME,
-      downstreamAutomationVerified: Boolean(state.downstream),
+      downstreamAutomationReview: state.downstream ? {
+        evidenceReference: staffAdminAuthorized ? state.downstream.evidenceReference : null,
+        reviewedAt: state.downstream.createdAt,
+        result: state.downstream.verified ? "NO_UNINTENDED_AUTOMATION" : "ACTIVE_AUTOMATION_FOUND"
+      } : null,
+      downstreamAutomationVerified: state.downstream?.verified === true,
       enabled: getZohoSingleContactPilotConfiguration().enabled,
       executionAuthorized: readiness.canExecute,
       lastAttemptAt: state.reservation?.createdAt ?? null,
       lastOutcome: outcomeFromReason(state.lastOutcome?.reason),
       lastVerificationAt: state.lastVerification?.createdAt ?? null,
       readiness,
+      subscriptionConfirmation: state.subscriptionConfirmation ? {
+        evidenceReference: staffAdminAuthorized ? state.subscriptionConfirmation.evidenceReference : null,
+        recordedAt: state.subscriptionConfirmation.createdAt
+      } : null,
       targetEmail: state.owner.email,
       targetMsp: state.plan.msp.name
     };
@@ -227,7 +241,7 @@ async function reserveExecution(state: PilotState, actor: string) {
     if (existing) return { acquired: false, requestId: existing.id };
 
     // Re-read all consequential persisted state while holding the reservation lock.
-    const [plan, context, permission, downstream, unresolvedEvent] = await Promise.all([
+    const [plan, context, permission, downstream, subscriptionConfirmation, unresolvedEvent] = await Promise.all([
       transaction.onboardingPlan.findUnique({
         where: { id: state.plan.id },
         select: {
@@ -252,10 +266,20 @@ async function reserveExecution(state: PilotState, actor: string) {
       }),
       transaction.zohoAutomationAudit.findFirst({
         where: {
-          action: "msp_pilot.downstream_automation_verified",
+          action: { in: [DOWNSTREAM_AUTOMATION_REVIEW_BLOCKED_ACTION, DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION] },
           actor: { startsWith: "oidc:" },
           onboardingPlanId: state.plan.id,
           recipientEmailNormalized: state.owner.normalizedEmail
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      }),
+      transaction.zohoAutomationAudit.findFirst({
+        where: {
+          action: "msp_pilot.subscription_confirmed",
+          actor: { startsWith: "oidc:" },
+          onboardingPlanId: state.plan.id,
+          recipientEmailNormalized: state.owner.normalizedEmail,
+          evidenceReference: { not: null }
         }
       }),
       transaction.zohoOutboxEvent.findFirst({
@@ -271,10 +295,10 @@ async function reserveExecution(state: PilotState, actor: string) {
     const pilot = getZohoMspEnrollmentPilotConfiguration();
     const currentConfiguration = getZohoConfigurationStatus();
     if (
-      plan?.automationEnrollmentState !== "ACTIVE" || !owner?.automationEnabled || owner.subscriptionStatus !== "CONFIRMED" ||
+      plan?.automationEnrollmentState !== "ACTIVE" || !owner?.automationEnabled || owner.subscriptionStatus === "INELIGIBLE" ||
       plan.msp.primaryContactEmail.trim().toLowerCase() !== state.owner.normalizedEmail || owner.normalizedEmail !== state.owner.normalizedEmail ||
       !pilot.configured || pilot.planId !== state.plan.planId || pilot.email !== state.owner.normalizedEmail ||
-      context?.state !== "ACTIVE" || context.activePlanId !== state.plan.id || !permission || !downstream || unresolvedEvent ||
+      context?.state !== "ACTIVE" || context.activePlanId !== state.plan.id || !permission || downstream?.action !== DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION || !subscriptionConfirmation || unresolvedEvent ||
       !getZohoSingleContactPilotConfiguration().enabled || dispatch.globalKillSwitch || dispatch.automaticDispatchEnabled ||
       dispatch.contactSyncEnabled || dispatch.journeyTriggeringEnabled || dispatch.productionApproved || dispatch.mode !== "disabled" ||
       isZohoEventEmissionEnabled() || getZohoMspEnrollmentSyncConfiguration().enabled ||

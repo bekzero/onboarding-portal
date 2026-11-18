@@ -10,11 +10,17 @@ import {
   ZOHO_TEST_MAILING_LIST_NAME
 } from "@/lib/zoho-config";
 import { createZohoAutomationAuditInTransaction, isZohoEventEmissionEnabled } from "@/lib/zoho-foundation";
+import {
+  validateDownstreamAutomationReview,
+  validatePilotSubscriptionEvidence
+} from "@/lib/zoho-pilot-evidence-core";
 import { prisma } from "@/lib/prisma";
 import { isValidEmailAddress, ZohoAdminValidationError } from "@/lib/zoho-validation";
 
 export const LIST_PRIVACY_AUDIT_ACTION = "zoho.mailing_list.privacy_verified";
-export const DOWNSTREAM_AUTOMATION_AUDIT_ACTION = "msp_pilot.downstream_automation_verified";
+export const DOWNSTREAM_AUTOMATION_REVIEW_BLOCKED_ACTION = "msp_pilot.downstream_automation_review_blocked";
+export const DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION = "msp_pilot.downstream_automation_review_passed";
+export const PILOT_SUBSCRIPTION_CONFIRMED_ACTION = "msp_pilot.subscription_confirmed";
 
 function assertPilotAdministrationSafeguards() {
   const dispatch = getZohoDispatchConfiguration();
@@ -270,23 +276,55 @@ export async function getPersistedListPrivacyVerification() {
 
 export async function recordPilotDownstreamAutomationVerification(input: {
   actor: string;
-  evidenceReference: string;
+  evidenceReference: unknown;
   planId: string;
+  reviewComplete: unknown;
+  reviewedItems: unknown;
+  reviewResult: unknown;
 }) {
   assertPilotAdministrationSafeguards();
   const loaded = await loadConfiguredPilotPlan(input.planId);
   await requireIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail);
-  const evidenceReference = input.evidenceReference.trim();
-  if (!evidenceReference) {
-    throw new ZohoAdminValidationError("A Zoho UI review evidence reference is required.");
-  }
+  const validated = validateDownstreamAutomationReview(input);
+  if ("error" in validated) throw new ZohoAdminValidationError(validated.error ?? "The downstream automation review is invalid.");
+  const action = validated.reviewResult === "NO_UNINTENDED_AUTOMATION"
+    ? DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION
+    : DOWNSTREAM_AUTOMATION_REVIEW_BLOCKED_ACTION;
 
   return prisma.$transaction(async (transaction) => {
     await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-pilot-downstream:${loaded.plan.id}`}, 0))`;
+    const [currentPlan, currentPermission] = await Promise.all([
+      transaction.onboardingPlan.findUnique({
+        where: { id: loaded.plan.id },
+        select: {
+          msp: { select: { primaryContactEmail: true } },
+          planContacts: {
+            where: { normalizedEmail: loaded.owner.normalizedEmail, role: "ONBOARDING_OWNER" },
+            take: 1,
+            select: { id: true }
+          }
+        }
+      }),
+      transaction.zohoAutomationAudit.findFirst({
+        where: {
+          action: "msp_enrollment.contact_permission_recorded",
+          actor: { startsWith: "oidc:" },
+          evidenceReference: { not: null },
+          onboardingPlanId: loaded.plan.id,
+          recipientEmailNormalized: loaded.owner.normalizedEmail
+        },
+        select: { id: true }
+      })
+    ]);
+    if (
+      currentPlan?.msp.primaryContactEmail.trim().toLowerCase() !== loaded.owner.normalizedEmail ||
+      !currentPlan.planContacts[0] ||
+      !currentPermission
+    ) throw new ZohoAdminValidationError("The exact pilot target or permission evidence changed. Re-evaluate readiness.", 409);
     const existing = await transaction.zohoAutomationAudit.findFirst({
       where: {
-        action: DOWNSTREAM_AUTOMATION_AUDIT_ACTION,
-        evidenceReference,
+        action,
+        evidenceReference: validated.evidenceReference,
         onboardingPlanId: loaded.plan.id,
         recipientEmailNormalized: loaded.owner.normalizedEmail
       },
@@ -294,11 +332,11 @@ export async function recordPilotDownstreamAutomationVerification(input: {
     });
     if (existing) return { changed: false } as const;
     await createZohoAutomationAuditInTransaction(transaction, {
-      action: DOWNSTREAM_AUTOMATION_AUDIT_ACTION,
+      action,
       actor: input.actor,
-      evidenceReference,
+      evidenceReference: validated.evidenceReference,
       onboardingPlanId: loaded.plan.id,
-      reason: "An individually authenticated ADMIN recorded a manual Zoho UI review confirming that list entry has no unintended active journey, workflow, campaign, or email side effect.",
+      reason: `List=${ZOHO_TEST_MAILING_LIST_NAME}; result=${validated.reviewResult}; reviewed=${validated.reviewedItems.join(",")}. An individually authenticated ADMIN completed the manual Zoho UI review.`,
       recipientEmail: loaded.owner.email
     });
     return { changed: true } as const;
@@ -309,14 +347,98 @@ export async function getPilotDownstreamAutomationVerification(
   onboardingPlanId: string,
   recipientEmailNormalized: string
 ) {
-  return prisma.zohoAutomationAudit.findFirst({
+  const latest = await prisma.zohoAutomationAudit.findFirst({
     where: {
-      action: DOWNSTREAM_AUTOMATION_AUDIT_ACTION,
+      action: { in: [DOWNSTREAM_AUTOMATION_REVIEW_BLOCKED_ACTION, DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION] },
       onboardingPlanId,
       recipientEmailNormalized,
       actor: { startsWith: "oidc:" }
     },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { action: true, actor: true, createdAt: true, evidenceReference: true }
+  });
+  return latest ? { ...latest, verified: latest.action === DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION } : null;
+}
+
+export async function getPilotSubscriptionConfirmation(onboardingPlanId: string, recipientEmailNormalized: string) {
+  return prisma.zohoAutomationAudit.findFirst({
+    where: {
+      action: PILOT_SUBSCRIPTION_CONFIRMED_ACTION,
+      actor: { startsWith: "oidc:" },
+      onboardingPlanId,
+      recipientEmailNormalized
+    },
     orderBy: { createdAt: "desc" },
     select: { actor: true, createdAt: true, evidenceReference: true }
+  });
+}
+
+export async function confirmPilotSubscriptionEligibility(input: {
+  actor: string;
+  authorizationBasis: unknown;
+  authorizationEvidenceConfirmed: unknown;
+  confirmation: unknown;
+  evidenceReference: unknown;
+  planId: string;
+}) {
+  assertPilotAdministrationSafeguards();
+  const loaded = await loadConfiguredPilotPlan(input.planId);
+  await requireIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail);
+  const validated = validatePilotSubscriptionEvidence(input);
+  if ("error" in validated) throw new ZohoAdminValidationError(validated.error ?? "The subscription evidence is invalid.");
+
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-pilot-subscription:${loaded.plan.id}:${loaded.owner.normalizedEmail}`}, 0))`;
+    const [currentPlan, currentPermission] = await Promise.all([
+      transaction.onboardingPlan.findUnique({
+        where: { id: loaded.plan.id },
+        select: {
+          msp: { select: { primaryContactEmail: true } },
+          planContacts: {
+            where: { normalizedEmail: loaded.owner.normalizedEmail, role: "ONBOARDING_OWNER" },
+            take: 1,
+            select: { id: true, subscriptionStatus: true }
+          }
+        }
+      }),
+      transaction.zohoAutomationAudit.findFirst({
+        where: {
+          action: "msp_enrollment.contact_permission_recorded",
+          actor: { startsWith: "oidc:" },
+          evidenceReference: { not: null },
+          onboardingPlanId: loaded.plan.id,
+          recipientEmailNormalized: loaded.owner.normalizedEmail
+        },
+        select: { id: true }
+      })
+    ]);
+    const contact = currentPlan?.planContacts[0];
+    if (currentPlan?.msp.primaryContactEmail.trim().toLowerCase() !== loaded.owner.normalizedEmail || !currentPermission) {
+      throw new ZohoAdminValidationError("The exact pilot target or permission evidence changed. Re-evaluate readiness.", 409);
+    }
+    if (!contact) throw new ZohoAdminValidationError("The configured pilot Onboarding Owner changed. Re-evaluate readiness.", 409);
+    if (contact.subscriptionStatus === "INELIGIBLE") {
+      throw new ZohoAdminValidationError("A suppressed or ineligible contact cannot be confirmed through the pilot workflow.", 409);
+    }
+    const existing = await transaction.zohoAutomationAudit.findFirst({
+      where: {
+        action: PILOT_SUBSCRIPTION_CONFIRMED_ACTION,
+        evidenceReference: validated.evidenceReference,
+        onboardingPlanId: loaded.plan.id,
+        recipientEmailNormalized: loaded.owner.normalizedEmail
+      },
+      select: { id: true }
+    });
+    if (existing) return { changed: false } as const;
+
+    await createZohoAutomationAuditInTransaction(transaction, {
+      action: PILOT_SUBSCRIPTION_CONFIRMED_ACTION,
+      actor: input.actor,
+      evidenceReference: validated.evidenceReference,
+      onboardingPlanId: loaded.plan.id,
+      reason: `List=${ZOHO_TEST_MAILING_LIST_NAME}; authorization_basis=${validated.authorizationBasis}. This decision authorizes only the exact controlled list-add, does not change shared subscription state, and does not override provider suppression.`,
+      recipientEmail: loaded.owner.email
+    });
+    return { changed: true } as const;
   });
 }

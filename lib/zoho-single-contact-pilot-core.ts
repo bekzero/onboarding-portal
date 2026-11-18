@@ -38,6 +38,7 @@ export function evaluateSingleContactPilotReadiness(input: {
   productionApproved: boolean;
   providerConfigured: boolean;
   staffAdminAuthorized: boolean;
+  subscriptionEvidenceVerified: boolean;
   subscriptionStatus: string | null;
   syncOnEnrollmentEnabled: boolean;
   testWritePathsEnabled: boolean;
@@ -54,8 +55,9 @@ export function evaluateSingleContactPilotReadiness(input: {
   if (!input.providerConfigured) blockers.push("EMAIL_ONLY_PROVIDER_CONFIGURATION_INCOMPLETE");
   if (!input.listPrivacyVerified) blockers.push("LIST_PRIVACY_UNVERIFIED");
   if (!input.downstreamAutomationVerified) blockers.push("DOWNSTREAM_AUTOMATION_UNVERIFIED");
-  if (input.subscriptionStatus !== "CONFIRMED") {
-    blockers.push(input.subscriptionStatus === "INELIGIBLE" ? "RECIPIENT_INELIGIBLE" : "SUBSCRIPTION_STATUS_UNVERIFIED");
+  if (input.subscriptionStatus === "INELIGIBLE") blockers.push("RECIPIENT_INELIGIBLE");
+  else if (!input.subscriptionEvidenceVerified) {
+    blockers.push(input.subscriptionStatus === "CONFIRMED" ? "PILOT_SUBSCRIPTION_EVIDENCE_REQUIRED" : "SUBSCRIPTION_STATUS_UNVERIFIED");
   }
   if (input.unresolvedEnrollmentEvent) blockers.push("UNRESOLVED_ENROLLMENT_EVENT");
   if (!input.manualPilotEnabled) blockers.push("SINGLE_CONTACT_PILOT_DISABLED");

@@ -6,6 +6,12 @@ import {
   evaluateSingleContactPilotReadiness,
   executeSingleContactPilotCore
 } from "../lib/zoho-single-contact-pilot-core.ts";
+import {
+  PILOT_SUBSCRIPTION_CONFIRMATION,
+  REQUIRED_DOWNSTREAM_REVIEW_ITEMS,
+  validateDownstreamAutomationReview,
+  validatePilotSubscriptionEvidence
+} from "../lib/zoho-pilot-evidence-core.ts";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -29,6 +35,7 @@ const ready = {
   productionApproved: false,
   providerConfigured: true,
   staffAdminAuthorized: true,
+  subscriptionEvidenceVerified: true,
   subscriptionStatus: "CONFIRMED",
   syncOnEnrollmentEnabled: false,
   testWritePathsEnabled: false,
@@ -52,9 +59,60 @@ test("execution needs exact target, Staff ADMIN, permission, context, approval, 
 
 test("UNKNOWN, manual review, and ineligible subscription states fail closed", () => {
   for (const status of ["UNKNOWN", "PENDING_CONFIRMATION", "MANUAL_REVIEW", null]) {
-    assert.ok(evaluateSingleContactPilotReadiness({ ...ready, subscriptionStatus: status }).blockers.includes("SUBSCRIPTION_STATUS_UNVERIFIED"));
+    assert.ok(evaluateSingleContactPilotReadiness({ ...ready, subscriptionEvidenceVerified: false, subscriptionStatus: status }).blockers.includes("SUBSCRIPTION_STATUS_UNVERIFIED"));
   }
   assert.ok(evaluateSingleContactPilotReadiness({ ...ready, subscriptionStatus: "INELIGIBLE" }).blockers.includes("RECIPIENT_INELIGIBLE"));
+});
+
+test("CONFIRMED status still requires an exact pilot subscription evidence decision", () => {
+  assert.ok(evaluateSingleContactPilotReadiness({ ...ready, subscriptionEvidenceVerified: false }).blockers.includes("PILOT_SUBSCRIPTION_EVIDENCE_REQUIRED"));
+});
+
+test("pilot-specific evidence does not require or mutate the shared CONFIRMED status", () => {
+  for (const status of ["UNKNOWN", "PENDING_CONFIRMATION", "MANUAL_REVIEW"]) {
+    assert.equal(evaluateSingleContactPilotReadiness({ ...ready, subscriptionEvidenceVerified: true, subscriptionStatus: status }).blockers.includes("SUBSCRIPTION_STATUS_UNVERIFIED"), false);
+  }
+  assert.ok(evaluateSingleContactPilotReadiness({ ...ready, subscriptionEvidenceVerified: true, subscriptionStatus: "INELIGIBLE" }).blockers.includes("RECIPIENT_INELIGIBLE"));
+});
+
+test("subscription evidence requires an exact confirmation and independent support", () => {
+  const valid = {
+    authorizationBasis: "The contact explicitly approved this exact private-list addition in the referenced consent record.",
+    authorizationEvidenceConfirmed: true,
+    confirmation: PILOT_SUBSCRIPTION_CONFIRMATION,
+    evidenceReference: "CRM-CONSENT-1042"
+  };
+  assert.deepEqual(validatePilotSubscriptionEvidence(valid), {
+    authorizationBasis: valid.authorizationBasis,
+    evidenceReference: valid.evidenceReference
+  });
+  assert.match(validatePilotSubscriptionEvidence({ ...valid, authorizationEvidenceConfirmed: false }).error, /independently supports/);
+  assert.match(validatePilotSubscriptionEvidence({ ...valid, confirmation: "yes" }).error, /exact/);
+  assert.match(validatePilotSubscriptionEvidence({ ...valid, evidenceReference: "" }).error, /evidence reference/);
+});
+
+test("downstream review requires all five surfaces, a result, evidence, and completion", () => {
+  const reviewedItems = Object.fromEntries(REQUIRED_DOWNSTREAM_REVIEW_ITEMS.map((item) => [item, true]));
+  const valid = validateDownstreamAutomationReview({
+    evidenceReference: "ZMA-REVIEW-2042",
+    reviewComplete: true,
+    reviewedItems,
+    reviewResult: "NO_UNINTENDED_AUTOMATION"
+  });
+  assert.equal(valid.reviewResult, "NO_UNINTENDED_AUTOMATION");
+  assert.deepEqual(valid.reviewedItems, REQUIRED_DOWNSTREAM_REVIEW_ITEMS);
+  assert.match(validateDownstreamAutomationReview({
+    evidenceReference: "ZMA-REVIEW-2042",
+    reviewComplete: true,
+    reviewedItems: { ...reviewedItems, campaigns: false },
+    reviewResult: "NO_UNINTENDED_AUTOMATION"
+  }).error, /every required/);
+  assert.match(validateDownstreamAutomationReview({
+    evidenceReference: "ZMA-REVIEW-2042",
+    reviewComplete: false,
+    reviewedItems,
+    reviewResult: "NO_UNINTENDED_AUTOMATION"
+  }).error, /review is complete/);
 });
 
 test("global kill switch and dormant flag independently block provider writes", () => {
@@ -226,4 +284,31 @@ test("configuration is dormant by default and documents the manual flag", async 
   const [config, env] = await Promise.all([read("lib/zoho-config.ts"), read(".env.example")]);
   assert.match(config, /enabled\("ZOHO_SINGLE_CONTACT_PILOT_ENABLED"\)/);
   assert.match(env, /ZOHO_SINGLE_CONTACT_PILOT_ENABLED=false/);
+});
+
+test("pilot evidence controls are exact-target, ADMIN-only, audited, idempotent, and side-effect isolated", async () => {
+  const [route, service, ui] = await Promise.all([
+    read("app/api/admin/zoho/automation/plans/[planId]/readiness-controls/route.ts"),
+    read("lib/zoho-pilot-admin.ts"),
+    read("components/zoho-integration-status.tsx")
+  ]);
+  const subscriptionFunction = service.match(/export async function confirmPilotSubscriptionEligibility[\s\S]*$/)?.[0] ?? "";
+  assert.match(route, /getSensitiveAdminApiAuthError\(request, "ADMIN"\)/);
+  assert.match(route, /CONFIRM_SUBSCRIPTION/);
+  assert.match(route, /VERIFY_DOWNSTREAM_AUTOMATION/);
+  assert.match(service, /loadConfiguredPilotPlan/);
+  assert.match(service, /zoho-pilot-subscription:/);
+  assert.match(service, /zoho-pilot-downstream:/);
+  assert.match(service, /PILOT_SUBSCRIPTION_CONFIRMED_ACTION/);
+  assert.match(service, /DOWNSTREAM_AUTOMATION_REVIEW_PASSED_ACTION/);
+  assert.match(service, /subscriptionStatus === "INELIGIBLE"/);
+  assert.match(service, /return \{ changed: false \}/);
+  assert.doesNotMatch(subscriptionFunction, /subscriptionStatus: "CONFIRMED"/);
+  assert.doesNotMatch(subscriptionFunction, /planContact\.update/);
+  assert.match(service, /createZohoAutomationAuditInTransaction/);
+  assert.doesNotMatch(service, /addLeadsInBulk|createZohoOutboxEvent|executeSingleContactPilot/);
+  assert.match(route, /getZohoPlanAutomationSummary/);
+  assert.match(ui, /Record Subscription Decision/);
+  assert.match(ui, /List-associated journeys/);
+  assert.match(ui, /Other list-entry-triggered email actions/);
 });

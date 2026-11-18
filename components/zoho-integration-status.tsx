@@ -63,6 +63,11 @@ type PlanAutomationSummary = {
     primaryContactMatchesOwner: boolean;
     controlledPilot: {
       destinationList: string;
+      downstreamAutomationReview: {
+        evidenceReference: string | null;
+        reviewedAt: string;
+        result: "ACTIVE_AUTOMATION_FOUND" | "NO_UNINTENDED_AUTOMATION";
+      } | null;
       downstreamAutomationVerified: boolean;
       enabled: boolean;
       executionAuthorized: boolean;
@@ -70,6 +75,7 @@ type PlanAutomationSummary = {
       lastOutcome: string | null;
       lastVerificationAt: string | null;
       readiness: { blockers: string[]; canExecute: boolean; canPreview: boolean; verificationOnly: boolean };
+      subscriptionConfirmation: { evidenceReference: string | null; recordedAt: string } | null;
       targetEmail: string;
       targetMsp: string;
     } | null;
@@ -126,7 +132,8 @@ const blockerCopy: Record<string, { category: BlockerCategory; kind: BlockerKind
   DOWNSTREAM_AUTOMATION_UNVERIFIED: { category: "provider", kind: "unverified", label: "Verify in Zoho that list entry has no active journey, workflow, campaign, or email side effect." },
   PILOT_EXECUTION_ALREADY_RESERVED: { category: "plan", kind: "intentional", label: "The durable one-shot execution is already reserved; only membership verification is permitted." },
   SINGLE_CONTACT_PILOT_DISABLED: { category: "flags", kind: "intentional", label: "The manual single-contact pilot is disabled." },
-  SUBSCRIPTION_STATUS_UNVERIFIED: { category: "contact", kind: "unverified", label: "Subscription eligibility must be explicitly verified as CONFIRMED before execution." }
+  SUBSCRIPTION_STATUS_UNVERIFIED: { category: "contact", kind: "unverified", label: "Subscription eligibility must be explicitly verified as CONFIRMED before execution." },
+  PILOT_SUBSCRIPTION_EVIDENCE_REQUIRED: { category: "contact", kind: "unverified", label: "Record independently supportable authorization for this exact private-list addition." }
 };
 
 const categoryLabels: Record<BlockerCategory, string> = {
@@ -174,6 +181,13 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     previewedAt: string;
   } | null>(null);
   const [pilotMessage, setPilotMessage] = useState<string | null>(null);
+  const [subscriptionEvidenceReference, setSubscriptionEvidenceReference] = useState("");
+  const [subscriptionAuthorizationBasis, setSubscriptionAuthorizationBasis] = useState("");
+  const [subscriptionEvidenceConfirmed, setSubscriptionEvidenceConfirmed] = useState(false);
+  const [downstreamEvidenceReference, setDownstreamEvidenceReference] = useState("");
+  const [downstreamReviewComplete, setDownstreamReviewComplete] = useState(false);
+  const [downstreamReviewResult, setDownstreamReviewResult] = useState<"" | "ACTIVE_AUTOMATION_FOUND" | "NO_UNINTENDED_AUTOMATION">("");
+  const [downstreamReviewedItems, setDownstreamReviewedItems] = useState<Record<string, boolean>>({});
 
   const loadDetails = useCallback(async () => {
     const [statusResponse, planResponse] = await Promise.all([
@@ -299,9 +313,9 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   }
 
   async function runReadinessControl(
-    action: "APPROVE_AUTOMATION" | "ASSIGN_CONTEXT" | "VERIFY_LIST_PRIVACY" | "VERIFY_DOWNSTREAM_AUTOMATION",
+    action: "APPROVE_AUTOMATION" | "ASSIGN_CONTEXT" | "CONFIRM_SUBSCRIPTION" | "VERIFY_LIST_PRIVACY" | "VERIFY_DOWNSTREAM_AUTOMATION",
     confirmation: string,
-    evidenceReference?: string
+    details: Record<string, unknown> = {}
   ) {
     if (!window.confirm(confirmation)) return;
     setBusy(true);
@@ -311,7 +325,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
       const response = await fetch(
         `/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}/readiness-controls`,
         {
-          body: JSON.stringify({ action, confirmed: true, evidenceReference }),
+          body: JSON.stringify({ ...details, action, confirmed: true }),
           headers: { "content-type": "application/json" },
           method: "POST"
         }
@@ -474,6 +488,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
           <div><dt className="text-muted">Previous attempt</dt><dd className="mt-1 text-foreground">{controlledPilot?.lastAttemptAt ? new Date(controlledPilot.lastAttemptAt).toLocaleString() : "None"}</dd></div>
           <div><dt className="text-muted">Previous outcome</dt><dd className="mt-1 text-foreground">{controlledPilot?.lastOutcome ?? "None"}</dd></div>
           <div><dt className="text-muted">Last verification</dt><dd className="mt-1 text-foreground">{pilotPreview?.previewedAt ? new Date(pilotPreview.previewedAt).toLocaleString() : controlledPilot?.lastVerificationAt ? new Date(controlledPilot.lastVerificationAt).toLocaleString() : "Never"}</dd></div>
+          <div><dt className="text-muted">Subscription authorization</dt><dd className="mt-1 text-foreground">{controlledPilot?.subscriptionConfirmation ? "Evidence recorded" : planSummary?.subscriptionStatus === "INELIGIBLE" ? "Suppressed / ineligible" : "Evidence required"}</dd></div>
           <div><dt className="text-muted">Downstream Zoho automation</dt><dd className="mt-1 text-foreground">{controlledPilot?.downstreamAutomationVerified ? "Reviewed" : "Manual review required"}</dd></div>
         </dl>
         {controlledPilot?.readiness.blockers.length ? (
@@ -556,18 +571,98 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
             </Button>
           </div>
           <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Subscription authorization</p>
+            <p className="mt-2 text-sm text-foreground">
+              {controlledPilot?.subscriptionConfirmation ? "Exact list-add authorization recorded" : planSummary?.subscriptionStatus === "INELIGIBLE" ? "Contact is suppressed or ineligible" : "Independent evidence required"}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-secondary">Permission to participate in onboarding is not, by itself, authorization for this Zoho list addition.</p>
+            {!controlledPilot?.subscriptionConfirmation ? (
+              <div className="mt-3 grid gap-2">
+                <input
+                  aria-label="Subscription authorization evidence reference"
+                  className="h-10 rounded-xl border border-border bg-input px-3 text-sm text-foreground"
+                  onChange={(event) => setSubscriptionEvidenceReference(event.target.value)}
+                  placeholder="Consent record, ticket, or CRM reference"
+                  value={subscriptionEvidenceReference}
+                />
+                <textarea
+                  aria-label="Subscription authorization basis"
+                  className="min-h-20 resize-y rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground"
+                  onChange={(event) => setSubscriptionAuthorizationBasis(event.target.value)}
+                  placeholder="Explain how the evidence independently authorizes this exact private-list addition"
+                  value={subscriptionAuthorizationBasis}
+                />
+                <label className="flex items-start gap-2 text-xs leading-5 text-secondary">
+                  <input checked={subscriptionEvidenceConfirmed} className="mt-1 h-4 w-4" onChange={(event) => setSubscriptionEvidenceConfirmed(event.target.checked)} type="checkbox" />
+                  <span>I confirm this evidence independently supports adding the exact pilot contact to KZero Partner Onboarding and is not inferred from enrollment, an NFR agreement, or absence from the list.</span>
+                </label>
+                <Button
+                  className="h-9 justify-self-start"
+                  disabled={busy || !planSummary?.administrativeControls.canManage || !subscriptionEvidenceConfirmed || !subscriptionEvidenceReference.trim() || !subscriptionAuthorizationBasis.trim() || planSummary?.subscriptionStatus === "INELIGIBLE"}
+                  onClick={() => void runReadinessControl(
+                    "CONFIRM_SUBSCRIPTION",
+                    "Record this independently supported subscription decision for the exact pilot contact and private list?",
+                    {
+                      authorizationBasis: subscriptionAuthorizationBasis,
+                      authorizationEvidenceConfirmed: subscriptionEvidenceConfirmed,
+                      confirmation: "CONFIRM PRIVATE LIST ADD AUTHORIZATION",
+                      evidenceReference: subscriptionEvidenceReference
+                    }
+                  )}
+                  variant="outline"
+                >Record Subscription Decision</Button>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-secondary">Recorded {new Date(controlledPilot.subscriptionConfirmation.recordedAt).toLocaleString()}{controlledPilot.subscriptionConfirmation.evidenceReference ? ` · ${controlledPilot.subscriptionConfirmation.evidenceReference}` : ""}</p>
+            )}
+          </div>
+          <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Downstream Zoho automation</p>
-            <p className="mt-2 text-sm text-foreground">{controlledPilot?.downstreamAutomationVerified ? "Manual review recorded" : "Zoho UI review required"}</p>
-            <p className="mt-1 text-xs leading-5 text-secondary">Confirm that adding this contact cannot trigger an active journey, workflow, campaign, or email.</p>
-            <Button
-              className="mt-auto h-9 self-start"
-              disabled={busy || !planSummary?.administrativeControls.canManage || controlledPilot?.downstreamAutomationVerified}
-              onClick={() => {
-                const evidence = window.prompt("Enter the approved Zoho UI review, ticket, or change record reference.");
-                if (evidence?.trim()) void runReadinessControl("VERIFY_DOWNSTREAM_AUTOMATION", "Record this downstream-automation review for the exact pilot plan and contact?", evidence.trim());
-              }}
-              variant="outline"
-            >Record Review</Button>
+            <p className="mt-2 text-sm text-foreground">{controlledPilot?.downstreamAutomationVerified ? "Review passed" : controlledPilot?.downstreamAutomationReview?.result === "ACTIVE_AUTOMATION_FOUND" ? "Active automation found" : "Complete Zoho UI review required"}</p>
+            <p className="mt-1 text-xs leading-5 text-secondary">Review every possible list-entry email path for the exact KZero Partner Onboarding list.</p>
+            {!controlledPilot?.downstreamAutomationVerified ? (
+              <div className="mt-3 grid gap-2">
+                {[
+                  ["listJourneys", "List-associated journeys"],
+                  ["campaigns", "Campaigns"],
+                  ["accountWorkflows", "Account-level workflows"],
+                  ["autoresponders", "Autoresponders"],
+                  ["otherListEntryActions", "Other list-entry-triggered email actions"]
+                ].map(([key, label]) => (
+                  <label className="flex items-start gap-2 text-xs text-secondary" key={key}>
+                    <input checked={downstreamReviewedItems[key] === true} className="mt-0.5 h-4 w-4" onChange={(event) => setDownstreamReviewedItems((current) => ({ ...current, [key]: event.target.checked }))} type="checkbox" />
+                    <span>{label}</span>
+                  </label>
+                ))}
+                <select aria-label="Downstream automation review result" className="h-10 rounded-xl border border-border bg-input px-3 text-sm text-foreground" onChange={(event) => setDownstreamReviewResult(event.target.value as typeof downstreamReviewResult)} value={downstreamReviewResult}>
+                  <option value="">Select review result</option>
+                  <option value="NO_UNINTENDED_AUTOMATION">No unintended automation found</option>
+                  <option value="ACTIVE_AUTOMATION_FOUND">Active automation found — keep blocked</option>
+                </select>
+                <input aria-label="Downstream automation evidence reference" className="h-10 rounded-xl border border-border bg-input px-3 text-sm text-foreground" onChange={(event) => setDownstreamEvidenceReference(event.target.value)} placeholder="Zoho review, ticket, or change record" value={downstreamEvidenceReference} />
+                <label className="flex items-start gap-2 text-xs leading-5 text-secondary">
+                  <input checked={downstreamReviewComplete} className="mt-1 h-4 w-4" onChange={(event) => setDownstreamReviewComplete(event.target.checked)} type="checkbox" />
+                  <span>I confirm the review is complete for the exact destination list.</span>
+                </label>
+                <Button
+                  className="h-9 justify-self-start"
+                  disabled={busy || !planSummary?.administrativeControls.canManage || !downstreamReviewComplete || !downstreamReviewResult || !downstreamEvidenceReference.trim() || Object.values(downstreamReviewedItems).filter(Boolean).length !== 5}
+                  onClick={() => void runReadinessControl(
+                    "VERIFY_DOWNSTREAM_AUTOMATION",
+                    "Record this complete downstream-automation review for the exact pilot list?",
+                    {
+                      evidenceReference: downstreamEvidenceReference,
+                      reviewComplete: downstreamReviewComplete,
+                      reviewedItems: downstreamReviewedItems,
+                      reviewResult: downstreamReviewResult
+                    }
+                  )}
+                  variant="outline"
+                >Record Complete Review</Button>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-secondary">Recorded {controlledPilot.downstreamAutomationReview ? new Date(controlledPilot.downstreamAutomationReview.reviewedAt).toLocaleString() : "previously"}{controlledPilot.downstreamAutomationReview?.evidenceReference ? ` · ${controlledPilot.downstreamAutomationReview.evidenceReference}` : ""}</p>
+            )}
           </div>
         </div>
         {readinessControlMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{readinessControlMessage}</p> : null}
