@@ -231,12 +231,14 @@ test("Enroll MSP modal keeps a bounded single scroller, persistent footer, and r
   assert.match(enrollPanel, /shrink-0 border-t border-border bg-surface/);
 });
 
-test("provider uses getleads plus addleadsinbulk and sends email only", async () => {
+test("normal provider uses full-field listsubscribe while the manual pilot remains email-only", async () => {
   const provider = await readFile(new URL("../lib/zoho-dispatch-provider.ts", import.meta.url), "utf8");
+  const pilot = await readFile(new URL("../lib/zoho-single-contact-pilot.ts", import.meta.url), "utf8");
   const dispatcher = await readFile(new URL("../lib/zoho-dispatcher.ts", import.meta.url), "utf8");
   assert.match(provider, /checkZohoListMembership/);
-  assert.match(provider, /addLeadsInBulk\(\{ emails: \[email\], listKey \}\)/);
-  assert.doesNotMatch(provider, /subscribeLead|topicId/);
+  assert.match(provider, /subscribeLead|topicId/);
+  assert.doesNotMatch(provider, /addLeadsInBulk/);
+  assert.match(pilot, /addLeadsInBulk/);
   assert.match(dispatcher, /lastProviderOutcome === "ACCEPTED_PENDING_VERIFICATION"/);
   assert.match(dispatcher, /CONTACT_MEMBERSHIP_PENDING_VERIFICATION/);
   assert.match(dispatcher, /CONTACT_MEMBERSHIP_UNVERIFIED_AFTER_ACCEPTANCE/);

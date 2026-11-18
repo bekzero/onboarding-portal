@@ -270,12 +270,12 @@ test("a rejected access token is refreshed once before the bulk write succeeds",
   assert.equal(calls.filter((call) => call.url.endsWith("/api/v1/addleadsinbulk")).length, 2);
 });
 
-test("Phase 7B.2 controlled sync uses email-only bulk add and no topic dependency", async () => {
+test("Phase 7B.2 manual controlled sync remains email-only while lifecycle dispatch is full-field", async () => {
   const phase2 = await readFile(new URL("../lib/zoho-phase2.ts", import.meta.url), "utf8");
   const provider = await readFile(new URL("../lib/zoho-dispatch-provider.ts", import.meta.url), "utf8");
   assert.match(phase2, /\.addLeadsInBulk\s*\(/);
   assert.doesNotMatch(phase2, /\.subscribeLead\s*\(/);
   assert.doesNotMatch(phase2, /getZohoTopicId/);
-  assert.doesNotMatch(provider, /\.subscribeLead\s*\(/);
-  assert.match(provider, /email addresses only/);
+  assert.match(provider, /\.subscribeLead\s*\(/);
+  assert.match(provider, /synchronizeFullFieldContact/);
 });

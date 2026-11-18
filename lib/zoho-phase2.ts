@@ -412,6 +412,7 @@ export async function verifyPlanContactSubscription(input: {
   reason: unknown;
   status: unknown;
 }) {
+  const testConfiguration = getZohoTestConfiguration();
   const allowedStatuses = new Set<SubscriptionEligibilityStatus>([
     "CONFIRMED",
     "INELIGIBLE",
@@ -454,6 +455,26 @@ export async function verifyPlanContactSubscription(input: {
         recipientEmailNormalized: normalizeZohoRecipientEmail(contact.email)
       }
     });
+    if (
+      input.status === "CONFIRMED" &&
+      testConfiguration.enabled &&
+      testConfiguration.allowedPlanIds.size === 1 &&
+      testConfiguration.allowedEmails.size === 1 &&
+      testConfiguration.allowedPlanIds.has(input.planId) &&
+      testConfiguration.allowedEmails.has(normalizeZohoRecipientEmail(contact.email))
+    ) {
+      await transaction.zohoOutboxEvent.updateMany({
+        where: {
+          eventType: "TRIGGER_JOURNEY",
+          holdReason: { in: ["SUBSCRIPTION_NOT_VERIFIED", "SUBSCRIPTION_NOT_CONFIRMED"] },
+          journey: "J1",
+          onboardingPlanId: contact.onboardingPlanId,
+          recipientEmailNormalized: normalizeZohoRecipientEmail(contact.email),
+          status: "HELD"
+        },
+        data: { holdReason: null, nextAttemptAt: new Date(), status: "PENDING" }
+      });
+    }
     return updated;
   });
 }

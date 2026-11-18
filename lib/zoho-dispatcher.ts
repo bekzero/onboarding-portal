@@ -309,6 +309,7 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     }
   }
 
+  let contactWriteStarted = false;
   let journeyRequestStarted = false;
   let apiOperation: "CONTACT_SYNC" | "JOURNEY_TRIGGER" = "CONTACT_SYNC";
   try {
@@ -320,6 +321,7 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     const contactCapacity = await reserveZohoApiCapacity("CONTACT_SYNC");
     if (!contactCapacity.allowed) return done({ status: "RETRY", reason: "CONTACT_SYNC_RATE_LIMITED", retryAt: contactCapacity.retryAt });
     const contactOptions = {
+      beforeWrite: () => { contactWriteStarted = true; },
       verificationOnly: claim.event.lastProviderOutcome === "ACCEPTED_PENDING_VERIFICATION"
     };
     if (claim.event.eventType === "UPSERT_CONTACT") {
@@ -357,6 +359,13 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     if (workflow.contact.classification === "PENDING_VERIFICATION") {
       return pendingContactVerification();
     }
+    if (workflow.contact.classification === "PENDING_CONFIRMATION") {
+      return done({
+        status: "HELD",
+        reason: "SUBSCRIPTION_CONFIRMATION_REQUIRED",
+        outcome: workflow.contact.classification
+      });
+    }
     const result = workflow.journey!;
     if (result.classification === "IGNORED") return done({
       status: "DEAD", reason: "ZOHO_IGNORED_LEAD", outcome: result.classification,
@@ -373,6 +382,13 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
       return done({
         status: "HELD", reason: "UNCERTAIN_PROVIDER_OUTCOME", outcome: "UNKNOWN",
         journeyResult: "UNKNOWN", journeyMetadata: { kind: sanitized.kind }
+      });
+    }
+    if (contactWriteStarted && isUncertainJourneyFailure(sanitized.kind)) {
+      return done({
+        status: "HELD",
+        reason: "UNCERTAIN_CONTACT_SYNC_OUTCOME",
+        outcome: "UNKNOWN"
       });
     }
     if (sanitized.kind === "RATE_LIMIT") {

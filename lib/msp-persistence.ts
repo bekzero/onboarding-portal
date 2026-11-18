@@ -14,13 +14,15 @@ import {
   didActiveTaskChange,
   isApprovedJ8Transition,
   isQualifyingKzeroHandoff,
+  recordAllowlistedZohoTestJ1EnrollmentInTransaction,
   recordAutomationNotReadyAuditInTransaction,
   recordZohoContactSyncEventsInTransaction,
   recordZohoJourneyEventsInTransaction,
   recordZohoPlanCreatedEventsInTransaction,
   shouldFinishNudge
 } from "@/lib/zoho-lifecycle-events";
-import { normalizeChangedRequiredEmail, normalizeRequiredEmail } from "@/lib/zoho-validation";
+import { isValidHttpUrl, normalizeChangedRequiredEmail, normalizeRequiredEmail } from "@/lib/zoho-validation";
+import { createZohoAutomationAuditInTransaction } from "@/lib/zoho-foundation";
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 
@@ -526,16 +528,21 @@ type PortalTaskRecord = {
 type CreateMspInput = {
   accessMode: AccessMode;
   assignedSalesEngineer?: string;
+  assignedSeBookingUrl?: string;
+  assignedSeEmail?: string;
   customerName?: string;
   enrollmentDate?: string;
   isGmmPartner?: boolean;
   name: string;
   planType?: PlanBundle["plan"]["tenantType"];
   primaryContactEmail: string;
+  primaryContactFirstName?: string;
+  primaryContactLastName?: string;
   slug?: string;
   zohoAuditActor?: string;
   zohoAuditActorAttributable?: boolean;
   zohoContactPermission?: EnrollmentContactPermission;
+  zohoTestJ1Preparation?: { confirmed?: boolean };
 };
 
 type UpdateMspInput = {
@@ -810,8 +817,31 @@ export async function createMsp(input: CreateMspInput) {
   const templateTasks = templateBundle ? getOrderedTemplateTasks(templateBundle) : [];
   const createdAt = new Date();
   const assignedSalesEngineer = input.assignedSalesEngineer?.trim() || DEFAULT_SALES_ENGINEER;
+  const assignedSeBookingUrl = input.assignedSeBookingUrl?.trim() || null;
+  const assignedSeEmail = input.assignedSeEmail?.trim()
+    ? normalizeRequiredEmail(input.assignedSeEmail, "Assigned Sales Engineer email").email
+    : null;
+  const primaryContactFirstName = input.primaryContactFirstName?.trim() || null;
+  const primaryContactLastName = input.primaryContactLastName?.trim() || null;
+  const prepareTestJ1 = input.zohoTestJ1Preparation?.confirmed === true;
   const { email: primaryContactEmail, normalizedEmail: primaryContactEmailNormalized } =
     normalizeRequiredEmail(input.primaryContactEmail, "Primary contact email");
+  if (assignedSeBookingUrl && !isValidHttpUrl(assignedSeBookingUrl)) {
+    throw new Error("Assigned Sales Engineer booking URL must be a valid HTTP or HTTPS URL.");
+  }
+  if (prepareTestJ1) {
+    if (
+      !input.zohoAuditActorAttributable ||
+      !input.zohoAuditActor?.startsWith("oidc:") ||
+      !input.zohoContactPermission?.confirmed ||
+      !input.zohoContactPermission.evidenceReference?.trim()
+    ) {
+      throw new Error("TEST J1 preparation requires an individually authenticated ADMIN and permission evidence.");
+    }
+    if (!primaryContactFirstName || !assignedSeEmail || !assignedSeBookingUrl) {
+      throw new Error("TEST J1 preparation requires the owner first name and complete Sales Engineer details.");
+    }
+  }
 
   const msp = await prisma.$transaction(async (transaction) => {
     const created = await transaction.msp.create({
@@ -823,11 +853,15 @@ export async function createMsp(input: CreateMspInput) {
       name: input.name.trim(),
       onboardingPlans: {
         create: {
+          assignedSeBookingUrl,
+          assignedSeEmail,
           assignedSeName: assignedSalesEngineer,
-          automationEnrollmentState: "PENDING",
+          automationEnrolledAt: prepareTestJ1 ? createdAt : null,
+          automationEnrolledBy: prepareTestJ1 ? input.zohoAuditActor : null,
+          automationEnrollmentState: prepareTestJ1 ? "ACTIVE" : "PENDING",
           automationOrigin: "NATIVE",
           automationTaskMappingState: templateTasks.length > 0 ? "VERIFIED" : "NEEDS_REVIEW",
-          automaticJ1Allowed: false,
+          automaticJ1Allowed: prepareTestJ1,
           customerName,
           currentStage: "Kickoff",
           lastActivityAt: createdAt,
@@ -848,8 +882,10 @@ export async function createMsp(input: CreateMspInput) {
             : undefined,
           planContacts: {
             create: {
-              automationEnabled: false,
+              automationEnabled: prepareTestJ1,
               email: primaryContactEmail,
+              firstName: primaryContactFirstName,
+              lastName: primaryContactLastName,
               normalizedEmail: primaryContactEmailNormalized,
               role: "ONBOARDING_OWNER",
               subscriptionStatus: "UNKNOWN"
@@ -879,19 +915,79 @@ export async function createMsp(input: CreateMspInput) {
     });
     const createdPlan = created.onboardingPlans[0];
     if (createdPlan) {
-      const planCreated = await recordZohoPlanCreatedEventsInTransaction(transaction, createdPlan.id);
-      if (!planCreated.created) {
-        await recordAutomationNotReadyAuditInTransaction(transaction, {
+      if (prepareTestJ1) {
+        await createZohoAutomationAuditInTransaction(transaction, {
+          action: "msp_enrollment.contact_permission_recorded",
+          actor: input.zohoAuditActor!,
+          evidenceReference: input.zohoContactPermission!.evidenceReference,
           onboardingPlanId: createdPlan.id,
-          reasonCodes: planCreated.reasonCodes
+          reason: "Administrator-recorded permission evidence for the allowlisted full-field TEST J1 workflow; this does not independently prove subscription eligibility.",
+          recipientEmail: primaryContactEmail
         });
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-context:${primaryContactEmailNormalized}`}, 0))`;
+        const existingContext = await transaction.zohoCommunicationContext.findUnique({
+          where: { recipientEmailNormalized: primaryContactEmailNormalized },
+          select: { activePlanId: true, state: true }
+        });
+        if (
+          existingContext &&
+          (existingContext.state !== "UNASSIGNED" ||
+            (existingContext.activePlanId && existingContext.activePlanId !== createdPlan.id))
+        ) {
+          throw new Error("The test recipient context is active, blocked, or awaiting release.");
+        }
+        const competingContact = await transaction.planContact.findFirst({
+          where: {
+            automationEnabled: true,
+            normalizedEmail: primaryContactEmailNormalized,
+            onboardingPlan: {
+              automationEnrollmentState: "ACTIVE",
+              id: { not: createdPlan.id }
+            }
+          },
+          select: { id: true }
+        });
+        if (competingContact) {
+          throw new Error("Another active plan uses the test recipient communication identity.");
+        }
+        await transaction.zohoCommunicationContext.upsert({
+          where: { recipientEmailNormalized: primaryContactEmailNormalized },
+          create: {
+            acquiredAt: createdAt,
+            acquiredBy: input.zohoAuditActor!,
+            acquisitionReason: "Explicit allowlisted TEST J1 enrollment preparation.",
+            activePlanId: createdPlan.id,
+            recipientEmailNormalized: primaryContactEmailNormalized,
+            state: "ACTIVE"
+          },
+          update: {
+            acquiredAt: createdAt,
+            acquiredBy: input.zohoAuditActor!,
+            acquisitionReason: "Explicit allowlisted TEST J1 enrollment preparation.",
+            activePlanId: createdPlan.id,
+            state: "ACTIVE",
+            version: { increment: 1 }
+          }
+        });
+        await recordAllowlistedZohoTestJ1EnrollmentInTransaction(transaction, {
+          actor: input.zohoAuditActor!,
+          onboardingPlanId: createdPlan.id
+        });
+      } else {
+        const planCreated = await recordZohoPlanCreatedEventsInTransaction(transaction, createdPlan.id);
+        if (!planCreated.created) {
+          await recordAutomationNotReadyAuditInTransaction(transaction, {
+            onboardingPlanId: createdPlan.id,
+            reasonCodes: planCreated.reasonCodes
+          });
+        }
       }
     }
     return created;
   });
 
   const createdPlan = msp.onboardingPlans[0];
-  if (createdPlan) {
+  if (createdPlan && !prepareTestJ1) {
     try {
       await prepareMspEnrollmentContactSync({
         actor: input.zohoAuditActor?.trim() || "admin-session",

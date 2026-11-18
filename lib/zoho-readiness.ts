@@ -85,6 +85,19 @@ function hasConfiguration(name: string) {
   return Boolean(process.env[name]?.trim());
 }
 
+function hasJ1Configuration() {
+  const testMode = process.env.ZOHO_DISPATCH_MODE?.trim().toLowerCase() === "test";
+  if (!testMode) return hasConfiguration("ZMA_J1_TRIGGER_KEY");
+  const testJourney = process.env.ZMA_TEST_J1_JOURNEY_KEY?.trim() ?? "";
+  const testTrigger = process.env.ZMA_TEST_J1_TRIGGER_KEY?.trim() ?? "";
+  return Boolean(
+    testJourney &&
+    testTrigger &&
+    testJourney !== process.env.ZMA_J1_JOURNEY_KEY?.trim() &&
+    testTrigger !== process.env.ZMA_J1_TRIGGER_KEY?.trim()
+  );
+}
+
 export function evaluateZohoAutomationReadiness(
   plan: ReadinessPlan,
   contexts: ReadinessContext[]
@@ -155,7 +168,8 @@ export function evaluateZohoAutomationReadiness(
   }
 
   const listConfigured = hasConfiguration("ZMA_LIST_KEY") || hasConfiguration("ZOHO_MA_LIST_KEY");
-  const topicConfigured = hasConfiguration("ZMA_TOPIC_ID") || hasConfiguration("ZOHO_MA_TOPIC_ID");
+  const topicId = process.env.ZMA_TOPIC_ID?.trim() || process.env.ZOHO_MA_TOPIC_ID?.trim() || "";
+  const topicConfigured = /^\d+$/.test(topicId);
   const portalUrlConfigured = hasConfiguration("PORTAL_PUBLIC_BASE_URL") || hasConfiguration("AUTH_URL");
   if (!listConfigured || !topicConfigured || !portalUrlConfigured) {
     reasons.push({
@@ -163,7 +177,7 @@ export function evaluateZohoAutomationReadiness(
       message: "Required contact synchronization configuration is not complete."
     });
   }
-  if (!hasConfiguration("ZMA_J1_TRIGGER_KEY")) {
+  if (!hasJ1Configuration()) {
     reasons.push({
       code: "JOURNEY_CONFIGURATION_MISSING",
       message: "The approved J1 journey trigger configuration is missing."

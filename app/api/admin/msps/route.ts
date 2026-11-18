@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminApiAuthError, getAdminAuditActor, getCurrentStaffIdentity } from "@/lib/admin-auth";
+import {
+  getAdminApiAuthError,
+  getAdminAuditActor,
+  getCurrentStaffIdentity,
+  getSensitiveAdminApiAuthError
+} from "@/lib/admin-auth";
 import { createMsp, getAdminDashboardCases, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 import { formatStaffAuditActor } from "@/lib/staff-auth";
 import { validateEnrollmentContactPermission } from "@/lib/zoho-enrollment-sync-core";
@@ -33,15 +38,25 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       accessMode: "temporary" | "oidc";
       assignedSalesEngineer?: string;
+      assignedSeBookingUrl?: string;
+      assignedSeEmail?: string;
       customerName?: string;
       enrollmentDate?: string;
       isGmmPartner?: boolean;
       name: string;
       planType?: "nfr" | "customer";
       primaryContactEmail: string;
+      primaryContactFirstName?: string;
+      primaryContactLastName?: string;
       slug?: string;
       zohoContactPermission?: { confirmed?: boolean; evidenceReference?: string };
+      zohoTestJ1Preparation?: { confirmed?: boolean };
     };
+
+    if (body.zohoTestJ1Preparation?.confirmed) {
+      const sensitiveAuthError = await getSensitiveAdminApiAuthError(request, "ADMIN");
+      if (sensitiveAuthError) return sensitiveAuthError;
+    }
 
     const permission = validateEnrollmentContactPermission(body.zohoContactPermission);
     if (!permission.valid) {
@@ -59,7 +74,8 @@ export async function POST(request: NextRequest) {
       zohoContactPermission: {
         confirmed: permission.confirmed,
         evidenceReference: permission.evidenceReference
-      }
+      },
+      zohoTestJ1Preparation: { confirmed: body.zohoTestJ1Preparation?.confirmed === true }
     });
     return NextResponse.json({ msp: adminCase }, { status: 201 });
   } catch (error) {

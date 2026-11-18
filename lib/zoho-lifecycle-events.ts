@@ -16,6 +16,7 @@ import {
   type ZohoTransaction
 } from "@/lib/zoho-foundation";
 import { getPersistedZohoContactSnapshotWithClient } from "@/lib/zoho-contact-snapshot";
+import { getZohoTestJ1EnrollmentConfiguration } from "@/lib/zoho-config";
 import { getZohoAutomationReadinessWithClient } from "@/lib/zoho-readiness";
 import { classifyZohoEventDisposition } from "@/lib/zoho-lifecycle-rules";
 
@@ -151,11 +152,12 @@ async function buildImmutablePayload(
   }
 }
 
-export async function recordZohoContactSyncEventsInTransaction(
+async function recordZohoContactSyncEvents(
   transaction: ZohoTransaction,
-  input: SyncInput
+  input: SyncInput,
+  emissionAuthorized: boolean
 ) {
-  if (!isZohoEventEmissionEnabled()) return [];
+  if (!emissionAuthorized) return [];
   const roles = input.recipientRoles ?? ["ONBOARDING_OWNER"];
   const plan = await getActivePlanAndRecipients(
     transaction,
@@ -191,11 +193,19 @@ export async function recordZohoContactSyncEventsInTransaction(
   return results;
 }
 
-export async function recordZohoJourneyEventsInTransaction(
+export function recordZohoContactSyncEventsInTransaction(
   transaction: ZohoTransaction,
-  input: JourneyInput
+  input: SyncInput
 ) {
-  if (!isZohoEventEmissionEnabled()) return [];
+  return recordZohoContactSyncEvents(transaction, input, isZohoEventEmissionEnabled());
+}
+
+async function recordZohoJourneyEvents(
+  transaction: ZohoTransaction,
+  input: JourneyInput,
+  emissionAuthorized: boolean
+) {
+  if (!emissionAuthorized) return [];
   const roles = input.recipientRoles ?? ["ONBOARDING_OWNER"];
   const plan = await getActivePlanAndRecipients(transaction, input.onboardingPlanId, roles);
   if (!plan) return [];
@@ -234,6 +244,134 @@ export async function recordZohoJourneyEventsInTransaction(
     );
   }
   return results;
+}
+
+export function recordZohoJourneyEventsInTransaction(
+  transaction: ZohoTransaction,
+  input: JourneyInput
+) {
+  return recordZohoJourneyEvents(transaction, input, isZohoEventEmissionEnabled());
+}
+
+export async function recordAllowlistedZohoTestJ1EnrollmentInTransaction(
+  transaction: ZohoTransaction,
+  input: { actor: string; onboardingPlanId: string }
+) {
+  const config = getZohoTestJ1EnrollmentConfiguration();
+  const plan = await transaction.onboardingPlan.findUnique({
+    where: { id: input.onboardingPlanId },
+    select: {
+      automaticJ1Allowed: true,
+      automationEnrollmentState: true,
+      id: true,
+      kickoffBookedAt: true,
+      onboardingTasks: {
+        orderBy: { order: "asc" },
+        select: { status: true, templateKey: true }
+      },
+      planContacts: {
+        where: { role: "ONBOARDING_OWNER" },
+        take: 1,
+        select: {
+          automationEnabled: true,
+          email: true,
+          id: true,
+          normalizedEmail: true,
+          subscriptionStatus: true
+        }
+      },
+      planId: true
+    }
+  });
+  const owner = plan?.planContacts[0];
+  if (!plan || !owner) throw new Error("The allowlisted TEST J1 plan and Onboarding Owner are required.");
+
+  const exactTarget =
+    config.allowedPlanIds.size === 1 &&
+    config.allowedEmails.size === 1 &&
+    config.allowedPlanIds.has(plan.planId) &&
+    config.allowedEmails.has(owner.normalizedEmail);
+  if (!config.enabled || !config.dispatchModeIsTest || !exactTarget) {
+    throw new Error("The exact TEST J1 plan and recipient are not safely allowlisted.");
+  }
+  if (
+    !config.globalKillSwitchEnabled ||
+    !config.automaticDispatchDisabled ||
+    !config.productionDispatchDisabled
+  ) {
+    throw new Error("TEST J1 intent preparation requires the global kill switch and disabled automatic production dispatch.");
+  }
+  if (
+    !config.listConfigured ||
+    !config.topicIdValid ||
+    !config.fieldMappingVerified ||
+    !config.listPrivacyVerified ||
+    !config.testJ1Configured
+  ) {
+    throw new Error("TEST J1 list, numeric topic, verified fields/private list, and distinct journey keys are required.");
+  }
+  if (
+    plan.automationEnrollmentState !== "ACTIVE" ||
+    !plan.automaticJ1Allowed ||
+    !owner.automationEnabled ||
+    owner.subscriptionStatus === "INELIGIBLE"
+  ) {
+    throw new Error("The allowlisted TEST J1 plan and owner are not automation eligible.");
+  }
+  const initialTask = plan.onboardingTasks.find((task) => task.status !== "complete");
+  if (
+    initialTask?.templateKey !== "book-kickoff" ||
+    initialTask.status !== "waiting_on_msp" ||
+    plan.kickoffBookedAt
+  ) {
+    throw new Error("TEST J1 requires the initial kickoff-booking task to be waiting on the MSP.");
+  }
+  const [context, permission] = await Promise.all([
+    transaction.zohoCommunicationContext.findUnique({
+      where: { recipientEmailNormalized: owner.normalizedEmail },
+      select: { activePlanId: true, state: true }
+    }),
+    transaction.zohoAutomationAudit.findFirst({
+      where: {
+        action: "msp_enrollment.contact_permission_recorded",
+        actor: { startsWith: "oidc:" },
+        evidenceReference: { not: null },
+        onboardingPlanId: plan.id,
+        recipientEmailNormalized: owner.normalizedEmail
+      },
+      select: { id: true }
+    })
+  ]);
+  if (context?.state !== "ACTIVE" || context.activePlanId !== plan.id || !permission) {
+    throw new Error("An attributable permission record and active communication context are required.");
+  }
+  await getPersistedZohoContactSnapshotWithClient(transaction, plan.planId, owner.id);
+
+  const contactEvents = await recordZohoContactSyncEvents(transaction, {
+    occurrenceKey: `plan-created:${plan.planId}`,
+    onboardingPlanId: plan.id,
+    reason: "plan.created.test-j1",
+    taskKey: initialTask.templateKey
+  }, true);
+  const journeyEvents = await recordZohoJourneyEvents(transaction, {
+    journey: "J1",
+    occurrenceKey: `plan-created-j1:${plan.planId}`,
+    onboardingPlanId: plan.id,
+    reason: "plan.created.test-j1",
+    taskKey: initialTask.templateKey
+  }, true);
+  await createZohoAutomationAuditInTransaction(transaction, {
+    action: "test_j1.enrollment_intents_prepared",
+    actor: input.actor,
+    onboardingPlanId: plan.id,
+    reason: "Allowlisted full-field contact and held TEST J1 intents were prepared. No provider request was made.",
+    recipientEmail: owner.email
+  });
+  return {
+    contactCreated: contactEvents.some((event) => event.created),
+    journeyCreated: journeyEvents.some((event) => event.created),
+    journeyHeldForSubscription: owner.subscriptionStatus !== "CONFIRMED"
+  };
 }
 
 export async function recordAutomationNotReadyAuditInTransaction(

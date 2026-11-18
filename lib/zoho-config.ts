@@ -103,6 +103,32 @@ export function getZohoTestConfiguration() {
   };
 }
 
+export function getZohoTestJ1EnrollmentConfiguration() {
+  const test = getZohoTestConfiguration();
+  const dispatch = getZohoDispatchConfiguration();
+  const testJ1 = getZohoTestJourneyConfiguration().J1;
+  const productionJ1 = getZohoJourneyConfiguration().J1;
+  const topicId = getZohoTopicId();
+  return {
+    ...test,
+    automaticDispatchDisabled: !dispatch.automaticDispatchEnabled,
+    dispatchModeIsTest: dispatch.mode === "test",
+    fieldMappingVerified: enabled("ZMA_FIELD_MAPPING_VERIFIED"),
+    globalKillSwitchEnabled: dispatch.globalKillSwitch,
+    listConfigured: Boolean(getZohoListKey()),
+    listPrivacyVerified: enabled("ZMA_PRIVATE_LIST_VERIFIED"),
+    productionDispatchDisabled: !dispatch.productionApproved,
+    testJ1Configured: Boolean(
+      testJ1.journeyKey &&
+      testJ1.triggerKey &&
+      testJ1.journeyKey !== productionJ1.journeyKey &&
+      testJ1.triggerKey !== productionJ1.triggerKey
+    ),
+    topicId,
+    topicIdValid: /^\d+$/.test(topicId)
+  } as const;
+}
+
 export const ZOHO_TEST_MAILING_LIST_NAME = "KZero Partner Onboarding";
 
 export function getZohoTestContactSyncConfiguration() {

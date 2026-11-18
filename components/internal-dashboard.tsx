@@ -198,6 +198,9 @@ type RollbackStageOption = {
 
 type EnrollmentFormState = {
   accessMode: OnboardingCase["accessMode"];
+  assignedSeBookingUrl: string;
+  assignedSeEmail: string;
+  assignedSeName: string;
   clientId: string;
   clientSecret: string;
   customerName: string;
@@ -207,11 +210,14 @@ type EnrollmentFormState = {
   lastActivity: string;
   mspName: string;
   primaryContactEmail: string;
+  primaryContactFirstName: string;
+  primaryContactLastName: string;
   progress: number;
   startingPlanType: TenantType;
   status: OnboardingCase["status"];
   submittedSaasAppCount: number;
   tenantName: string;
+  prepareZohoTestJ1: boolean;
   zohoContactPermissionConfirmed: boolean;
   zohoContactPermissionEvidence: string;
 };
@@ -1022,6 +1028,9 @@ function isMeaningfulAdminComment(body: string) {
 function createEnrollmentState(): EnrollmentFormState {
   return {
     accessMode: "temporary",
+    assignedSeBookingUrl: "",
+    assignedSeEmail: "",
+    assignedSeName: "",
     clientId: "",
     clientSecret: "",
     customerName: "",
@@ -1031,11 +1040,14 @@ function createEnrollmentState(): EnrollmentFormState {
     lastActivity: getTodayDateInputValue(),
     mspName: "",
     primaryContactEmail: "",
+    primaryContactFirstName: "",
+    primaryContactLastName: "",
     progress: 0,
     startingPlanType: "nfr",
     status: "waiting_on_msp",
     submittedSaasAppCount: 0,
     tenantName: "",
+    prepareZohoTestJ1: false,
     zohoContactPermissionConfirmed: false,
     zohoContactPermissionEvidence: ""
   };
@@ -2251,7 +2263,11 @@ export function InternalDashboard({
     setSelectedCaseId(null);
     setEditState(null);
     setOidcState(null);
-    setEnrollmentState(createEnrollmentState());
+    setEnrollmentState({
+      ...createEnrollmentState(),
+      assignedSeEmail: salesEngineers[0]?.email ?? "",
+      assignedSeName: salesEngineers[0]?.name ?? ""
+    });
     setEnrollmentErrorMessage(null);
     setPanelMode("enroll");
   }
@@ -2267,6 +2283,8 @@ export function InternalDashboard({
     const exactTenantName = enrollmentState.tenantName.trim();
     const trimmedMspName = enrollmentState.mspName.trim();
     const trimmedPrimaryContactEmail = enrollmentState.primaryContactEmail.trim();
+    const primaryContactFirstName = enrollmentState.primaryContactFirstName.trim();
+    const primaryContactLastName = enrollmentState.primaryContactLastName.trim();
     const permissionEvidenceReference = enrollmentState.zohoContactPermissionEvidence.trim();
     const trimmedClientId = enrollmentState.clientId.trim();
     const hasFullOidcConfig = Boolean(exactTenantName && trimmedClientId && enrollmentState.clientSecret.trim());
@@ -2289,6 +2307,17 @@ export function InternalDashboard({
       setEnrollmentErrorMessage("Permission Evidence Reference is required when Zoho permission is confirmed.");
       return;
     }
+    if (
+      enrollmentState.prepareZohoTestJ1 &&
+      (!enrollmentState.zohoContactPermissionConfirmed ||
+        !primaryContactFirstName ||
+        !enrollmentState.assignedSeName.trim() ||
+        !enrollmentState.assignedSeEmail.trim() ||
+        !enrollmentState.assignedSeBookingUrl.trim())
+    ) {
+      setEnrollmentErrorMessage("TEST J1 preparation requires permission evidence, the owner first name, and complete Sales Engineer details.");
+      return;
+    }
 
     setEnrollmentErrorMessage(null);
 
@@ -2301,18 +2330,23 @@ export function InternalDashboard({
           },
           body: JSON.stringify({
             accessMode,
-            assignedSalesEngineer: salesEngineers[0]?.name,
+            assignedSalesEngineer: enrollmentState.assignedSeName.trim() || salesEngineers[0]?.name,
+            assignedSeBookingUrl: enrollmentState.assignedSeBookingUrl.trim() || undefined,
+            assignedSeEmail: enrollmentState.assignedSeEmail.trim() || undefined,
             customerName: enrollmentState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
             enrollmentDate: nextEnrollmentDate,
             isGmmPartner: enrollmentState.isGmmPartner,
             name: trimmedMspName,
             planType: enrollmentState.startingPlanType,
             primaryContactEmail: trimmedPrimaryContactEmail,
+            primaryContactFirstName,
+            primaryContactLastName,
             slug: caseSlug,
             zohoContactPermission: {
               confirmed: enrollmentState.zohoContactPermissionConfirmed,
               evidenceReference: permissionEvidenceReference
-            }
+            },
+            zohoTestJ1Preparation: { confirmed: enrollmentState.prepareZohoTestJ1 }
           })
         });
 
@@ -2332,7 +2366,7 @@ export function InternalDashboard({
             },
             body: JSON.stringify({
               accessMode,
-              assignedSalesEngineer: salesEngineers[0]?.name,
+              assignedSalesEngineer: enrollmentState.assignedSeName.trim() || salesEngineers[0]?.name,
               customerName: enrollmentState.startingPlanType === "customer" ? trimmedCustomerName : undefined,
               currentStage: enrollmentState.currentStage,
               isGmmPartner: enrollmentState.isGmmPartner,
@@ -4301,8 +4335,26 @@ export function InternalDashboard({
                               value={enrollmentState.mspName}
                             />
                           </label>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <label className="grid gap-2 text-sm text-secondary">
+                              <span>Onboarding Owner First Name</span>
+                              <input
+                                className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, primaryContactFirstName: event.target.value }))}
+                                value={enrollmentState.primaryContactFirstName}
+                              />
+                            </label>
+                            <label className="grid gap-2 text-sm text-secondary">
+                              <span>Onboarding Owner Last Name</span>
+                              <input
+                                className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, primaryContactLastName: event.target.value }))}
+                                value={enrollmentState.primaryContactLastName}
+                              />
+                            </label>
+                          </div>
                           <label className="grid gap-2 text-sm text-secondary">
-                            <span>Primary Contact Email</span>
+                            <span>Onboarding Owner Email</span>
                             <input
                               className="rounded-2xl border border-border bg-input px-4 py-3 text-foreground outline-none"
                               onChange={(event) =>
@@ -4312,9 +4364,34 @@ export function InternalDashboard({
                               value={enrollmentState.primaryContactEmail}
                             />
                           </label>
-                          <div className="rounded-2xl border border-border bg-input px-4 py-3">
+                          <div className="grid gap-4 rounded-2xl border border-border bg-input p-4">
                             <p className="text-xs uppercase tracking-[0.18em] text-muted-subtle">Assigned Sales Engineer</p>
-                            <p className="mt-2 text-sm text-foreground">{salesEngineers[0]?.name ?? "Not assigned"}</p>
+                            <label className="grid gap-2 text-sm text-secondary">
+                              <span>Name</span>
+                              <input
+                                className="rounded-xl border border-border bg-surface px-3 py-2.5 text-foreground outline-none"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, assignedSeName: event.target.value }))}
+                                value={enrollmentState.assignedSeName}
+                              />
+                            </label>
+                            <label className="grid gap-2 text-sm text-secondary">
+                              <span>Email</span>
+                              <input
+                                className="rounded-xl border border-border bg-surface px-3 py-2.5 text-foreground outline-none"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, assignedSeEmail: event.target.value }))}
+                                type="email"
+                                value={enrollmentState.assignedSeEmail}
+                              />
+                            </label>
+                            <label className="grid gap-2 text-sm text-secondary">
+                              <span>Booking URL</span>
+                              <input
+                                className="rounded-xl border border-border bg-surface px-3 py-2.5 text-foreground outline-none"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, assignedSeBookingUrl: event.target.value }))}
+                                type="url"
+                                value={enrollmentState.assignedSeBookingUrl}
+                              />
+                            </label>
                           </div>
                           <label className="flex items-center gap-3 rounded-2xl border border-border bg-input px-4 py-3 text-sm text-secondary">
                             <input
@@ -4538,6 +4615,19 @@ export function InternalDashboard({
                         </label>
                       </div>
                       <p className="mt-3 text-xs leading-5 text-muted">Recording permission does not automatically subscribe the contact or trigger onboarding emails.</p>
+                      {staffIdentity?.role === "ADMIN" ? (
+                        <label className="mt-3 flex items-start gap-3 rounded-2xl border border-info-border bg-info-surface px-4 py-3 text-sm leading-5 text-secondary">
+                          <input
+                            checked={enrollmentState.prepareZohoTestJ1}
+                            className="mt-0.5 h-4 w-4 rounded border-border bg-input"
+                            onChange={(event) => setEnrollmentState((current) => ({ ...current, prepareZohoTestJ1: event.target.checked }))}
+                            type="checkbox"
+                          />
+                          <span>
+                            Prepare the exact allowlisted full-field contact and isolated TEST J1 intents. This records durable work only; it does not call Zoho or release any automation safeguard.
+                          </span>
+                        </label>
+                      ) : null}
                       {enrollmentErrorMessage ? (
                         <p className="mt-2 text-sm text-danger" role="alert">{enrollmentErrorMessage}</p>
                       ) : null}
