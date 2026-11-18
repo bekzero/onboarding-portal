@@ -130,6 +130,12 @@ export function getZohoMspEnrollmentPilotConfiguration() {
   } as const;
 }
 
+export function getZohoSingleContactPilotConfiguration() {
+  return {
+    enabled: enabled("ZOHO_SINGLE_CONTACT_PILOT_ENABLED")
+  } as const;
+}
+
 export function getZohoConfigurationStatus() {
   const oauth = getZohoOAuthConfig();
   const journeys = getZohoJourneyConfiguration();
@@ -145,6 +151,7 @@ export function getZohoConfigurationStatus() {
     nudgeEvaluationEnabled: getZohoNudgeConfiguration().enabled,
     mspEnrollmentContactSyncEnabled: getZohoMspEnrollmentSyncConfiguration().enabled,
     mspEnrollmentPilotTargetConfigured: getZohoMspEnrollmentPilotConfiguration().configured,
+    singleContactPilotEnabled: getZohoSingleContactPilotConfiguration().enabled,
     fieldMappingVerified: value("ZMA_FIELD_MAPPING_VERIFIED").toLowerCase() === "true",
     journeys: Object.fromEntries(
       Object.entries(journeys).map(([key, config]) => [

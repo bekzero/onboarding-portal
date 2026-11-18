@@ -15,6 +15,7 @@ import { isValidEmailAddress } from "@/lib/zoho-validation";
 import { prisma } from "@/lib/prisma";
 import { getAuthorizedStaffIdentity, isStaffOidcConfigured } from "@/lib/staff-auth";
 import { getPersistedListPrivacyVerification } from "@/lib/zoho-pilot-admin";
+import { getSingleContactPilotStatus } from "@/lib/zoho-single-contact-pilot";
 
 const JOURNEYS = [
   { id: "J1", name: "Welcome and Kickoff Booking" },
@@ -365,6 +366,7 @@ export async function getZohoPlanAutomationSummary(
     staffAdminAuthorized: options.currentStaffRole === "ADMIN",
     subscriptionStatus: owner?.subscriptionStatus ?? null
   });
+  const controlledPilot = await getSingleContactPilotStatus(planId, options.currentStaffRole === "ADMIN");
   return {
     automationEnrollmentState: plan.automationEnrollmentState,
     automationOrigin: plan.automationOrigin,
@@ -398,6 +400,7 @@ export async function getZohoPlanAutomationSummary(
       permissionRecordedAt: permissionAudit?.createdAt ?? null,
       primaryContactEmail: plan.msp.primaryContactEmail,
       primaryContactMatchesOwner: contactValid,
+      controlledPilot,
       pilotReadiness,
       readiness: syncReadiness,
       staffIdentityVerified: permissionAudit?.actor.startsWith("oidc:") ?? false,

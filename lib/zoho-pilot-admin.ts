@@ -3,6 +3,7 @@ import "server-only";
 import { getZohoApiClient } from "@/lib/zoho-api";
 import {
   getZohoDispatchConfiguration,
+  getZohoConfigurationStatus,
   getZohoListKey,
   getZohoMspEnrollmentPilotConfiguration,
   getZohoMspEnrollmentSyncConfiguration,
@@ -13,9 +14,11 @@ import { prisma } from "@/lib/prisma";
 import { isValidEmailAddress, ZohoAdminValidationError } from "@/lib/zoho-validation";
 
 export const LIST_PRIVACY_AUDIT_ACTION = "zoho.mailing_list.privacy_verified";
+export const DOWNSTREAM_AUTOMATION_AUDIT_ACTION = "msp_pilot.downstream_automation_verified";
 
 function assertPilotAdministrationSafeguards() {
   const dispatch = getZohoDispatchConfiguration();
+  const configuration = getZohoConfigurationStatus();
   if (
     !dispatch.globalKillSwitch ||
     dispatch.automaticDispatchEnabled ||
@@ -23,7 +26,10 @@ function assertPilotAdministrationSafeguards() {
     dispatch.journeyTriggeringEnabled ||
     dispatch.productionApproved ||
     isZohoEventEmissionEnabled() ||
-    getZohoMspEnrollmentSyncConfiguration().enabled
+    getZohoMspEnrollmentSyncConfiguration().enabled ||
+    configuration.nudgeEvaluationEnabled ||
+    configuration.testContactSync.enabled ||
+    configuration.testMode.enabled
   ) {
     throw new ZohoAdminValidationError(
       "Pilot readiness administration is available only while every production automation control is disabled and the global kill switch is enabled.",
@@ -32,14 +38,15 @@ function assertPilotAdministrationSafeguards() {
   }
 }
 
-async function loadPilotPlan(planId: string) {
+export async function loadConfiguredPilotPlan(planId: string) {
   const plan = await prisma.onboardingPlan.findUnique({
     where: { planId },
     select: {
       automationEnrollmentState: true,
       automationOrigin: true,
       id: true,
-      msp: { select: { primaryContactEmail: true } },
+      planId: true,
+      msp: { select: { name: true, primaryContactEmail: true } },
       planContacts: {
         where: { role: "ONBOARDING_OWNER" },
         orderBy: { createdAt: "asc" },
@@ -67,7 +74,7 @@ async function loadPilotPlan(planId: string) {
   return { owner, plan, primaryEmail };
 }
 
-async function requireIndividuallyRecordedPermission(planId: string, recipientEmailNormalized: string) {
+export async function getIndividuallyRecordedPermission(planId: string, recipientEmailNormalized: string) {
   const permission = await prisma.zohoAutomationAudit.findFirst({
     where: {
       action: "msp_enrollment.contact_permission_recorded",
@@ -76,16 +83,22 @@ async function requireIndividuallyRecordedPermission(planId: string, recipientEm
       actor: { startsWith: "oidc:" }
     },
     orderBy: { createdAt: "desc" },
-    select: { id: true }
+    select: { actor: true, createdAt: true, evidenceReference: true, id: true }
   });
+  return permission;
+}
+
+async function requireIndividuallyRecordedPermission(planId: string, recipientEmailNormalized: string) {
+  const permission = await getIndividuallyRecordedPermission(planId, recipientEmailNormalized);
   if (!permission) {
     throw new ZohoAdminValidationError("Individually attributable permission evidence is required before pilot administration.", 409);
   }
+  return permission;
 }
 
 export async function approvePilotPlanAutomation(input: { actor: string; planId: string }) {
   assertPilotAdministrationSafeguards();
-  const loaded = await loadPilotPlan(input.planId);
+  const loaded = await loadConfiguredPilotPlan(input.planId);
   await requireIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail);
   if (loaded.plan.automationOrigin !== "NATIVE") {
     throw new ZohoAdminValidationError("Legacy plans require the separate historical enrollment workflow.", 409);
@@ -137,7 +150,7 @@ export async function approvePilotPlanAutomation(input: { actor: string; planId:
 
 export async function assignPilotCommunicationContext(input: { actor: string; planId: string }) {
   assertPilotAdministrationSafeguards();
-  const loaded = await loadPilotPlan(input.planId);
+  const loaded = await loadConfiguredPilotPlan(input.planId);
   await requireIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail);
   if (loaded.plan.automationEnrollmentState !== "ACTIVE" || !loaded.owner.automationEnabled) {
     throw new ZohoAdminValidationError("Approve the plan and Onboarding Owner before assigning communication context.", 409);
@@ -212,7 +225,7 @@ export async function assignPilotCommunicationContext(input: { actor: string; pl
 
 export async function verifyPilotMailingListPrivacy(input: { actor: string; planId: string }) {
   assertPilotAdministrationSafeguards();
-  await loadPilotPlan(input.planId);
+  await loadConfiguredPilotPlan(input.planId);
   const listKey = getZohoListKey();
   if (!listKey) throw new ZohoAdminValidationError("The Zoho mailing-list key is not configured.", 503);
 
@@ -250,6 +263,59 @@ export async function verifyPilotMailingListPrivacy(input: { actor: string; plan
 export async function getPersistedListPrivacyVerification() {
   return prisma.zohoAutomationAudit.findFirst({
     where: { action: LIST_PRIVACY_AUDIT_ACTION },
+    orderBy: { createdAt: "desc" },
+    select: { actor: true, createdAt: true, evidenceReference: true }
+  });
+}
+
+export async function recordPilotDownstreamAutomationVerification(input: {
+  actor: string;
+  evidenceReference: string;
+  planId: string;
+}) {
+  assertPilotAdministrationSafeguards();
+  const loaded = await loadConfiguredPilotPlan(input.planId);
+  await requireIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail);
+  const evidenceReference = input.evidenceReference.trim();
+  if (!evidenceReference) {
+    throw new ZohoAdminValidationError("A Zoho UI review evidence reference is required.");
+  }
+
+  return prisma.$transaction(async (transaction) => {
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-pilot-downstream:${loaded.plan.id}`}, 0))`;
+    const existing = await transaction.zohoAutomationAudit.findFirst({
+      where: {
+        action: DOWNSTREAM_AUTOMATION_AUDIT_ACTION,
+        evidenceReference,
+        onboardingPlanId: loaded.plan.id,
+        recipientEmailNormalized: loaded.owner.normalizedEmail
+      },
+      select: { id: true }
+    });
+    if (existing) return { changed: false } as const;
+    await createZohoAutomationAuditInTransaction(transaction, {
+      action: DOWNSTREAM_AUTOMATION_AUDIT_ACTION,
+      actor: input.actor,
+      evidenceReference,
+      onboardingPlanId: loaded.plan.id,
+      reason: "An individually authenticated ADMIN recorded a manual Zoho UI review confirming that list entry has no unintended active journey, workflow, campaign, or email side effect.",
+      recipientEmail: loaded.owner.email
+    });
+    return { changed: true } as const;
+  });
+}
+
+export async function getPilotDownstreamAutomationVerification(
+  onboardingPlanId: string,
+  recipientEmailNormalized: string
+) {
+  return prisma.zohoAutomationAudit.findFirst({
+    where: {
+      action: DOWNSTREAM_AUTOMATION_AUDIT_ACTION,
+      onboardingPlanId,
+      recipientEmailNormalized,
+      actor: { startsWith: "oidc:" }
+    },
     orderBy: { createdAt: "desc" },
     select: { actor: true, createdAt: true, evidenceReference: true }
   });

@@ -61,6 +61,18 @@ type PlanAutomationSummary = {
     permissionRecordedAt: string | null;
     primaryContactEmail: string;
     primaryContactMatchesOwner: boolean;
+    controlledPilot: {
+      destinationList: string;
+      downstreamAutomationVerified: boolean;
+      enabled: boolean;
+      executionAuthorized: boolean;
+      lastAttemptAt: string | null;
+      lastOutcome: string | null;
+      lastVerificationAt: string | null;
+      readiness: { blockers: string[]; canExecute: boolean; canPreview: boolean; verificationOnly: boolean };
+      targetEmail: string;
+      targetMsp: string;
+    } | null;
     pilotReadiness: {
       blockers: string[];
       candidateEligible: boolean;
@@ -109,7 +121,12 @@ const blockerCopy: Record<string, { category: BlockerCategory; kind: BlockerKind
   RECIPIENT_INELIGIBLE: { category: "contact", kind: "action", label: "The contact is unsubscribed, bounced, suppressed, or otherwise ineligible." },
   UNRESOLVED_ENROLLMENT_EVENT: { category: "plan", kind: "action", label: "Resolve the existing enrollment outbox event before considering a pilot." },
   GLOBAL_KILL_SWITCH_MUST_REMAIN_ENABLED: { category: "flags", kind: "intentional", label: "Phase 7B.6A requires the global kill switch to remain enabled." },
-  AUTOMATIC_DISPATCH_MUST_REMAIN_DISABLED: { category: "flags", kind: "intentional", label: "Phase 7B.6A requires automatic dispatch to remain disabled." }
+  AUTOMATIC_DISPATCH_MUST_REMAIN_DISABLED: { category: "flags", kind: "intentional", label: "Phase 7B.6A requires automatic dispatch to remain disabled." },
+  AUTOMATIC_PATH_ISOLATION_REQUIRED: { category: "flags", kind: "intentional", label: "Every automatic Zoho path and dispatch mode must remain disabled for the manual pilot." },
+  DOWNSTREAM_AUTOMATION_UNVERIFIED: { category: "provider", kind: "unverified", label: "Verify in Zoho that list entry has no active journey, workflow, campaign, or email side effect." },
+  PILOT_EXECUTION_ALREADY_RESERVED: { category: "plan", kind: "intentional", label: "The durable one-shot execution is already reserved; only membership verification is permitted." },
+  SINGLE_CONTACT_PILOT_DISABLED: { category: "flags", kind: "intentional", label: "The manual single-contact pilot is disabled." },
+  SUBSCRIPTION_STATUS_UNVERIFIED: { category: "contact", kind: "unverified", label: "Subscription eligibility must be explicitly verified as CONFIRMED before execution." }
 };
 
 const categoryLabels: Record<BlockerCategory, string> = {
@@ -151,6 +168,12 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [readinessControlMessage, setReadinessControlMessage] = useState<string | null>(null);
   const [lastEvaluatedAt, setLastEvaluatedAt] = useState<string | null>(null);
+  const [pilotPreview, setPilotPreview] = useState<{
+    membership: { complete: boolean; statuses: string[] } | null;
+    outcome: string | null;
+    previewedAt: string;
+  } | null>(null);
+  const [pilotMessage, setPilotMessage] = useState<string | null>(null);
 
   const loadDetails = useCallback(async () => {
     const [statusResponse, planResponse] = await Promise.all([
@@ -276,8 +299,9 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   }
 
   async function runReadinessControl(
-    action: "APPROVE_AUTOMATION" | "ASSIGN_CONTEXT" | "VERIFY_LIST_PRIVACY",
-    confirmation: string
+    action: "APPROVE_AUTOMATION" | "ASSIGN_CONTEXT" | "VERIFY_LIST_PRIVACY" | "VERIFY_DOWNSTREAM_AUTOMATION",
+    confirmation: string,
+    evidenceReference?: string
   ) {
     if (!window.confirm(confirmation)) return;
     setBusy(true);
@@ -287,7 +311,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
       const response = await fetch(
         `/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}/readiness-controls`,
         {
-          body: JSON.stringify({ action, confirmed: true }),
+          body: JSON.stringify({ action, confirmed: true, evidenceReference }),
           headers: { "content-type": "application/json" },
           method: "POST"
         }
@@ -315,6 +339,42 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     }
   }
 
+  async function previewControlledPilot() {
+    setBusy(true);
+    setError(null);
+    setPilotMessage(null);
+    try {
+      const payload = await post(`/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}/pilot/preview`, {});
+      setPilotPreview(payload as unknown as typeof pilotPreview);
+      setPilotMessage("Read-only preview completed. No reservation, outbox event, or provider write was created.");
+      await loadDetails();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The controlled pilot preview failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runControlledPilot() {
+    const confirmation = window.prompt(
+      "This will attempt to add exactly one configured contact to the private KZero Partner Onboarding list. Enter RUN SINGLE-CONTACT ZOHO PILOT to continue."
+    );
+    if (!confirmation) return;
+    setBusy(true);
+    setError(null);
+    setPilotMessage(null);
+    try {
+      const result = await post(`/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}/pilot/execute`, { confirmation });
+      setPilotMessage(`Pilot result: ${String(result.outcome ?? "UNABLE_TO_VERIFY")}. A provider acceptance alone is not reported as verified.`);
+      await loadDetails();
+      await previewControlledPilot();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The controlled pilot could not run.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const blockerGroups = useMemo(() => {
     const groups = new Map<BlockerCategory, Array<{ code: string; kind: BlockerKind; label: string }>>();
     for (const code of planSummary?.enrollmentContactSync.readiness.blockers ?? []) {
@@ -328,6 +388,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
 
   const readiness = planSummary?.enrollmentContactSync.readiness;
   const pilotReadiness = planSummary?.enrollmentContactSync.pilotReadiness;
+  const controlledPilot = planSummary?.enrollmentContactSync.controlledPilot;
   const primaryStatus = displayStatus(readiness?.classification ?? "UNABLE_TO_VERIFY");
   const PrimaryIcon = primaryStatus.icon;
   const configuredJourneys = status
@@ -394,6 +455,44 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
         <p className="mt-3 text-xs font-medium text-warning">No live Sync control is available in this phase. Production automation and the global kill switch remain authoritative.</p>
       </section>
 
+      <section className="rounded-xl border border-border bg-input p-4" aria-labelledby="controlled-contact-sync-heading">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-[0.16em] text-muted">Phase 7B.6B · dormant by default</p>
+            <h5 className="mt-1 text-sm font-semibold text-foreground" id="controlled-contact-sync-heading">Controlled Contact Sync Pilot</h5>
+            <p className="mt-1 text-xs leading-5 text-secondary">One server-selected MSP, one email, and one durable execution reservation. This does not use the outbox or enable automatic synchronization.</p>
+          </div>
+          <Badge status={controlledPilot?.executionAuthorized ? "complete" : "waiting_on_kzero"}>
+            {controlledPilot?.executionAuthorized ? "Execution window authorized" : controlledPilot?.readiness.verificationOnly ? "Verification only" : "Not authorized"}
+          </Badge>
+        </div>
+        <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+          <div><dt className="text-muted">Selected MSP</dt><dd className="mt-1 text-foreground">{controlledPilot?.targetMsp ?? "Not configured"}</dd></div>
+          <div><dt className="text-muted">Exact target</dt><dd className="mt-1 break-all text-foreground">{controlledPilot?.targetEmail ?? "Not configured"}</dd></div>
+          <div><dt className="text-muted">Destination</dt><dd className="mt-1 text-foreground">{controlledPilot?.destinationList ?? "KZero Partner Onboarding"}</dd></div>
+          <div><dt className="text-muted">Suppression check</dt><dd className="mt-1 text-foreground">{pilotPreview?.membership ? pilotPreview.membership.complete ? pilotPreview.membership.statuses.join(", ") || "No membership found" : "Incomplete" : "Preview required"}</dd></div>
+          <div><dt className="text-muted">Previous attempt</dt><dd className="mt-1 text-foreground">{controlledPilot?.lastAttemptAt ? new Date(controlledPilot.lastAttemptAt).toLocaleString() : "None"}</dd></div>
+          <div><dt className="text-muted">Previous outcome</dt><dd className="mt-1 text-foreground">{controlledPilot?.lastOutcome ?? "None"}</dd></div>
+          <div><dt className="text-muted">Last verification</dt><dd className="mt-1 text-foreground">{pilotPreview?.previewedAt ? new Date(pilotPreview.previewedAt).toLocaleString() : controlledPilot?.lastVerificationAt ? new Date(controlledPilot.lastVerificationAt).toLocaleString() : "Never"}</dd></div>
+          <div><dt className="text-muted">Downstream Zoho automation</dt><dd className="mt-1 text-foreground">{controlledPilot?.downstreamAutomationVerified ? "Reviewed" : "Manual review required"}</dd></div>
+        </dl>
+        {controlledPilot?.readiness.blockers.length ? (
+          <ul className="mt-3 grid gap-1 border-t border-border pt-3 text-xs leading-5 text-secondary sm:grid-cols-2">
+            {controlledPilot.readiness.blockers.map((code) => <li className="break-words" key={code}>• {blockerCopy[code]?.label ?? humanize(code)}</li>)}
+          </ul>
+        ) : null}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button className="h-9" disabled={busy || !controlledPilot?.readiness.canPreview} onClick={() => void previewControlledPilot()} variant="outline">Preview Sync</Button>
+          <Button
+            className="h-9"
+            disabled={busy || !controlledPilot?.executionAuthorized || !pilotPreview?.membership?.complete || Boolean(pilotPreview.membership.statuses.length) || pilotPreview.outcome !== null}
+            onClick={() => void runControlledPilot()}
+          >Run Single-Contact Pilot</Button>
+        </div>
+        <p className="mt-2 text-xs leading-5 text-warning">The run control remains unavailable until the manual flag is enabled, the global kill switch is deliberately released, every automatic path remains disabled, and a fresh complete preview finds no active or suppressed membership.</p>
+        {pilotMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{pilotMessage}</p> : null}
+      </section>
+
       <section className="rounded-xl border border-border bg-input p-4" aria-labelledby="zoho-readiness-controls-heading">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -406,7 +505,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
             {planSummary?.administrativeControls.canManage ? "Staff ADMIN verified" : "Staff ADMIN required"}
           </Badge>
         </div>
-        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Plan and owner</p>
             <p className="mt-2 text-sm text-foreground">
@@ -455,6 +554,20 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
             >
               Verify List Privacy
             </Button>
+          </div>
+          <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Downstream Zoho automation</p>
+            <p className="mt-2 text-sm text-foreground">{controlledPilot?.downstreamAutomationVerified ? "Manual review recorded" : "Zoho UI review required"}</p>
+            <p className="mt-1 text-xs leading-5 text-secondary">Confirm that adding this contact cannot trigger an active journey, workflow, campaign, or email.</p>
+            <Button
+              className="mt-auto h-9 self-start"
+              disabled={busy || !planSummary?.administrativeControls.canManage || controlledPilot?.downstreamAutomationVerified}
+              onClick={() => {
+                const evidence = window.prompt("Enter the approved Zoho UI review, ticket, or change record reference.");
+                if (evidence?.trim()) void runReadinessControl("VERIFY_DOWNSTREAM_AUTOMATION", "Record this downstream-automation review for the exact pilot plan and contact?", evidence.trim());
+              }}
+              variant="outline"
+            >Record Review</Button>
           </div>
         </div>
         {readinessControlMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{readinessControlMessage}</p> : null}
