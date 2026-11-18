@@ -1,5 +1,15 @@
 # Phase 7B.6A — controlled enrollment-contact pilot preparation
 
+## Administrative readiness controls
+
+The MSP Case Preview now exposes three narrowly scoped controls for the configured single-contact pilot. They require an individually authenticated Staff SSO `ADMIN`, an exact server-side plan/email target match, and existing individually attributable permission evidence.
+
+- **Approve Plan & Owner** uses the existing `automationEnrollmentState` and `PlanContact.automationEnabled` fields. It is limited to native plans and records `msp_pilot.automation_approved` in `ZohoAutomationAudit`.
+- **Assign Context** uses the existing one-context-per-normalized-email `ZohoCommunicationContext` ledger. It refuses blocked, release-pending, foreign-owned, competing, or ineligible contexts and records `msp_pilot.communication_context_assigned`.
+- **Verify List Privacy** uses the documented, bounded, read-only Get Mailing Lists discovery. It requires one exact configured list-name/key match with `is_public=false`, then records sanitized evidence as `zoho.mailing_list.privacy_verified`. It never stores or returns the ListKey.
+
+All actions are idempotent and re-read persisted readiness after completion. They do not create/release outbox events, subscribe contacts, trigger journeys, change feature flags, or bypass the global kill switch. The privacy API may return no authoritative `is_public` value for some portals; in that case verification fails closed and requires investigation with Zoho Support.
+
 ## Outcome
 
 Phase 7B.6A adds a read-only, MSP-specific pilot-readiness preview. It does not add a contact-sync action, create or release outbox events, call Zoho, or enable any production automation control.

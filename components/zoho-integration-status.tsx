@@ -41,6 +41,14 @@ type PreviewPayload = {
 };
 
 type PlanAutomationSummary = {
+  administrativeControls: {
+    canManage: boolean;
+    communicationContextAssigned: boolean;
+    listPrivacyEvidenceAt: string | null;
+    listPrivacyEvidenceSource: string;
+    listPrivacyVerified: boolean;
+    planAndOwnerApproved: boolean;
+  };
   automationEnrollmentState: string;
   communicationContext: { activePlanId: string | null; state: string } | null;
   enrollmentContactSync: {
@@ -141,6 +149,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
+  const [readinessControlMessage, setReadinessControlMessage] = useState<string | null>(null);
   const [lastEvaluatedAt, setLastEvaluatedAt] = useState<string | null>(null);
 
   const loadDetails = useCallback(async () => {
@@ -266,6 +275,46 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     }
   }
 
+  async function runReadinessControl(
+    action: "APPROVE_AUTOMATION" | "ASSIGN_CONTEXT" | "VERIFY_LIST_PRIVACY",
+    confirmation: string
+  ) {
+    if (!window.confirm(confirmation)) return;
+    setBusy(true);
+    setError(null);
+    setReadinessControlMessage(null);
+    try {
+      const response = await fetch(
+        `/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}/readiness-controls`,
+        {
+          body: JSON.stringify({ action, confirmed: true }),
+          headers: { "content-type": "application/json" },
+          method: "POST"
+        }
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        changed?: boolean;
+        error?: string;
+        summary?: PlanAutomationSummary;
+      } | null;
+      if (!response.ok || !payload?.summary) {
+        throw new Error(payload?.error ?? "The readiness setting could not be updated.");
+      }
+      setPlanSummary(payload.summary);
+      setReadinessControlMessage(
+        payload.changed
+          ? "Readiness state updated and audited. No event or Zoho write was created."
+          : "The requested readiness state was already satisfied; no duplicate change was recorded."
+      );
+      await loadDetails();
+      setLastEvaluatedAt(new Date().toISOString());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The readiness setting could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const blockerGroups = useMemo(() => {
     const groups = new Map<BlockerCategory, Array<{ code: string; kind: BlockerKind; label: string }>>();
     for (const code of planSummary?.enrollmentContactSync.readiness.blockers ?? []) {
@@ -343,6 +392,72 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
           </ul>
         ) : null}
         <p className="mt-3 text-xs font-medium text-warning">No live Sync control is available in this phase. Production automation and the global kill switch remain authoritative.</p>
+      </section>
+
+      <section className="rounded-xl border border-border bg-input p-4" aria-labelledby="zoho-readiness-controls-heading">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h5 className="text-sm font-semibold text-foreground" id="zoho-readiness-controls-heading">Administrative readiness controls</h5>
+            <p className="mt-1 text-xs leading-5 text-secondary">
+              These plan-scoped controls record approval or verify configuration. They cannot prepare events, contact Zoho with a write, or enable dispatch.
+            </p>
+          </div>
+          <Badge status={planSummary?.administrativeControls.canManage ? "complete" : "waiting_on_kzero"}>
+            {planSummary?.administrativeControls.canManage ? "Staff ADMIN verified" : "Staff ADMIN required"}
+          </Badge>
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+          <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Plan and owner</p>
+            <p className="mt-2 text-sm text-foreground">
+              {planSummary?.administrativeControls.planAndOwnerApproved ? "Automation approval recorded" : "Approval required"}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-secondary">Approves only this native pilot plan and its matching Onboarding Owner.</p>
+            <Button
+              className="mt-auto h-9 self-start"
+              disabled={busy || !planSummary?.administrativeControls.canManage || planSummary.administrativeControls.planAndOwnerApproved}
+              onClick={() => void runReadinessControl("APPROVE_AUTOMATION", "Approve this plan and its matching Onboarding Owner for controlled pilot readiness?")}
+              variant="outline"
+            >
+              Approve Plan &amp; Owner
+            </Button>
+          </div>
+          <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Communication context</p>
+            <p className="mt-2 text-sm text-foreground">
+              {planSummary?.administrativeControls.communicationContextAssigned ? "This plan owns the context" : "Assignment required"}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-secondary">Assignment fails closed if another plan owns or competes for this email identity.</p>
+            <Button
+              className="mt-auto h-9 self-start"
+              disabled={busy || !planSummary?.administrativeControls.canManage || !planSummary.administrativeControls.planAndOwnerApproved || planSummary.administrativeControls.communicationContextAssigned}
+              onClick={() => void runReadinessControl("ASSIGN_CONTEXT", "Assign this plan as the active communication context for its Onboarding Owner?")}
+              variant="outline"
+            >
+              Assign Context
+            </Button>
+          </div>
+          <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Mailing-list privacy</p>
+            <p className="mt-2 text-sm text-foreground">
+              {planSummary?.administrativeControls.listPrivacyVerified ? "Private list verified" : "Verification required"}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-secondary">
+              {planSummary?.administrativeControls.listPrivacyVerified
+                ? `Evidence: ${humanize(planSummary.administrativeControls.listPrivacyEvidenceSource)}`
+                : "Uses Zoho's read-only mailing-list discovery and requires is_public=false."}
+            </p>
+            <Button
+              className="mt-auto h-9 self-start"
+              disabled={busy || !planSummary?.administrativeControls.canManage || planSummary.administrativeControls.listPrivacyVerified}
+              onClick={() => void runReadinessControl("VERIFY_LIST_PRIVACY", "Run the read-only Zoho mailing-list privacy verification now?")}
+              variant="outline"
+            >
+              Verify List Privacy
+            </Button>
+          </div>
+        </div>
+        {readinessControlMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{readinessControlMessage}</p> : null}
       </section>
 
       <div>

@@ -25,6 +25,7 @@ import {
 import { normalizeZohoRecipientEmail } from "@/lib/zoho-foundation";
 import { ZohoAdminValidationError } from "@/lib/zoho-validation";
 import { evaluateZohoTestPolicy } from "@/lib/zoho-test-policy";
+import { getPersistedListPrivacyVerification } from "@/lib/zoho-pilot-admin";
 
 const JOURNEY_NAMES = {
   J1: "ONB J1 Welcome and Kickoff Booking",
@@ -58,7 +59,7 @@ async function recordAudit(input: {
 }
 
 export async function getZohoPhase2Status(planId?: string) {
-  const [lastFieldDiscovery, lastJourneyDiscovery, lastTest] = await Promise.all([
+  const [lastFieldDiscovery, lastJourneyDiscovery, lastTest, listPrivacyAudit] = await Promise.all([
     prisma.zohoAutomationAudit.findFirst({
       where: { action: "zoho.fields.discovered" },
       orderBy: { createdAt: "desc" },
@@ -76,11 +77,17 @@ export async function getZohoPhase2Status(planId?: string) {
       },
       orderBy: { createdAt: "desc" },
       select: { action: true, createdAt: true, reason: true }
-    })
+    }),
+    getPersistedListPrivacyVerification()
   ]);
 
+  const configuration = getZohoConfigurationStatus();
+
   return {
-    configuration: getZohoConfigurationStatus(),
+    configuration: {
+      ...configuration,
+      listPrivacyVerified: configuration.listPrivacyVerified || Boolean(listPrivacyAudit)
+    },
     lastFieldDiscovery,
     lastJourneyDiscovery,
     lastTestResult: lastTest

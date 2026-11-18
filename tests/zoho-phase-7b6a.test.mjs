@@ -186,3 +186,65 @@ test("pilot configuration is singular, server-only, and disabled automation defa
     "ZOHO_JOURNEY_TRIGGERING_ENABLED=false"
   ]) assert.match(env, new RegExp(setting));
 });
+
+test("pilot readiness controls require an individual ADMIN and explicit supported action", async () => {
+  const route = await read("app/api/admin/zoho/automation/plans/[planId]/readiness-controls/route.ts");
+  assert.match(route, /getSensitiveAdminApiAuthError\(request, "ADMIN"\)/);
+  assert.match(route, /getSensitiveAdminAuditActor/);
+  assert.match(route, /body\.confirmed !== true/);
+  assert.match(route, /APPROVE_AUTOMATION/);
+  assert.match(route, /ASSIGN_CONTEXT/);
+  assert.match(route, /VERIFY_LIST_PRIVACY/);
+});
+
+test("plan and owner approval is exact-pilot scoped, audited, and idempotent", async () => {
+  const service = await read("lib/zoho-pilot-admin.ts");
+  assert.match(service, /pilot\.planId !== planId \|\| pilot\.email !== primaryEmail/);
+  assert.match(service, /automationOrigin !== "NATIVE"/);
+  assert.match(service, /actor: \{ startsWith: "oidc:" \}/);
+  assert.match(service, /automationEnrollmentState === "ACTIVE" && contact\.automationEnabled/);
+  assert.match(service, /msp_pilot\.automation_approved/);
+  assert.match(service, /automationEnabled: true/);
+  assert.match(service, /assertPilotAdministrationSafeguards\(\)/);
+  assert.match(service, /!dispatch\.globalKillSwitch/);
+  assert.match(service, /isZohoEventEmissionEnabled\(\)/);
+  assert.match(service, /getZohoMspEnrollmentSyncConfiguration\(\)\.enabled/);
+});
+
+test("context assignment protects competing owners and does not release existing contexts", async () => {
+  const service = await read("lib/zoho-pilot-admin.ts");
+  assert.match(service, /zoho-context:/);
+  assert.match(service, /context\.state !== "UNASSIGNED"/);
+  assert.match(service, /Another active plan uses this communication identity/);
+  assert.match(service, /msp_pilot\.communication_context_assigned/);
+  assert.doesNotMatch(service, /releaseRequestedAt|releasedAt|dispatchZoho|createZohoContactSyncEvent/);
+});
+
+test("list privacy verification uses exact read-only API evidence and stores no ListKey", async () => {
+  const service = await read("lib/zoho-pilot-admin.ts");
+  assert.match(service, /discoverMailingLists\(\{ maxPages: 10, pageSize: 100 \}\)/);
+  assert.match(service, /list\.listKey === listKey && list\.listName === ZOHO_TEST_MAILING_LIST_NAME/);
+  assert.match(service, /matches\[0\]\.isPublic !== false/);
+  assert.match(service, /getmailinglists:is_public=false/);
+  assert.doesNotMatch(service, /addLeadsInBulk|triggerJourney|subscribe/);
+});
+
+test("readiness controls refresh persisted state without creating outbox work", async () => {
+  const route = await read("app/api/admin/zoho/automation/plans/[planId]/readiness-controls/route.ts");
+  assert.match(route, /getZohoPlanAutomationSummary/);
+  assert.doesNotMatch(route, /createZohoContactSyncEvent|prepareMspEnrollmentContactSync|dispatchZohoOutboxBatch/);
+  const center = await read("lib/zoho-admin-center.ts");
+  assert.match(center, /listPrivacyVerified = configuration\.listPrivacyVerified \|\| Boolean\(listPrivacyAudit\)/);
+  assert.match(center, /planAndOwnerApproved/);
+  assert.match(center, /communicationContextAssigned/);
+});
+
+test("case preview exposes compact ADMIN controls but no live synchronization action", async () => {
+  const ui = await read("components/zoho-integration-status.tsx");
+  assert.match(ui, /Administrative readiness controls/);
+  assert.match(ui, /Approve Plan &amp; Owner/);
+  assert.match(ui, /Assign Context/);
+  assert.match(ui, /Verify List Privacy/);
+  assert.match(ui, /They cannot prepare events, contact Zoho with a write, or enable dispatch/);
+  assert.doesNotMatch(ui, />Sync Pilot Contact</);
+});

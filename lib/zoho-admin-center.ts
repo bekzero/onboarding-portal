@@ -14,6 +14,7 @@ import { getZohoAutomationReadiness } from "@/lib/zoho-readiness";
 import { isValidEmailAddress } from "@/lib/zoho-validation";
 import { prisma } from "@/lib/prisma";
 import { getAuthorizedStaffIdentity, isStaffOidcConfigured } from "@/lib/staff-auth";
+import { getPersistedListPrivacyVerification } from "@/lib/zoho-pilot-admin";
 
 const JOURNEYS = [
   { id: "J1", name: "Welcome and Kickoff Booking" },
@@ -44,7 +45,7 @@ export function sanitizeZohoAdminText(value: string | null | undefined) {
 export async function getZohoAdminOverview() {
   const configuration = getZohoConfigurationStatus();
   const staffAdmin = await getAuthorizedStaffIdentity("ADMIN");
-  const [pending, held, retrying, failed, processing, uncertain, lastSync, nudgeSummary, stopEvents, audits] = await Promise.all([
+  const [pending, held, retrying, failed, processing, uncertain, lastSync, nudgeSummary, stopEvents, audits, listPrivacyAudit] = await Promise.all([
     prisma.zohoOutboxEvent.count({ where: { status: "PENDING" } }),
     prisma.zohoOutboxEvent.count({ where: { status: "HELD" } }),
     prisma.zohoOutboxEvent.count({ where: { status: "RETRY" } }),
@@ -72,7 +73,8 @@ export async function getZohoAdminOverview() {
       orderBy: { createdAt: "desc" },
       take: 20,
       select: { action: true, createdAt: true, reason: true }
-    })
+    }),
+    getPersistedListPrivacyVerification()
   ]);
 
   const journeyConfig = configuration.journeys as Record<string, { journeyKeyPresent: boolean; triggerKeyPresent: boolean }>;
@@ -82,6 +84,7 @@ export async function getZohoAdminOverview() {
     lastSuccessfulSynchronization: lastSync?.updatedAt ?? null,
     configuration: {
       ...configuration,
+      listPrivacyVerified: configuration.listPrivacyVerified || Boolean(listPrivacyAudit),
       cronSecretPresent: Boolean(process.env.CRON_SECRET?.trim()),
       productionDispatchApproved: process.env.ZOHO_PRODUCTION_DISPATCH_APPROVED?.trim().toLowerCase() === "true",
       staffIdentityConfigured: isStaffOidcConfigured()
@@ -103,9 +106,9 @@ export async function getZohoAdminOverview() {
     },
     sensitiveActions: {
       identityAuthorized: Boolean(staffAdmin),
-      enabled: false,
+      enabled: Boolean(staffAdmin),
       reason: staffAdmin
-        ? "Individual ADMIN authorization is verified. Operational context, enrollment, and cancellation workflows remain disabled until their Phase 6 controls are implemented."
+        ? "Individual ADMIN authorization is verified. The exact-target pilot readiness controls are available; broader release, enrollment, cancellation, and dispatch workflows remain disabled."
         : await isStaffOidcConfigured()
           ? "Sign in with an individually attributable staff ADMIN identity to authorize sensitive operations."
           : "The approved staff identity provider is not configured. Shared access cannot authorize sensitive operations."
@@ -283,7 +286,7 @@ export async function getZohoPlanAutomationSummary(
   });
   if (!plan) return null;
   const owner = plan.planContacts[0];
-  const [readiness, context, lastSync, lastJourney, eventCounts, permissionAudit, enrollmentEvent] = await Promise.all([
+  const [readiness, context, lastSync, lastJourney, eventCounts, permissionAudit, enrollmentEvent, listPrivacyAudit] = await Promise.all([
     getZohoAutomationReadiness(planId),
     owner ? prisma.zohoCommunicationContext.findUnique({ where: { recipientEmailNormalized: owner.normalizedEmail }, select: { activePlanId: true, state: true } }) : null,
     prisma.zohoOutboxEvent.findFirst({ where: { onboardingPlanId: plan.id, eventType: "UPSERT_CONTACT", status: "SUCCEEDED" }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true, lastProviderOutcome: true } }),
@@ -305,9 +308,11 @@ export async function getZohoPlanAutomationSummary(
       where: { onboardingPlanId: plan.id, eventKey: { startsWith: "contact-sync:msp-enrolled:" } },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true, holdReason: true, lastProviderOutcome: true, status: true }
-    })
+    }),
+    getPersistedListPrivacyVerification()
   ]);
   const configuration = getZohoConfigurationStatus();
+  const listPrivacyVerified = configuration.listPrivacyVerified || Boolean(listPrivacyAudit);
   const dispatch = getZohoDispatchConfiguration();
   const pilot = getZohoMspEnrollmentPilotConfiguration();
   const permissionEvidenceReference = permissionAudit?.evidenceReference?.trim() ?? "";
@@ -336,7 +341,7 @@ export async function getZohoPlanAutomationSummary(
     providerConfigurationReady: Boolean(
       configuration.oauthConfigured &&
       configuration.listKeyPresent &&
-      configuration.listPrivacyVerified &&
+      listPrivacyVerified &&
       configuration.fieldMappingVerified
     ),
     subscriptionStatus: owner?.subscriptionStatus ?? null,
@@ -352,7 +357,7 @@ export async function getZohoPlanAutomationSummary(
     evidenceReference: permissionEvidenceReference,
     globalKillSwitch: dispatch.globalKillSwitch,
     hasUnresolvedEnrollmentEvent: Boolean(enrollmentEvent && !["SUCCEEDED", "CANCELLED", "DEAD"].includes(enrollmentEvent.status)),
-    listPrivacyVerified: configuration.listPrivacyVerified,
+    listPrivacyVerified,
     permissionConfirmed: Boolean(permissionAudit),
     pilotTargetConfigured: pilot.configured,
     pilotTargetMatches: pilot.configured && pilot.planId === plan.planId && pilot.email === primaryEmailNormalized,
@@ -366,6 +371,18 @@ export async function getZohoPlanAutomationSummary(
     readiness,
     subscriptionStatus: owner?.subscriptionStatus ?? null,
     communicationContext: context,
+    administrativeControls: {
+      canManage: options.currentStaffRole === "ADMIN",
+      communicationContextAssigned: context?.state === "ACTIVE" && context.activePlanId === plan.id,
+      listPrivacyEvidenceAt: listPrivacyAudit?.createdAt ?? null,
+      listPrivacyEvidenceSource: configuration.listPrivacyVerified
+        ? "DEPLOYMENT_CONFIGURATION"
+        : listPrivacyAudit
+          ? "ZOHO_READ_ONLY_API"
+          : "UNVERIFIED",
+      listPrivacyVerified,
+      planAndOwnerApproved: plan.automationEnrollmentState === "ACTIVE" && owner?.automationEnabled === true
+    },
     lastSuccessfulContactSync: lastSync,
     lastJourneyOutcome: lastJourney,
     nudge: { status: plan.nudgeStatus, taskKey: plan.nudgeTaskKey },
