@@ -61,7 +61,7 @@ type CreateJourneyTriggerInput = Omit<CreateZohoOutboxEventInput, "eventType"> &
 };
 
 async function lockStableKey(transaction: ZohoTransaction, stableKey: string) {
-  await transaction.$queryRaw(Prisma.sql`
+  await transaction.$executeRaw(Prisma.sql`
     SELECT pg_advisory_xact_lock(hashtextextended(${stableKey}, 0))
   `);
 }

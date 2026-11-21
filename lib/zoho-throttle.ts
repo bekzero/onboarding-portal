@@ -8,7 +8,7 @@ const WINDOW_MS = 5 * 60_000;
 
 export async function reserveZohoApiCapacity(operation: ZohoApiOperation, now = new Date()) {
   return prisma.$transaction(async (transaction) => {
-    await transaction.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-throttle:${operation}`}, 0))`);
+    await transaction.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-throttle:${operation}`}, 0))`);
     const current = await transaction.zohoApiThrottle.upsert({
       where: { operation }, create: { operation, windowStartedAt: now }, update: {}
     });
