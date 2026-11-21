@@ -23,7 +23,7 @@ export type ZohoErrorKind =
   | "INELIGIBLE_RECIPIENT"
   | "PROVIDER";
 
-export type ZohoDiagnosticStage = "OAuth" | "getleads" | "parsing" | "pagination";
+export type ZohoDiagnosticStage = "OAuth" | "field-discovery" | "getleads" | "parsing" | "pagination";
 
 export class ZohoApiError extends Error {
   constructor(
@@ -376,7 +376,8 @@ export function classifyZohoListMembership(
 export function parseLeadFields(payload: unknown): ZohoLeadField[] {
   if (!isRecord(payload)) throw new ZohoApiError("Zoho field response is invalid.", "INVALID_RESPONSE");
   const response = isRecord(payload.response) ? payload.response : payload;
-  const fields = response.fieldname;
+  const fieldNames = isRecord(response.fieldnames) ? response.fieldnames : null;
+  const fields = fieldNames?.fieldname ?? response.fieldname;
   if (!Array.isArray(fields)) throw new ZohoApiError("Zoho field response has no field list.", "INVALID_RESPONSE");
 
   return fields.map((item) => {
@@ -664,8 +665,22 @@ export class ZohoApiClientCore {
   }
 
   async getAllLeadFields() {
-    const payload = await this.request("/api/v1/lead/allfields?type=json");
-    return parseLeadFields(payload);
+    let httpStatus: number | undefined;
+    let responseCode: string | undefined;
+    try {
+      const result = await this.requestResult("/api/v1/lead/allfields?type=JSON");
+      httpStatus = result.status;
+      responseCode = providerCode(result.payload);
+      return parseLeadFields(result.payload);
+    } catch (error) {
+      logZohoDiagnostic({
+        classification: error instanceof ZohoApiError ? error.kind : "INVALID_RESPONSE",
+        httpStatus: httpStatus ?? (error instanceof ZohoApiError ? error.options.status : undefined),
+        providerCode: responseCode ?? (error instanceof ZohoApiError ? error.options.providerCode : undefined),
+        stage: error instanceof ZohoApiError && error.options.diagnosticStage === "OAuth" ? "OAuth" : "field-discovery"
+      });
+      throw error;
+    }
   }
 
   async getOpenJourneys() {

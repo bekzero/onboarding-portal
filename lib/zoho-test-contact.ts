@@ -88,6 +88,9 @@ export async function syncZohoTestContact(input: {
   }
   const { normalizedEmail } = normalizeRequiredEmail(input.email, "Test contact email");
   const test = getZohoTestContactSyncConfiguration();
+  if (getZohoDispatchConfiguration().exactEventDispatchEnabled) {
+    throw new ZohoAdminValidationError("Test Contact Sync is unavailable during exact-event maintenance.", 403);
+  }
   if (!test.enabled) {
     throw new ZohoAdminValidationError("Zoho test contact synchronization is disabled.", 403);
   }

@@ -19,6 +19,7 @@ type StatusPayload = {
     contactSynchronizationEnabled: boolean;
     dispatchMode: string;
     eventEmissionEnabled: boolean;
+    exactEventDispatchEnabled: boolean;
     fieldMappingVerified: boolean;
     globalKillSwitch: boolean;
     journeyTriggeringEnabled: boolean;
@@ -495,7 +496,8 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     !status.configuration.nudgeEvaluationEnabled &&
     !status.configuration.singleContactPilotEnabled &&
     !status.configuration.testContactSync.enabled &&
-    status.configuration.testMode.enabled &&
+    status.configuration.exactEventDispatchEnabled &&
+    !status.configuration.testMode.enabled &&
     status.configuration.testMode.allowlistedEmailCount === 1 &&
     status.configuration.testMode.allowlistedPlanCount === 1
   );

@@ -348,6 +348,78 @@ test("MA 2.0 field metadata maps the corrected Next Task Tip and all required fi
   assert.equal(Object.hasOwn(leadInfo, "CONTACT_CF29"), false);
 });
 
+test("field discovery accepts the verified response.fieldnames.fieldname structure", async () => {
+  const calls = [];
+  const fetchImpl = sequenceFetch([
+    jsonResponse({ access_token: "token", expires_in: 3600 }),
+    jsonResponse({
+      response: {
+        code: "0",
+        fieldnames: {
+          fieldname: [{
+            DISPLAY_NAME: "Next Task Tip",
+            FIELD_ID: "1329658000000112002",
+            FIELD_NAME: "CONTACT_CF32",
+            TYPE: "custom",
+            UITYPE: "text",
+            is_otheruser_field: false
+          }]
+        }
+      }
+    })
+  ], calls);
+  const client = new ZohoApiClientCore(
+    new ZohoOAuthTokenManager({ clientId: "client", clientSecret: "secret", refreshToken: "refresh" }, fetchImpl),
+    fetchImpl
+  );
+
+  const fields = await client.getAllLeadFields();
+  assert.deepEqual(fields, [{
+    allowedValues: null,
+    dataType: "text",
+    displayName: "Next Task Tip",
+    fieldId: "1329658000000112002",
+    fieldName: "CONTACT_CF32"
+  }]);
+  assert.equal(calls[1].input, "https://marketingautomation.zoho.com/api/v1/lead/allfields?type=JSON");
+  assert.equal(calls[1].init.headers.Authorization, "Zoho-oauthtoken token");
+});
+
+test("field discovery rejects malformed nested data and HTTP-200 application errors", async () => {
+  assert.throws(
+    () => parseLeadFields({ response: { code: "0", fieldnames: {} } }),
+    (error) => error instanceof ZohoApiError && error.kind === "INVALID_RESPONSE"
+  );
+
+  const diagnostics = [];
+  const originalError = console.error;
+  console.error = (...args) => diagnostics.push(args);
+  try {
+    const fetchImpl = sequenceFetch([
+      jsonResponse({ access_token: "token", expires_in: 3600 }),
+      jsonResponse({ response: { code: "2001", message: "Invalid field request" } })
+    ]);
+    const client = new ZohoApiClientCore(
+      new ZohoOAuthTokenManager({ clientId: "client", clientSecret: "secret", refreshToken: "refresh" }, fetchImpl),
+      fetchImpl
+    );
+    await assert.rejects(
+      client.getAllLeadFields(),
+      (error) => error instanceof ZohoApiError && error.kind === "PROVIDER" && error.options.providerCode === "2001"
+    );
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(diagnostics[0][1], {
+    classification: "PROVIDER",
+    correlationId: "unavailable",
+    httpStatus: 200,
+    providerCode: "2001",
+    stage: "field-discovery"
+  });
+});
+
 test("journey discovery accepts triggerkey and trigger_key variants", () => {
   const journeys = parseJourneys({
     journeys: [

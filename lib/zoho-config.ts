@@ -52,6 +52,7 @@ export function getZohoDispatchConfiguration() {
     automaticDispatchEnabled: enabled("ZOHO_AUTOMATIC_DISPATCH_ENABLED"),
     batchSize: Math.max(1, Math.min(25, Number.isFinite(batch) ? Math.trunc(batch) : 10)),
     contactSyncEnabled: enabled("ZOHO_CONTACT_SYNC_ENABLED") || enabled("ZOHO_DISPATCH_ENABLED"),
+    exactEventDispatchEnabled: enabled("ZOHO_EXACT_EVENT_DISPATCH_ENABLED"),
     globalKillSwitch: !process.env.ZOHO_GLOBAL_KILL_SWITCH || enabled("ZOHO_GLOBAL_KILL_SWITCH"),
     journeyTriggeringEnabled: enabled("ZOHO_JOURNEY_TRIGGERING_ENABLED"),
     leaseSeconds: Math.max(30, Math.min(600, Number.isFinite(lease) ? Math.trunc(lease) : 120)),
@@ -170,6 +171,7 @@ export function getZohoConfigurationStatus() {
     automaticDispatchEnabled: dispatch.automaticDispatchEnabled,
     contactSynchronizationEnabled: dispatch.contactSyncEnabled,
     dispatchMode: dispatch.mode,
+    exactEventDispatchEnabled: dispatch.exactEventDispatchEnabled,
     eventEmissionEnabled:
       process.env.ZOHO_EVENT_EMISSION_ENABLED?.trim().toLowerCase() === "true",
     globalKillSwitch: dispatch.globalKillSwitch,

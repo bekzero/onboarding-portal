@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { evaluateFullFieldTestIntentReadiness } from "../lib/zoho-existing-plan-test-intent-core.ts";
+import { evaluateExactEventMaintenancePosture } from "../lib/zoho-exact-event-dispatch-core.ts";
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -91,14 +92,65 @@ test("preparation requires the kill switch and rejects every executable automati
   ]) assert.ok(evaluateFullFieldTestIntentReadiness(ready(override)).blockers.includes("AUTOMATION_PATH_ENABLED"));
 });
 
+function exactPosture(overrides = {}) {
+  return {
+    allowlistMatchesTarget: true,
+    automaticDispatchEnabled: false,
+    contactSyncEnabled: true,
+    eventEmissionEnabled: false,
+    exactEventDispatchEnabled: true,
+    fieldMappingVerified: true,
+    globalKillSwitch: false,
+    journeyTriggeringEnabled: false,
+    legacyTestSyncEnabled: false,
+    listKeyPresent: true,
+    listPrivacyVerified: true,
+    mode: "test",
+    mspEnrollmentContactSyncEnabled: false,
+    nudgeEvaluationEnabled: false,
+    oauthConfigured: true,
+    productionApproved: false,
+    singleContactPilotEnabled: false,
+    testContactSyncEnabled: false,
+    topicIdValid: true,
+    ...overrides
+  };
+}
+
+test("exact-event maintenance requires its dedicated gate and exact allowlists", () => {
+  assert.deepEqual(evaluateExactEventMaintenancePosture(exactPosture()), { allowed: true, blockers: [] });
+  assert.ok(evaluateExactEventMaintenancePosture(exactPosture({ exactEventDispatchEnabled: false })).blockers.includes("EXACT_EVENT_DISPATCH_DISABLED"));
+  assert.ok(evaluateExactEventMaintenancePosture(exactPosture({ allowlistMatchesTarget: false })).blockers.includes("EXACT_TARGET_ALLOWLIST_MISMATCH"));
+  assert.ok(evaluateExactEventMaintenancePosture(exactPosture({ globalKillSwitch: true })).blockers.includes("GLOBAL_KILL_SWITCH_ENABLED"));
+});
+
+test("exact-event maintenance rejects every unrelated provider-write path", () => {
+  for (const override of [
+    { automaticDispatchEnabled: true },
+    { eventEmissionEnabled: true },
+    { journeyTriggeringEnabled: true },
+    { legacyTestSyncEnabled: true },
+    { mspEnrollmentContactSyncEnabled: true },
+    { nudgeEvaluationEnabled: true },
+    { productionApproved: true },
+    { singleContactPilotEnabled: true },
+    { testContactSyncEnabled: true }
+  ]) {
+    assert.ok(evaluateExactEventMaintenancePosture(exactPosture(override)).blockers.includes("UNRELATED_WRITE_PATH_ENABLED"));
+  }
+});
+
 test("route and service enforce Staff ADMIN, exact server targeting, durable idempotency, audit, and no dispatch", async () => {
-  const [route, service, foundation, throttle, dispatchRoute, dispatcher] = await Promise.all([
+  const [route, service, foundation, throttle, dispatchRoute, dispatcher, legacyTest, testContact, pilot] = await Promise.all([
     readFile(new URL("../app/api/admin/zoho/automation/plans/[planId]/full-field-test-intent/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/zoho-existing-plan-test-intent.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/zoho-foundation.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/zoho-throttle.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/admin/zoho/dispatch/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../lib/zoho-dispatcher.ts", import.meta.url), "utf8")
+    readFile(new URL("../lib/zoho-dispatcher.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/zoho-phase2.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/zoho-test-contact.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/zoho-single-contact-pilot.ts", import.meta.url), "utf8")
   ]);
   assert.match(route, /getSensitiveAdminApiAuthError\(request, "ADMIN"\)/);
   assert.match(route, /getSensitiveAdminAuditActor/);
@@ -117,8 +169,16 @@ test("route and service enforce Staff ADMIN, exact server targeting, durable ide
   assert.doesNotMatch(service, /TRIGGER_JOURNEY|ZohoJourneySend/);
   assert.match(dispatchRoute, /DISPATCH ONE ALLOWLISTED FULL-FIELD TEST EVENT/);
   assert.match(dispatchRoute, /approvedEvent\.id !== body\.eventId/);
+  assert.match(dispatchRoute, /evaluateExactEventMaintenancePosture/);
+  assert.match(dispatchRoute, /Generic batch dispatch is unavailable during exact-event maintenance/);
   assert.match(dispatcher, /event\."id" = \$\{eventId\}/);
   assert.match(dispatcher, /dispatchExactZohoOutboxEvent/);
+  assert.match(dispatcher, /config\.exactEventDispatchEnabled/);
+  assert.match(dispatcher, /getFullFieldTestIntentKey\(target\.planId, target\.email\)/);
+  assert.match(dispatcher, /claim\.event\.eventType === "UPSERT_CONTACT"/);
+  assert.match(legacyTest, /Legacy test synchronization is unavailable during exact-event maintenance/);
+  assert.match(testContact, /Test Contact Sync is unavailable during exact-event maintenance/);
+  assert.match(pilot, /configuration\.exactEventDispatchEnabled/);
 });
 
 function createLockManager() {

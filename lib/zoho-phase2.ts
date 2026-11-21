@@ -13,6 +13,7 @@ import {
 import { getPersistedZohoContactSnapshot } from "@/lib/zoho-contact-snapshot";
 import {
   getZohoConfigurationStatus,
+  getZohoDispatchConfiguration,
   getZohoJourneyConfiguration,
   getZohoListKey,
   getZohoTestConfiguration
@@ -265,6 +266,9 @@ export async function performZohoTestSync(input: {
   planId: string;
   previewFingerprint: unknown;
 }) {
+  if (getZohoDispatchConfiguration().exactEventDispatchEnabled) {
+    throw new ZohoAdminValidationError("Legacy test synchronization is unavailable during exact-event maintenance.", 403);
+  }
   if (input.confirmation !== "ADD ALLOWLISTED TEST EMAIL") {
     throw new ZohoAdminValidationError("Explicit test-email confirmation is required.");
   }

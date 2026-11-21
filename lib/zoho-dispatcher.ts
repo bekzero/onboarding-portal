@@ -9,10 +9,12 @@ import {
   getZohoDispatchConfiguration,
   getZohoJourneyConfiguration,
   getZohoListKey,
+  getZohoMspEnrollmentPilotConfiguration,
   getZohoTestConfiguration,
   getZohoTestJourneyConfiguration
 } from "@/lib/zoho-config";
 import { getPersistedZohoContactSnapshot } from "@/lib/zoho-contact-snapshot";
+import { getFullFieldTestIntentKey } from "@/lib/zoho-existing-plan-test-intent";
 import type { ZohoDispatchProvider } from "@/lib/zoho-dispatch-provider";
 import { zohoDispatchProvider } from "@/lib/zoho-dispatch-provider";
 import { executeZohoProviderWorkflow } from "@/lib/zoho-dispatch-engine";
@@ -297,8 +299,23 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     return done({ status: "CANCELLED", reason: "PLAN_NOT_ELIGIBLE_FOR_CONTACT_SYNCHRONIZATION" });
   }
   const test = getZohoTestConfiguration();
-  if (config.mode === "test" && (!test.enabled || !test.allowedEmails.has(claim.event.recipientEmailNormalized) || !test.allowedPlanIds.has(state.plan.planId))) {
-    return done({ status: "HELD", reason: "TEST_TARGET_NOT_ALLOWLISTED" });
+  if (config.mode === "test") {
+    const target = getZohoMspEnrollmentPilotConfiguration();
+    const exactEventAllowed =
+      config.exactEventDispatchEnabled &&
+      target.configured &&
+      target.planId === state.plan.planId &&
+      target.email === claim.event.recipientEmailNormalized &&
+      claim.event.eventType === "UPSERT_CONTACT" &&
+      claim.event.eventKey === getFullFieldTestIntentKey(target.planId, target.email);
+    const legacyTestEventAllowed =
+      !config.exactEventDispatchEnabled &&
+      test.enabled &&
+      test.allowedEmails.has(claim.event.recipientEmailNormalized) &&
+      test.allowedPlanIds.has(state.plan.planId);
+    if (!exactEventAllowed && !legacyTestEventAllowed) {
+      return done({ status: "HELD", reason: "TEST_TARGET_NOT_ALLOWLISTED" });
+    }
   }
   if (config.mode === "production" && !config.productionApproved) {
     return done({ status: "HELD", reason: "PRODUCTION_DISPATCH_NOT_APPROVED" });
@@ -449,7 +466,7 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
 
 export async function dispatchZohoOutboxBatch(input: { provider?: ZohoDispatchProvider; maxEvents?: number } = {}) {
   const config = getZohoDispatchConfiguration();
-  if (config.globalKillSwitch || config.mode === "disabled") {
+  if (config.exactEventDispatchEnabled || config.globalKillSwitch || config.mode === "disabled") {
     return { claimed: 0, completed: 0, recoveredExpiredClaims: 0, disabled: true };
   }
   const recoveredExpiredClaims = await recoverExpiredClaims(new Date());
@@ -471,7 +488,7 @@ export async function dispatchExactZohoOutboxEvent(
   input: { provider?: ZohoDispatchProvider } = {}
 ) {
   const config = getZohoDispatchConfiguration();
-  if (config.globalKillSwitch || config.mode === "disabled") {
+  if (!config.exactEventDispatchEnabled || config.globalKillSwitch || config.mode === "disabled") {
     return { claimed: false, completed: false, disabled: true };
   }
   const claim = await claimEventById(eventId, new Date(), config.leaseSeconds);

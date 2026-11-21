@@ -119,7 +119,8 @@ function evaluateState(state: PilotState, staffAdminAuthorized: boolean): PilotR
     subscriptionEvidenceVerified: Boolean(state.subscriptionConfirmation?.evidenceReference),
     subscriptionStatus: state.owner.subscriptionStatus,
     syncOnEnrollmentEnabled: getZohoMspEnrollmentSyncConfiguration().enabled,
-    testWritePathsEnabled: configuration.testContactSync.enabled || configuration.testMode.enabled,
+    testWritePathsEnabled:
+      configuration.exactEventDispatchEnabled || configuration.testContactSync.enabled || configuration.testMode.enabled,
     unresolvedEnrollmentEvent: Boolean(state.unresolvedEvent)
   });
 }
@@ -302,7 +303,8 @@ async function reserveExecution(state: PilotState, actor: string) {
       !getZohoSingleContactPilotConfiguration().enabled || dispatch.globalKillSwitch || dispatch.automaticDispatchEnabled ||
       dispatch.contactSyncEnabled || dispatch.journeyTriggeringEnabled || dispatch.productionApproved || dispatch.mode !== "disabled" ||
       isZohoEventEmissionEnabled() || getZohoMspEnrollmentSyncConfiguration().enabled ||
-      currentConfiguration.nudgeEvaluationEnabled || currentConfiguration.testContactSync.enabled || currentConfiguration.testMode.enabled
+      currentConfiguration.exactEventDispatchEnabled || currentConfiguration.nudgeEvaluationEnabled ||
+      currentConfiguration.testContactSync.enabled || currentConfiguration.testMode.enabled
     ) throw new ZohoAdminValidationError("Pilot readiness changed before the execution reservation could be created.", 409);
 
     const reservation = await createZohoAutomationAuditInTransaction(transaction, {
