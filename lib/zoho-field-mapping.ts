@@ -29,6 +29,24 @@ export const ZOHO_CUSTOM_FIELDS = [
 
 export const ZOHO_BUILT_IN_FIELDS = ["Lead Email", "First Name", "Last Name"] as const;
 
+// Zoho accepts these fields in discovery, but listsubscribe currently rejects
+// their datetime values with application code 2001. Keep discovering and
+// storing them; omit them only at the outbound API boundary.
+export const ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS = [
+  "Next Task Since",
+  "Last MSP Activity",
+  "Last SE Touch"
+] as const;
+
+const listSubscribeExcludedFields = new Set<string>(ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS);
+
+export const ZOHO_LISTSUBSCRIBE_FIELDS = [
+  ...ZOHO_BUILT_IN_FIELDS,
+  ...ZOHO_CUSTOM_FIELDS
+    .map(([name]) => name)
+    .filter((name) => !listSubscribeExcludedFields.has(name))
+] as ZohoContactDisplayField[];
+
 export type ZohoContactDisplayField =
   | (typeof ZOHO_BUILT_IN_FIELDS)[number]
   | (typeof ZOHO_CUSTOM_FIELDS)[number][0];
@@ -154,9 +172,9 @@ export function buildZohoLeadInfo(
   }
 
   return Object.fromEntries(
-    Object.entries(snapshot).map(([displayName, fieldValue]) => [
-      mapping.identifiers[displayName],
-      fieldValue ?? ""
-    ])
+    ZOHO_LISTSUBSCRIBE_FIELDS.map((displayName) => {
+      const fieldValue = snapshot[displayName];
+      return [displayName, fieldValue ?? ""];
+    })
   ) as Record<string, string | number>;
 }

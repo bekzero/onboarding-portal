@@ -186,7 +186,7 @@ export function evaluateZohoAutomationReadiness(
   if (process.env.ZMA_FIELD_MAPPING_VERIFIED?.trim().toLowerCase() !== "true") {
     reasons.push({
       code: "FIELD_MAPPING_UNVERIFIED",
-      message: "Zoho custom-field identifiers require a controlled write verification."
+      message: "The Zoho display-name field payload requires controlled portal write verification."
     });
   }
   if (process.env.ZMA_PRIVATE_LIST_VERIFIED?.trim().toLowerCase() !== "true") {

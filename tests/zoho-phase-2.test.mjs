@@ -6,6 +6,7 @@ import {
   ZohoApiError,
   ZohoOAuthTokenManager,
   classifyZohoListMembership,
+  parseLeadFields,
   parseJourneys,
   parseSubscribeResult
 } from "../lib/zoho-api-core.ts";
@@ -23,8 +24,11 @@ import {
 import {
   ZOHO_BUILT_IN_FIELDS,
   ZOHO_CUSTOM_FIELDS,
+  ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS,
+  ZOHO_LISTSUBSCRIBE_FIELDS,
   buildZohoFieldDiscoveryReport,
-  buildZohoLeadInfo
+  buildZohoLeadInfo,
+  getZohoFieldIdentifierMap
 } from "../lib/zoho-field-mapping.ts";
 import { getTaskTimeEstimateMinutes } from "../lib/onboarding-time-estimates.ts";
 import { evaluateZohoTestPolicy } from "../lib/zoho-test-policy.ts";
@@ -274,6 +278,74 @@ test("field discovery blocks missing or ambiguous custom identifiers", () => {
   const incomplete = fields.filter((field) => field.displayName !== "Plan ID");
   assert.equal(buildZohoFieldDiscoveryReport(incomplete).find((field) => field.expectedField === "Plan ID").mappingStatus, "MISSING");
   assert.throws(() => buildZohoLeadInfo(createZohoContactSnapshot(baseSnapshotInput()), incomplete), /mapping is incomplete/i);
+});
+
+test("MA 2.0 field metadata maps the corrected Next Task Tip and all required fields uniquely", () => {
+  assert.deepEqual(ZOHO_LISTSUBSCRIBE_FIELDS, [
+    "Lead Email", "First Name", "Last Name",
+    "Plan ID", "Tenant Type", "Portal URL", "Current Phase", "Onboarding Progress",
+    "Onboarding Role", "Onboarding State", "Next Task ID", "Next Task Title",
+    "Next Task Owner", "Next Task Status", "Next Task Minutes", "Next Task Link",
+    "Next Task Tip", "Next Task Guide URL", "Apps Submitted", "Apps Approved",
+    "SE Name", "SE Email", "SE Booking URL", "Nudge Status"
+  ]);
+  const builtIns = [
+    ["Lead Email", "LEAD_EMAIL", "email"],
+    ["First Name", "FIRST_NAME", "text"],
+    ["Last Name", "LAST_NAME", "text"]
+  ].map(([displayName, fieldName, uiType], index) => ({
+    DISPLAY_NAME: displayName,
+    FIELD_ID: String(index + 1),
+    FIELD_NAME: fieldName,
+    TYPE: "standard",
+    UITYPE: uiType,
+    is_otheruser_field: false
+  }));
+  const custom = ZOHO_CUSTOM_FIELDS.map(([displayName, expectedType], index) => ({
+    DISPLAY_NAME: displayName,
+    FIELD_ID: displayName === "Next Task Tip" ? "1329658000000112002" : String(100 + index),
+    FIELD_NAME: displayName === "Next Task Tip" ? "CONTACT_CF32" : `CONTACT_CF${index + 1}`,
+    TYPE: "custom",
+    UITYPE: expectedType,
+    is_otheruser_field: false
+  }));
+  const oldTip = {
+    DISPLAY_NAME: "Next Task Tip (Old - Date)",
+    FIELD_ID: "old-tip",
+    FIELD_NAME: "CONTACT_CF29",
+    TYPE: "custom",
+    UITYPE: "date",
+    is_otheruser_field: false
+  };
+  const fields = parseLeadFields({ response: { fieldname: [...builtIns, ...custom, oldTip] } });
+  const report = buildZohoFieldDiscoveryReport(fields);
+  const mapping = getZohoFieldIdentifierMap(fields);
+
+  assert.equal(report.length, 24);
+  assert.ok(report.every((field) => field.mappingStatus === "FOUND"));
+  assert.equal(report.find((field) => field.expectedField === "Next Task Tip").zohoIdentifier, "CONTACT_CF32");
+  assert.equal(report.find((field) => field.expectedField === "Next Task Tip").dataType, "Text");
+  assert.equal(mapping.ready, true);
+  assert.equal(mapping.identifiers["Lead Email"], "LEAD_EMAIL");
+  assert.equal(mapping.identifiers["First Name"], "FIRST_NAME");
+  assert.equal(mapping.identifiers["Last Name"], "LAST_NAME");
+
+  const input = baseSnapshotInput();
+  input.appsApproved = 0;
+  input.appsSubmitted = 0;
+  input.nextTask = { ...input.nextTask, tip: "Use the booking link." };
+  const leadInfo = buildZohoLeadInfo(createZohoContactSnapshot(input), fields);
+  assert.deepEqual(Object.keys(leadInfo), ZOHO_LISTSUBSCRIBE_FIELDS);
+  assert.equal(Object.keys(leadInfo).length, 24);
+  assert.equal(leadInfo["Next Task Tip"], "Use the booking link.");
+  assert.equal(leadInfo["Lead Email"], "test.user@kzero.com");
+  assert.equal(leadInfo["Apps Submitted"], 0);
+  assert.equal(leadInfo["Apps Approved"], 0);
+  for (const field of ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS) {
+    assert.equal(Object.hasOwn(leadInfo, field), false);
+  }
+  assert.equal(Object.hasOwn(leadInfo, "CONTACT_CF32"), false);
+  assert.equal(Object.hasOwn(leadInfo, "CONTACT_CF29"), false);
 });
 
 test("journey discovery accepts triggerkey and trigger_key variants", () => {

@@ -61,6 +61,56 @@ async function recoverExpiredClaims(now: Date) {
   return expired.length;
 }
 
+async function claimSelectedEvent(
+  transaction: Prisma.TransactionClient,
+  id: string,
+  now: Date,
+  leaseSeconds: number
+): Promise<ClaimedEvent | null> {
+  const event = await transaction.zohoOutboxEvent.findUnique({ where: { id } });
+  if (!event) return null;
+  const context = await transaction.zohoCommunicationContext.findUnique({
+    where: { recipientEmailNormalized: event.recipientEmailNormalized }
+  });
+  if (!context || context.state !== "ACTIVE" || context.activePlanId !== event.onboardingPlanId) {
+    await transaction.zohoOutboxEvent.update({
+      where: { id }, data: { status: "HELD", holdReason: "COMMUNICATION_CONTEXT_CONFLICT" }
+    });
+    return null;
+  }
+  if (context.processingLeaseExpiresAt && context.processingLeaseExpiresAt > now) return null;
+  const claimId = randomUUID();
+  const leaseExpiresAt = new Date(now.getTime() + leaseSeconds * 1000);
+  const claimedContext = await transaction.zohoCommunicationContext.updateMany({
+    where: {
+      recipientEmailNormalized: event.recipientEmailNormalized,
+      version: context.version,
+      OR: [{ processingLeaseExpiresAt: null }, { processingLeaseExpiresAt: { lte: now } }]
+    },
+    data: {
+      processingClaimId: claimId,
+      processingClaimedAt: now,
+      processingLeaseExpiresAt: leaseExpiresAt,
+      version: { increment: 1 }
+    }
+  });
+  if (!claimedContext.count) return null;
+  const contextVersion = context.version + 1;
+  const claimedEvent = await transaction.zohoOutboxEvent.update({
+    where: { id },
+    data: {
+      attemptCount: { increment: 1 },
+      holdReason: null,
+      lastAttemptAt: now,
+      processingClaimId: claimId,
+      processingClaimedAt: now,
+      processingLeaseExpiresAt: leaseExpiresAt,
+      status: "PROCESSING"
+    }
+  });
+  return { event: claimedEvent, claimId, contextVersion };
+}
+
 async function claimNextEvent(now: Date, leaseSeconds: number): Promise<ClaimedEvent | null> {
   return prisma.$transaction(async (transaction) => {
     const candidates = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -85,48 +135,34 @@ async function claimNextEvent(now: Date, leaseSeconds: number): Promise<ClaimedE
     `);
     const id = candidates[0]?.id;
     if (!id) return null;
-    const event = await transaction.zohoOutboxEvent.findUnique({ where: { id } });
-    if (!event) return null;
-    const context = await transaction.zohoCommunicationContext.findUnique({
-      where: { recipientEmailNormalized: event.recipientEmailNormalized }
-    });
-    if (!context || context.state !== "ACTIVE" || context.activePlanId !== event.onboardingPlanId) {
-      await transaction.zohoOutboxEvent.update({
-        where: { id }, data: { status: "HELD", holdReason: "COMMUNICATION_CONTEXT_CONFLICT" }
-      });
-      return null;
-    }
-    if (context.processingLeaseExpiresAt && context.processingLeaseExpiresAt > now) return null;
-    const claimId = randomUUID();
-    const leaseExpiresAt = new Date(now.getTime() + leaseSeconds * 1000);
-    const claimedContext = await transaction.zohoCommunicationContext.updateMany({
-      where: {
-        recipientEmailNormalized: event.recipientEmailNormalized,
-        version: context.version,
-        OR: [{ processingLeaseExpiresAt: null }, { processingLeaseExpiresAt: { lte: now } }]
-      },
-      data: {
-        processingClaimId: claimId,
-        processingClaimedAt: now,
-        processingLeaseExpiresAt: leaseExpiresAt,
-        version: { increment: 1 }
-      }
-    });
-    if (!claimedContext.count) return null;
-    const contextVersion = context.version + 1;
-    const claimedEvent = await transaction.zohoOutboxEvent.update({
-      where: { id },
-      data: {
-        attemptCount: { increment: 1 },
-        holdReason: null,
-        lastAttemptAt: now,
-        processingClaimId: claimId,
-        processingClaimedAt: now,
-        processingLeaseExpiresAt: leaseExpiresAt,
-        status: "PROCESSING"
-      }
-    });
-    return { event: claimedEvent, claimId, contextVersion };
+    return claimSelectedEvent(transaction, id, now, leaseSeconds);
+  });
+}
+
+async function claimEventById(eventId: string, now: Date, leaseSeconds: number): Promise<ClaimedEvent | null> {
+  return prisma.$transaction(async (transaction) => {
+    const candidates = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT event."id"
+      FROM "zoho_outbox_events" event
+      WHERE event."id" = ${eventId}
+        AND event."status" IN ('PENDING', 'RETRY')
+        AND (event."nextAttemptAt" IS NULL OR event."nextAttemptAt" <= ${now})
+        AND NOT EXISTS (
+          SELECT 1 FROM "zoho_communication_contexts" busy
+          WHERE busy."recipientEmailNormalized" = event."recipientEmailNormalized"
+            AND busy."processingLeaseExpiresAt" > ${now}
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM "zoho_outbox_events" earlier
+          WHERE earlier."recipientEmailNormalized" = event."recipientEmailNormalized"
+            AND earlier."sequence" < event."sequence"
+            AND earlier."status" NOT IN ('SUCCEEDED', 'CANCELLED')
+        )
+      FOR UPDATE SKIP LOCKED
+      LIMIT 1
+    `);
+    const id = candidates[0]?.id;
+    return id ? claimSelectedEvent(transaction, id, now, leaseSeconds) : null;
   });
 }
 
@@ -428,6 +464,20 @@ export async function dispatchZohoOutboxBatch(input: { provider?: ZohoDispatchPr
     completed += 1;
   }
   return { claimed, completed, recoveredExpiredClaims, disabled: false };
+}
+
+export async function dispatchExactZohoOutboxEvent(
+  eventId: string,
+  input: { provider?: ZohoDispatchProvider } = {}
+) {
+  const config = getZohoDispatchConfiguration();
+  if (config.globalKillSwitch || config.mode === "disabled") {
+    return { claimed: false, completed: false, disabled: true };
+  }
+  const claim = await claimEventById(eventId, new Date(), config.leaseSeconds);
+  if (!claim) return { claimed: false, completed: false, disabled: false };
+  await processClaim(claim, input.provider ?? zohoDispatchProvider);
+  return { claimed: true, completed: true, disabled: false };
 }
 
 export async function getZohoDispatcherSummary() {

@@ -15,15 +15,23 @@ type ContactOption = {
 
 type StatusPayload = {
   configuration: {
+    automaticDispatchEnabled: boolean;
     contactSynchronizationEnabled: boolean;
+    dispatchMode: string;
+    eventEmissionEnabled: boolean;
     fieldMappingVerified: boolean;
+    globalKillSwitch: boolean;
     journeyTriggeringEnabled: boolean;
     journeys: Record<string, { journeyKeyPresent: boolean; triggerKeyPresent: boolean }>;
     listKeyPresent: boolean;
     listPrivacyVerified: boolean;
     mspEnrollmentContactSyncEnabled: boolean;
     mspEnrollmentPilotTargetConfigured: boolean;
+    nudgeEvaluationEnabled: boolean;
     oauthConfigured: boolean;
+    productionDispatchApproved: boolean;
+    singleContactPilotEnabled: boolean;
+    testContactSync: { enabled: boolean };
     testMode: { allowlistedEmailCount: number; allowlistedPlanCount: number; enabled: boolean };
     topicIdPresent: boolean;
   };
@@ -78,6 +86,15 @@ type PlanAutomationSummary = {
       subscriptionConfirmation: { evidenceReference: string | null; recordedAt: string } | null;
       targetEmail: string;
       targetMsp: string;
+    } | null;
+    fullFieldTestIntent: {
+      attemptCount: number;
+      createdAt: string;
+      holdReason: string | null;
+      id: string;
+      lastProviderOutcome: string | null;
+      status: string;
+      updatedAt: string;
     } | null;
     pilotReadiness: {
       blockers: string[];
@@ -174,6 +191,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   const [error, setError] = useState<string | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [readinessControlMessage, setReadinessControlMessage] = useState<string | null>(null);
+  const [fullFieldIntentMessage, setFullFieldIntentMessage] = useState<string | null>(null);
   const [lastEvaluatedAt, setLastEvaluatedAt] = useState<string | null>(null);
   const [pilotPreview, setPilotPreview] = useState<{
     membership: { complete: boolean; statuses: string[] } | null;
@@ -389,6 +407,61 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     }
   }
 
+  async function prepareFullFieldTestIntent() {
+    const confirmation = window.prompt(
+      "This prepares one durable full-field contact-sync intent but does not send it. Enter PREPARE ONE FULL-FIELD ZOHO TEST INTENT to continue."
+    );
+    if (!confirmation) return;
+    setBusy(true);
+    setError(null);
+    setFullFieldIntentMessage(null);
+    try {
+      const result = await post(
+        `/api/admin/zoho/automation/plans/${encodeURIComponent(planId)}/full-field-test-intent`,
+        { confirmation }
+      );
+      setFullFieldIntentMessage(
+        result.created
+          ? "One audited full-field UPSERT_CONTACT intent was prepared. No provider request or journey was triggered."
+          : "The exact test intent already exists; no duplicate event or provider request was created."
+      );
+      await loadDetails();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The full-field test intent could not be prepared.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dispatchFullFieldTestIntent() {
+    const event = planSummary?.enrollmentContactSync.fullFieldTestIntent;
+    if (!event) return;
+    const confirmation = window.prompt(
+      "This will dispatch only the displayed full-field test intent. Enter DISPATCH ONE ALLOWLISTED FULL-FIELD TEST EVENT to continue."
+    );
+    if (!confirmation) return;
+    setBusy(true);
+    setError(null);
+    setFullFieldIntentMessage(null);
+    try {
+      const result = await post("/api/admin/zoho/dispatch", {
+        confirmation,
+        eventId: event.id,
+        planId
+      });
+      setFullFieldIntentMessage(
+        result.completed
+          ? "The exact event was processed. Review its sanitized provider outcome and verify every field in Zoho before treating the test as successful."
+          : "The exact event was not dispatched. Review the event ordering and maintenance-window safeguards."
+      );
+      await loadDetails();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The exact full-field event could not be dispatched.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const blockerGroups = useMemo(() => {
     const groups = new Map<BlockerCategory, Array<{ code: string; kind: BlockerKind; label: string }>>();
     for (const code of planSummary?.enrollmentContactSync.readiness.blockers ?? []) {
@@ -403,6 +476,29 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   const readiness = planSummary?.enrollmentContactSync.readiness;
   const pilotReadiness = planSummary?.enrollmentContactSync.pilotReadiness;
   const controlledPilot = planSummary?.enrollmentContactSync.controlledPilot;
+  const fullFieldTestIntent = planSummary?.enrollmentContactSync.fullFieldTestIntent;
+  const exactDispatchWindow = Boolean(
+    status &&
+    !status.configuration.globalKillSwitch &&
+    status.configuration.dispatchMode === "test" &&
+    status.configuration.contactSynchronizationEnabled &&
+    status.configuration.fieldMappingVerified &&
+    status.configuration.listKeyPresent &&
+    status.configuration.listPrivacyVerified &&
+    status.configuration.oauthConfigured &&
+    status.configuration.topicIdPresent &&
+    !status.configuration.eventEmissionEnabled &&
+    !status.configuration.journeyTriggeringEnabled &&
+    !status.configuration.automaticDispatchEnabled &&
+    !status.configuration.productionDispatchApproved &&
+    !status.configuration.mspEnrollmentContactSyncEnabled &&
+    !status.configuration.nudgeEvaluationEnabled &&
+    !status.configuration.singleContactPilotEnabled &&
+    !status.configuration.testContactSync.enabled &&
+    status.configuration.testMode.enabled &&
+    status.configuration.testMode.allowlistedEmailCount === 1 &&
+    status.configuration.testMode.allowlistedPlanCount === 1
+  );
   const primaryStatus = displayStatus(readiness?.classification ?? "UNABLE_TO_VERIFY");
   const PrimaryIcon = primaryStatus.icon;
   const configuredJourneys = status
@@ -506,6 +602,34 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
         </div>
         <p className="mt-2 text-xs leading-5 text-warning">The run control remains unavailable until the manual flag is enabled, the global kill switch is deliberately released, every automatic path remains disabled, and a fresh complete preview finds no active or suppressed membership.</p>
         {pilotMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{pilotMessage}</p> : null}
+        <div className="mt-4 border-t border-border pt-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Full-field lifecycle test</p>
+              <p className="mt-1 text-xs leading-5 text-secondary">
+                Prepares one normal outbox contact intent from the persisted plan snapshot. Preparation performs a fresh suppression check but never sends, subscribes, or triggers a journey.
+              </p>
+              <p className="mt-1 text-xs text-foreground">
+                {planSummary?.enrollmentContactSync.fullFieldTestIntent
+                  ? `Intent ${planSummary.enrollmentContactSync.fullFieldTestIntent.status} · attempts ${planSummary.enrollmentContactSync.fullFieldTestIntent.attemptCount}`
+                  : "No full-field test intent recorded"}
+              </p>
+            </div>
+            <Button
+              className="h-9 shrink-0"
+              disabled={busy || !planSummary?.administrativeControls.canManage || Boolean(planSummary?.enrollmentContactSync.fullFieldTestIntent)}
+              onClick={() => void prepareFullFieldTestIntent()}
+              variant="outline"
+            >Prepare Full-Field Intent</Button>
+            <Button
+              className="h-9 shrink-0"
+              disabled={busy || !exactDispatchWindow || !fullFieldTestIntent || !["PENDING", "RETRY"].includes(fullFieldTestIntent.status)}
+              onClick={() => void dispatchFullFieldTestIntent()}
+            >Dispatch Exact Test Event</Button>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-warning">Dispatch stays disabled unless test mode is active, contact sync is enabled, the global kill switch is deliberately released, and every automatic/journey path remains off.</p>
+          {fullFieldIntentMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{fullFieldIntentMessage}</p> : null}
+        </div>
       </section>
 
       <section className="rounded-xl border border-border bg-input p-4" aria-labelledby="zoho-readiness-controls-heading">

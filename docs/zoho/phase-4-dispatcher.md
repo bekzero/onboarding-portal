@@ -120,7 +120,7 @@ No live Zoho tests were authorized or performed. No approved isolated migrated d
 
 1. Back up production and test the Phase 1A and Phase 4 additive migrations against an approved production-like copy.
 2. Run concurrent dispatcher integration tests against PostgreSQL, including deliberately expired and fenced workers.
-3. Verify all 24 field identifiers and private-list behavior with controlled Zoho test evidence.
+3. Verify the 24 supported display-name payload values and private-list behavior through the controlled portal path.
 4. Confirm Partner Onboarding topic/Marketing eligibility for test recipients.
 5. Create and verify separate test journeys, then validate all four journeys without production recipients.
 6. Reconfirm the marketing approval for the NFR-only J8 rule.

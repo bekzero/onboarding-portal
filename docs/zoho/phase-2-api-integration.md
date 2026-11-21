@@ -1,6 +1,6 @@
 # Zoho Marketing Automation Phase 2 API integration
 
-Status: implemented, dormant, and not live-tested
+Status: implemented and dormant; field payload verified in Postman, but not yet through the portal
 
 Organization: `org859403413`
 
@@ -17,7 +17,7 @@ The Phase 1A migration must be rehearsed and applied before any deployment conta
 - `lib/zoho-config.ts` reads server-only environment configuration and exposes only presence/status information to the admin UI.
 - `lib/zoho-contact-mapping.ts` owns the exact portal-to-Zoho picklist and snapshot mapping.
 - `lib/zoho-contact-snapshot.ts` reads only persisted Prisma plan, task, contact, and SaaS application data. It does not use mock records.
-- `lib/zoho-field-mapping.ts` defines the 24 required custom fields, parses field discovery, and converts display-field snapshots to discovered Zoho field identifiers.
+- `lib/zoho-field-mapping.ts` defines the 24 required custom fields, parses field discovery, and builds the supported `listsubscribe` payload with Zoho display names.
 - `lib/zoho-phase2.ts` implements field/journey discovery, list-membership checks, manual subscription verification, and the allowlisted test-sync workflow.
 - `lib/zoho-test-policy.ts` is the pure safety policy for test-mode, plan/email allowlists, context ownership, conflicts, and eligibility.
 
@@ -98,7 +98,11 @@ Official references:
 
 ## Contact snapshot
 
-Every upsert sends built-in Lead Email, First Name, and Last Name plus all 24 custom fields. Optional unavailable values are sent empty so stale Zoho values are not retained. Required merge data blocks synchronization when absent.
+Every upsert keeps a 27-value portal snapshot: built-in Lead Email, First Name, and Last Name plus all 24 custom fields. The current `listsubscribe` payload sends the 24 values proven compatible in the controlled Postman test: the three built-ins plus 21 custom fields. Zoho requires exact display names as the JSON keys; discovered internal identifiers such as `CONTACT_CF32` are metadata and are not sent as `leadinfo` keys.
+
+`Next Task Since`, `Last SE Touch`, and `Last MSP Activity` remain persisted and included in field discovery, but are temporarily excluded from `listsubscribe`. Zoho returns application error `2001` when any of these correctly defined Date/Time fields is submitted, including when tested individually. Do not activate a journey that depends on those Zoho values until Zoho confirms a supported Date/Time write format or endpoint.
+
+Optional unavailable supported values are sent empty so stale Zoho values are not retained. Numeric zero is sent as the number `0`. Zoho displays a submitted zero for `Apps Submitted` or `Apps Approved` as a blank field; that blank is the provider representation of the synchronized zero and is not, by itself, a synchronization failure. The portal continues to retain the actual numeric zero.
 
 The snapshot uses:
 
@@ -141,7 +145,7 @@ GET https://marketingautomation.zoho.com/api/v1/lead/allfields?type=json
 
 The sanitized report includes expected display field, found/missing state, field identifier, field ID, reported data type, expected type, and mapping status. Duplicate display names are ambiguous. Missing identifiers block test and production upserts. If Zoho omits type metadata, the identifier is reported with `FOUND_IDENTIFIER_TYPE_UNVERIFIED`.
 
-Fields are not created or modified automatically. A discovery result does not prove that a custom `FIELD_NAME` is accepted as a `leadinfo` key; production readiness remains blocked until the controlled write is inspected in Zoho.
+Fields are not created or modified automatically. Discovery verifies the unique field metadata and types. The controlled Postman test established that `listsubscribe` accepts exact `DISPLAY_NAME` values as `leadinfo` keys, not the internal `FIELD_NAME` values. `Next Task Tip` resolves to the text field `CONTACT_CF32`; the old date field `CONTACT_CF29` (`Next Task Tip (Old - Date)`) is ignored.
 
 ## Subscription verification
 
@@ -206,9 +210,9 @@ Every route validates the existing admin session server-side.
 ## Phase 3 blockers
 
 - Rehearse and apply the Phase 1A migration before deployment.
-- Run controlled live discovery; no live field or journey result has been obtained in code development.
+- Retain the successful controlled field discovery and Postman write evidence with the release record.
 - Confirm the list is private and existing contacts update.
-- Prove which discovered custom-field identifiers `listsubscribe` accepts.
+- Run one controlled portal write to verify that the display-name payload matches the successful Postman request.
 - Complete the double-opt-in, Partner Onboarding topic, and Marketing classification test.
 - Launch only approved test journeys; production journeys remain Draft.
 - Obtain marketing approval for journey keys, J8 scope/recipients, sender/Reply-To, and context-release operations.

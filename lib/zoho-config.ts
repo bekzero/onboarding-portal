@@ -189,6 +189,7 @@ export function getZohoConfigurationStatus() {
     listPrivacyVerified: value("ZMA_PRIVATE_LIST_VERIFIED").toLowerCase() === "true",
     oauthConfigured: Boolean(oauth.clientId && oauth.clientSecret && oauth.refreshToken),
     portalBaseUrlPresent: Boolean(getZohoPublicPortalBaseUrl()),
+    productionDispatchApproved: dispatch.productionApproved,
     testMode: {
       allowlistedEmailCount: getZohoTestConfiguration().allowedEmails.size,
       allowlistedPlanCount: getZohoTestConfiguration().allowedPlanIds.size,

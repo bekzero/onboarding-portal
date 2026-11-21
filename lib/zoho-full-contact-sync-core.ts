@@ -55,8 +55,8 @@ export async function synchronizeFullFieldContact(input: {
       "CONFIGURATION"
     );
   }
-  if (Object.keys(leadInfo).length !== 27) {
-    throw new ZohoApiError("The full Zoho contact snapshot must contain exactly 27 fields.", "CONFIGURATION");
+  if (Object.keys(leadInfo).length !== 24) {
+    throw new ZohoApiError("The Zoho listsubscribe payload must contain exactly 24 supported fields.", "CONFIGURATION");
   }
 
   input.beforeWrite?.();

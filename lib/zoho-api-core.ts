@@ -383,7 +383,9 @@ export function parseLeadFields(payload: unknown): ZohoLeadField[] {
     if (!isRecord(item) || typeof item.DISPLAY_NAME !== "string" || typeof item.FIELD_NAME !== "string") {
       throw new ZohoApiError("Zoho returned an invalid field entry.", "INVALID_RESPONSE");
     }
-    const dataType = item.DATA_TYPE ?? item.FIELD_TYPE ?? item.type;
+    // Marketing Automation 2.0 reports the value type in UITYPE while TYPE
+    // describes whether the field is built-in or custom.
+    const dataType = item.DATA_TYPE ?? item.FIELD_TYPE ?? item.UITYPE ?? item.ui_type ?? item.uitype ?? item.type;
     const rawAllowedValues = item.PICKLIST_VALUES ?? item.picklist_values ?? item.VALUES ?? item.values;
     return {
       allowedValues: Array.isArray(rawAllowedValues)
@@ -601,7 +603,7 @@ export function parseSubscribeResult(payload: unknown): ZohoSubscribeResult {
   const code = String(payload.code ?? "");
   const status = typeof payload.status === "string" ? payload.status.toLowerCase() : "";
   const message = typeof payload.message === "string" ? payload.message : "";
-  if (!(code === "0" || code === "200") || status !== "success") {
+  if (code !== "0" || status !== "success") {
     throw classifyProviderError(new Response(null, { status: 400 }), payload);
   }
   return {

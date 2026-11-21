@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { getAuthorizedStaffIdentity, isStaffOidcConfigured } from "@/lib/staff-auth";
 import { getPersistedListPrivacyVerification } from "@/lib/zoho-pilot-admin";
 import { getSingleContactPilotStatus } from "@/lib/zoho-single-contact-pilot";
+import { getExistingFullFieldTestIntent } from "@/lib/zoho-existing-plan-test-intent";
 
 const JOURNEYS = [
   { id: "J1", name: "Welcome and Kickoff Booking" },
@@ -287,7 +288,7 @@ export async function getZohoPlanAutomationSummary(
   });
   if (!plan) return null;
   const owner = plan.planContacts[0];
-  const [readiness, context, lastSync, lastJourney, eventCounts, permissionAudit, enrollmentEvent, listPrivacyAudit] = await Promise.all([
+  const [readiness, context, lastSync, lastJourney, eventCounts, permissionAudit, enrollmentEvent, listPrivacyAudit, fullFieldTestIntent] = await Promise.all([
     getZohoAutomationReadiness(planId),
     owner ? prisma.zohoCommunicationContext.findUnique({ where: { recipientEmailNormalized: owner.normalizedEmail }, select: { activePlanId: true, state: true } }) : null,
     prisma.zohoOutboxEvent.findFirst({ where: { onboardingPlanId: plan.id, eventType: "UPSERT_CONTACT", status: "SUCCEEDED" }, orderBy: { updatedAt: "desc" }, select: { updatedAt: true, lastProviderOutcome: true } }),
@@ -310,7 +311,8 @@ export async function getZohoPlanAutomationSummary(
       orderBy: { createdAt: "desc" },
       select: { createdAt: true, holdReason: true, lastProviderOutcome: true, status: true }
     }),
-    getPersistedListPrivacyVerification()
+    getPersistedListPrivacyVerification(),
+    getExistingFullFieldTestIntent(planId)
   ]);
   const configuration = getZohoConfigurationStatus();
   const listPrivacyVerified = configuration.listPrivacyVerified || Boolean(listPrivacyAudit);
@@ -401,6 +403,7 @@ export async function getZohoPlanAutomationSummary(
       primaryContactEmail: plan.msp.primaryContactEmail,
       primaryContactMatchesOwner: contactValid,
       controlledPilot,
+      fullFieldTestIntent,
       pilotReadiness,
       readiness: syncReadiness,
       staffIdentityVerified: permissionAudit?.actor.startsWith("oidc:") ?? false,

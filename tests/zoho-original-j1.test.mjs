@@ -1,8 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ZohoApiClientCore, ZohoApiError, ZohoOAuthTokenManager } from "../lib/zoho-api-core.ts";
-import { ZOHO_BUILT_IN_FIELDS, ZOHO_CUSTOM_FIELDS } from "../lib/zoho-field-mapping.ts";
+import { ZohoApiClientCore, ZohoApiError, ZohoOAuthTokenManager, parseSubscribeResult } from "../lib/zoho-api-core.ts";
+import {
+  ZOHO_BUILT_IN_FIELDS,
+  ZOHO_CUSTOM_FIELDS,
+  ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS,
+  ZOHO_LISTSUBSCRIBE_FIELDS
+} from "../lib/zoho-field-mapping.ts";
 import { synchronizeFullFieldContact } from "../lib/zoho-full-contact-sync-core.ts";
 import { executeZohoProviderWorkflow } from "../lib/zoho-dispatch-engine.ts";
 
@@ -39,21 +44,25 @@ function fullSync(overrides = {}) {
   return { get submitted() { return submitted; }, get writes() { return writes; }, promise };
 }
 
-test("normal lifecycle contact sync sends all 27 mapped values with the numeric topic gate", async () => {
+test("normal lifecycle contact sync sends the 24 supported display-name values with the numeric topic gate", async () => {
   const operation = fullSync();
   const result = await operation.promise;
   assert.equal(result.classification, "ACCEPTED_UNCONFIRMED");
   assert.equal(operation.writes, 1);
-  assert.equal(Object.keys(operation.submitted).length, 27);
-  assert.equal(operation.submitted.FIELD_1, "approved@example.com");
-  assert.equal(operation.submitted.FIELD_2, "Alex");
+  assert.deepEqual(Object.keys(operation.submitted), ZOHO_LISTSUBSCRIBE_FIELDS);
+  assert.equal(Object.keys(operation.submitted).length, 24);
+  assert.equal(operation.submitted["Lead Email"], "approved@example.com");
+  assert.equal(operation.submitted["First Name"], "Alex");
+  for (const field of ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS) {
+    assert.equal(Object.hasOwn(operation.submitted, field), false);
+  }
 });
 
 test("listsubscribe sends the numeric topic and rejects an HTTP-200 application error", async () => {
   const calls = [];
   const replies = [
     new Response(JSON.stringify({ access_token: "token", expires_in: 3600 })),
-    new Response(JSON.stringify({ code: "2007", status: "error", message: "Invalid topic_id" }))
+    new Response(JSON.stringify({ code: "2001", status: "error", message: "Invalid field value" }))
   ];
   const fetcher = async (url, init) => {
     calls.push({ init, url: String(url) });
@@ -64,12 +73,55 @@ test("listsubscribe sends the numeric topic and rejects an HTTP-200 application 
     fetcher
   );
   await assert.rejects(
-    client.subscribeLead({ leadInfo: { LEAD_EMAIL: "approved@example.com" }, listKey: "private-list", topicId: "123456789" }),
-    (error) => error instanceof ZohoApiError && error.kind === "INVALID_TOPIC"
+    client.subscribeLead({ leadInfo: { "Lead Email": "approved@example.com" }, listKey: "private-list", topicId: "123456789" }),
+    (error) => error instanceof ZohoApiError && error.kind === "PROVIDER" && error.options.providerCode === "2001"
   );
   const body = calls[1].init.body;
   assert.equal(body.get("topic_id"), "123456789");
   assert.equal(body.get("listkey"), "private-list");
+});
+
+test("listsubscribe accepts code zero only with an application-level success status", async () => {
+  const calls = [];
+  const replies = [
+    new Response(JSON.stringify({ access_token: "token", expires_in: 3600 })),
+    new Response(JSON.stringify({ code: "0", status: "success" }))
+  ];
+  const fetcher = async (url, init) => {
+    calls.push({ init, url: String(url) });
+    return replies.shift();
+  };
+  const client = new ZohoApiClientCore(
+    new ZohoOAuthTokenManager({ clientId: "client", clientSecret: "secret", refreshToken: "refresh" }, fetcher),
+    fetcher
+  );
+  const leadInfo = Object.fromEntries(ZOHO_LISTSUBSCRIBE_FIELDS.map((field, index) => [field, index]));
+  const result = await client.subscribeLead({
+    leadInfo,
+    listKey: "private-list",
+    topicId: "1329658000000062845"
+  });
+  assert.equal(result.classification, "ACCEPTED_UNCONFIRMED");
+  assert.equal(result.code, "0");
+  assert.deepEqual(JSON.parse(calls[1].init.body.get("leadinfo")), leadInfo);
+  assert.equal(calls[1].init.body.get("sources"), "Onboarding Portal");
+  assert.equal(calls[1].init.body.get("resfmt"), "JSON");
+});
+
+test("listsubscribe does not accept an undocumented alternative success code", () => {
+  assert.throws(
+    () => parseSubscribeResult({ code: "200", status: "success" }),
+    (error) => error instanceof ZohoApiError && error.kind === "PROVIDER"
+  );
+});
+
+test("existing active contacts still receive full-field updates", async () => {
+  const operation = fullSync({
+    getMembership: async () => ({ complete: true, listStatuses: ["active"] })
+  });
+  await operation.promise;
+  assert.equal(operation.writes, 1);
+  assert.equal(operation.submitted["Lead Email"], "approved@example.com");
 });
 
 test("missing topic, unverified fields, incomplete scans, and suppressed recipients fail before a write", async () => {
