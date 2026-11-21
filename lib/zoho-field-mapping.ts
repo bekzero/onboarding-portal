@@ -93,9 +93,40 @@ function normalizeDisplayName(value: string) {
   return value.trim().toLowerCase();
 }
 
+const metadataDisplayNames: Partial<Record<ZohoContactDisplayField, readonly string[]>> = {
+  // Marketing Automation discovery calls this built-in field "Contact Email",
+  // while listsubscribe accepts the verified outbound key "Lead Email".
+  "Lead Email": ["Lead Email", "Contact Email"]
+};
+
+const expectedBuiltInTypes: Record<(typeof ZOHO_BUILT_IN_FIELDS)[number], string> = {
+  "Lead Email": "Email",
+  "First Name": "Text",
+  "Last Name": "Text"
+};
+
 function findMatches(fields: ZohoLeadField[], expectedField: string) {
-  const normalized = normalizeDisplayName(expectedField);
-  return fields.filter((field) => normalizeDisplayName(field.displayName) === normalized);
+  const acceptedNames = metadataDisplayNames[expectedField as ZohoContactDisplayField] ?? [expectedField];
+  const normalized = new Set(acceptedNames.map(normalizeDisplayName));
+  return fields.filter((field) => normalized.has(normalizeDisplayName(field.displayName)));
+}
+
+function expectedTypeFor(expectedField: string) {
+  if (expectedField in expectedBuiltInTypes) {
+    return expectedBuiltInTypes[expectedField as (typeof ZOHO_BUILT_IN_FIELDS)[number]];
+  }
+  return ZOHO_CUSTOM_FIELDS.find(([name]) => name === expectedField)?.[1] ?? null;
+}
+
+function validIdentifier(expectedField: string, field: ZohoLeadField) {
+  if (!field.fieldName.trim()) return false;
+  if (expectedField === "Lead Email" && normalizeDisplayName(field.displayName) === "contact email") {
+    return field.fieldName.trim().toLowerCase() === "contact_email";
+  }
+  if (expectedField === "Next Task Tip") {
+    return field.fieldName.trim().toUpperCase() === "CONTACT_CF32";
+  }
+  return true;
 }
 
 export function buildZohoFieldDiscoveryReport(fields: ZohoLeadField[]): ZohoFieldDiscoveryEntry[] {
@@ -152,10 +183,19 @@ export function getZohoFieldIdentifierMap(fields: ZohoLeadField[]) {
 
   for (const expectedField of expectedFields) {
     const matches = findMatches(fields, expectedField);
-    if (matches.length !== 1 || !matches[0].fieldName.trim()) {
+    const expectedType = expectedTypeFor(expectedField);
+    const match = matches[0];
+    if (
+      matches.length !== 1 ||
+      !match ||
+      !validIdentifier(expectedField, match) ||
+      match.dataType === null ||
+      expectedType === null ||
+      !typeMatches(match.dataType, expectedType)
+    ) {
       missing.push(expectedField);
     } else {
-      identifiers[expectedField] = matches[0].fieldName;
+      identifiers[expectedField] = match.fieldName;
     }
   }
 

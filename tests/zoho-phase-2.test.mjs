@@ -32,6 +32,7 @@ import {
 } from "../lib/zoho-field-mapping.ts";
 import { getTaskTimeEstimateMinutes } from "../lib/onboarding-time-estimates.ts";
 import { evaluateZohoTestPolicy } from "../lib/zoho-test-policy.ts";
+import { zohoAllLeadFields66Response } from "./fixtures/zoho-all-lead-fields-66.mjs";
 
 function jsonResponse(payload, status = 200, headers = {}) {
   return new Response(JSON.stringify(payload), {
@@ -346,6 +347,60 @@ test("MA 2.0 field metadata maps the corrected Next Task Tip and all required fi
   }
   assert.equal(Object.hasOwn(leadInfo, "CONTACT_CF32"), false);
   assert.equal(Object.hasOwn(leadInfo, "CONTACT_CF29"), false);
+});
+
+test("live-shaped 66-field metadata aliases Contact Email to the Lead Email outbound key", () => {
+  const fields = parseLeadFields(zohoAllLeadFields66Response);
+  const mapping = getZohoFieldIdentifierMap(fields);
+  const report = buildZohoFieldDiscoveryReport(fields);
+
+  assert.equal(fields.length, 66);
+  assert.equal(mapping.ready, true);
+  assert.equal(mapping.identifiers["Lead Email"], "contact_email");
+  assert.equal(mapping.identifiers["First Name"], "firstname");
+  assert.equal(mapping.identifiers["Last Name"], "lastname");
+  assert.ok(report.every((field) => field.mappingStatus === "FOUND"));
+  assert.equal(report.find((field) => field.expectedField === "Next Task Tip").zohoIdentifier, "CONTACT_CF32");
+
+  const input = baseSnapshotInput();
+  input.appsApproved = 0;
+  input.appsSubmitted = 0;
+  const leadInfo = buildZohoLeadInfo(createZohoContactSnapshot(input), fields);
+  assert.deepEqual(Object.keys(leadInfo), ZOHO_LISTSUBSCRIBE_FIELDS);
+  assert.equal(Object.keys(leadInfo).length, 24);
+  assert.equal(leadInfo["Lead Email"], "test.user@kzero.com");
+  assert.equal(Object.hasOwn(leadInfo, "Contact Email"), false);
+  assert.equal(leadInfo["Apps Submitted"], 0);
+  assert.equal(leadInfo["Apps Approved"], 0);
+  for (const field of ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS) {
+    assert.equal(Object.hasOwn(leadInfo, field), false);
+  }
+});
+
+test("built-in aliases and required metadata remain fail-closed", () => {
+  const fields = parseLeadFields(zohoAllLeadFields66Response);
+  const contactEmail = fields.find((field) => field.displayName === "Contact Email");
+  const nextTaskTip = fields.find((field) => field.displayName === "Next Task Tip");
+  assert.ok(contactEmail);
+  assert.ok(nextTaskTip);
+
+  const invalidCases = [
+    fields.filter((field) => field.displayName !== "Contact Email"),
+    [...fields, { ...contactEmail, displayName: "Lead Email", fieldName: "lead_email" }],
+    fields.map((field) => field === contactEmail ? { ...field, dataType: null } : field),
+    fields.map((field) => field === contactEmail ? { ...field, dataType: "text" } : field),
+    fields.map((field) => field === contactEmail ? { ...field, fieldName: "wrong_email_identifier" } : field),
+    fields.map((field) => field === nextTaskTip ? { ...field, dataType: "date" } : field),
+    fields.map((field) => field === nextTaskTip ? { ...field, fieldName: "CONTACT_CF29" } : field)
+  ];
+
+  for (const invalid of invalidCases) {
+    assert.equal(getZohoFieldIdentifierMap(invalid).ready, false);
+    assert.throws(
+      () => buildZohoLeadInfo(createZohoContactSnapshot(baseSnapshotInput()), invalid),
+      /mapping is incomplete/i
+    );
+  }
 });
 
 test("field discovery accepts the verified response.fieldnames.fieldname structure", async () => {

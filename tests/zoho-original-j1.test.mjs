@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { ZohoApiClientCore, ZohoApiError, ZohoOAuthTokenManager, parseSubscribeResult } from "../lib/zoho-api-core.ts";
+import { ZohoApiClientCore, ZohoApiError, ZohoOAuthTokenManager, parseLeadFields, parseSubscribeResult } from "../lib/zoho-api-core.ts";
 import {
   ZOHO_BUILT_IN_FIELDS,
   ZOHO_CUSTOM_FIELDS,
@@ -10,15 +10,10 @@ import {
 } from "../lib/zoho-field-mapping.ts";
 import { synchronizeFullFieldContact } from "../lib/zoho-full-contact-sync-core.ts";
 import { executeZohoProviderWorkflow } from "../lib/zoho-dispatch-engine.ts";
+import { zohoAllLeadFields66Response } from "./fixtures/zoho-all-lead-fields-66.mjs";
 
 const displayNames = [...ZOHO_BUILT_IN_FIELDS, ...ZOHO_CUSTOM_FIELDS.map(([name]) => name)];
-const fields = displayNames.map((displayName, index) => ({
-  allowedValues: null,
-  dataType: "Text",
-  displayName,
-  fieldId: String(index + 1),
-  fieldName: `FIELD_${index + 1}`
-}));
+const fields = parseLeadFields(zohoAllLeadFields66Response);
 const snapshot = Object.fromEntries(displayNames.map((name, index) => [
   name,
   name === "Lead Email" ? "approved@example.com" : name === "First Name" ? "Alex" : index
@@ -56,6 +51,84 @@ test("normal lifecycle contact sync sends the 24 supported display-name values w
   for (const field of ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS) {
     assert.equal(Object.hasOwn(operation.submitted, field), false);
   }
+});
+
+test("BenMSP full-field path validates live-shaped metadata and reaches the mocked listsubscribe boundary", async () => {
+  const persistedBenMspSnapshot = {
+    "Lead Email": "b.eakin@kzero.com",
+    "First Name": "Ben",
+    "Last Name": "Eakin",
+    "Plan ID": "benmsp-nfr",
+    "Tenant Type": "NFR",
+    "Portal URL": "https://onboarding-portal20.vercel.app/portal/benmsp-nfr",
+    "Current Phase": "Kickoff",
+    "Onboarding Progress": 0,
+    "Onboarding Role": "Onboarding Owner",
+    "Onboarding State": "Active",
+    "Next Task ID": "book-kickoff",
+    "Next Task Title": "Book Setup Call",
+    "Next Task Owner": "MSP",
+    "Next Task Status": "Action Required",
+    "Next Task Minutes": 5,
+    "Next Task Link": "https://onboarding-portal20.vercel.app/portal/benmsp-nfr?tab=tasks&task=book-kickoff",
+    "Next Task Tip": "Use the booking link.",
+    "Next Task Guide URL": "https://partners.kzero.com/guide",
+    "Next Task Since": "2026-11-01T00:00:00.000Z",
+    "Last MSP Activity": "2026-11-02T00:00:00.000Z",
+    "Last SE Touch": "2026-11-03T00:00:00.000Z",
+    "Apps Submitted": 0,
+    "Apps Approved": 0,
+    "SE Name": "Assigned Sales Engineer",
+    "SE Email": "sales.engineer@example.test",
+    "SE Booking URL": "https://example.test/book",
+    "Nudge Status": "Done"
+  };
+  const fields = parseLeadFields(zohoAllLeadFields66Response);
+  const calls = [];
+  const replies = [
+    new Response(JSON.stringify({ access_token: "token", expires_in: 3600 })),
+    new Response(JSON.stringify({ code: "0", status: "success" }))
+  ];
+  const fetcher = async (url, init) => {
+    calls.push({ init, url: String(url) });
+    return replies.shift();
+  };
+  const client = new ZohoApiClientCore(
+    new ZohoOAuthTokenManager({ clientId: "client", clientSecret: "secret", refreshToken: "refresh" }, fetcher),
+    fetcher
+  );
+  let writeBoundaryReached = 0;
+
+  const result = await synchronizeFullFieldContact({
+    beforeWrite: () => { writeBoundaryReached += 1; },
+    fieldMappingVerified: true,
+    getFields: async () => fields,
+    getMembership: async () => ({ complete: true, listStatuses: ["active"] }),
+    listKey: "private-list",
+    snapshot: persistedBenMspSnapshot,
+    subscribe: (leadInfo) => client.subscribeLead({
+      leadInfo,
+      listKey: "private-list",
+      topicId: "1329658000000062845"
+    }),
+    topicId: "1329658000000062845"
+  });
+
+  assert.equal(result.classification, "ACCEPTED_UNCONFIRMED");
+  assert.equal(writeBoundaryReached, 1);
+  assert.equal(calls.length, 2);
+  const submitted = JSON.parse(calls[1].init.body.get("leadinfo"));
+  assert.deepEqual(Object.keys(submitted), ZOHO_LISTSUBSCRIBE_FIELDS);
+  assert.equal(submitted["Lead Email"], "b.eakin@kzero.com");
+  assert.equal(submitted["Plan ID"], "benmsp-nfr");
+  assert.equal(submitted["Apps Submitted"], 0);
+  assert.equal(submitted["Apps Approved"], 0);
+  assert.equal(Object.hasOwn(submitted, "Contact Email"), false);
+  assert.equal(Object.hasOwn(submitted, "Next Task Since"), false);
+  assert.equal(Object.hasOwn(submitted, "Last MSP Activity"), false);
+  assert.equal(Object.hasOwn(submitted, "Last SE Touch"), false);
+  assert.equal(calls[1].init.body.get("topic_id"), "1329658000000062845");
+  assert.equal(calls[1].url, "https://marketingautomation.zoho.com/api/v1/json/listsubscribe");
 });
 
 test("listsubscribe sends the numeric topic and rejects an HTTP-200 application error", async () => {
