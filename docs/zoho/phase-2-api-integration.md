@@ -102,7 +102,9 @@ Every upsert keeps a 27-value portal snapshot: built-in Lead Email, First Name, 
 
 `Next Task Since`, `Last SE Touch`, and `Last MSP Activity` remain persisted and included in field discovery, but are temporarily excluded from `listsubscribe`. Zoho returns application error `2001` when any of these correctly defined Date/Time fields is submitted, including when tested individually. Do not activate a journey that depends on those Zoho values until Zoho confirms a supported Date/Time write format or endpoint.
 
-Optional unavailable supported values are sent empty so stale Zoho values are not retained. Numeric zero is sent as the number `0`. Zoho displays a submitted zero for `Apps Submitted` or `Apps Approved` as a blank field; that blank is the provider representation of the synchronized zero and is not, by itself, a synchronization failure. The portal continues to retain the actual numeric zero.
+Optional unavailable supported values are serialized as empty strings to preserve the verified 24-field request contract. The first controlled Production upsert proved that `listsubscribe` may retain an existing Zoho value when an empty string is submitted. An empty outbound value must therefore **not** be treated as proof that the provider field was cleared. Zoho's Subscribe API documents private-list updates, but it does not document an explicit empty-field clearing operation. Do not invent a sentinel or undocumented clearing request.
+
+Numeric zero is sent as the JSON number `0`. Zoho displays a submitted zero for `Apps Submitted` or `Apps Approved` as a blank/dash field; that provider presentation is not, by itself, a synchronization failure. The portal remains authoritative for the actual numeric zero.
 
 The snapshot uses:
 
@@ -111,9 +113,10 @@ The snapshot uses:
 - the first persisted non-complete task ordered by the plan, or the final completed task for a completed plan;
 - `OnboardingTask.templateKey` as Next Task ID;
 - actual persisted SaaS submission rows for submitted and approved counts;
-- the existing application time-estimate and guide mappings.
+- the existing application time-estimate and approved guide mappings;
+- the first sentence of the persisted task description as the task-specific tip, provided it fits the verified 300-character Zoho text field.
 
-Variable KZero work and per-application implementation time produce no numeric Next Task Minutes. No historical timestamp, first name, email, booking URL, task tip, or Last SE Touch is fabricated. The current schema has no truthful Last SE Touch or task-tip field, so both remain empty.
+Variable KZero work and per-application implementation time produce no numeric Next Task Minutes. No historical timestamp, first name, email, booking URL, guide URL, or Last SE Touch is fabricated. A task with no persisted description has no tip. A task with no approved guide mapping has no guide URL.
 
 Task links use:
 
@@ -122,6 +125,63 @@ Task links use:
 ```
 
 The portal now recognizes this authenticated deep link, opens the Tasks tab, expands the correct phase, and scrolls to the stable task key. No temporary-access token or admin backdoor is included.
+
+### Field lifecycle and provider freshness
+
+KZero's persisted plan/task/application state is authoritative. Provider state is classified as follows:
+
+| Portal state | Outbound representation | Provider freshness meaning |
+|---|---|---|
+| Known populated value | Exact string or positive number | Current after an accepted upsert, subject to read/UI verification |
+| Known zero | JSON number `0` | Authoritative in KZero; Zoho may display blank/dash |
+| Unknown / not applicable | Empty string for a supported optional field | Does not prove an existing Zoho value was cleared |
+| Populated to empty | Empty string | Intentional clear requested, but provider clearing remains unverified; stale provider data may remain |
+| Missing supported snapshot field | No request | Fail closed before the provider boundary |
+| Unsupported Date/Time field | Omitted | Remains authoritative only in KZero until Zoho documents a compatible write format |
+
+The portal never reads a stale optional Zoho field back as onboarding truth. Journey freshness is intentionally conservative because the repository contains the journey design and required merge-field contract, but not the deployed branded-email template bodies:
+
+| Journey | Established fields | Tip / guide decision |
+|---|---|---|
+| J1 Welcome and Kickoff Booking | First Name, Portal URL, Next Task Title/Link/Status, Current Phase, SE identity/booking fields; the internal alert explicitly uses Next Task Title and Link | Hold if Tip or Guide is unavailable until the actual welcome/reminder templates are audited or approved guidance exists |
+| J3-R1 Next Action Nudge | Next Task Title/Link, Nudge Status, SE identity/booking fields; the internal alert explicitly uses Next Task Title and Link | Hold if Tip or Guide is unavailable until the actual nudge/reminder templates are audited or approved guidance exists |
+| J5 Your Next Step Is Ready | Next Task Title and Link are required for the handoff | Hold if Tip or Guide is unavailable until the actual one-message template is audited or approved guidance exists |
+| J8 Completion and Expansion | Completion/milestone fields; no next-task guidance dependency is specified | Tip and Guide do not block J8 |
+
+`Next Task Link` is always generated from the current persisted plan/task and fulfills the primary portal-navigation requirement. It cannot, however, make a retained stale `Next Task Guide URL` safe if a Zoho template renders that separate merge field. J1, J3-R1, and J5 therefore remain held before any provider workflow when either field is unavailable. All journey feature flags remain independently required and disabled by default.
+
+### Verified first controlled Production upsert
+
+At approximately `2026-11-21T23:33:48Z`, exact event `cmwpz7q920001jx07nhzr1yc7` sent one allowlisted `UPSERT_CONTACT` request for plan `benmsp-nfr` and recipient `b.eakin@kzero.com`. The provider accepted application code `0` with status `success`; the event reached `SUCCEEDED` on attempt 1. No KZero journey send was recorded. Production was immediately restored to the global-kill-switch/disabled-dispatch configuration.
+
+The event established:
+
+- all 24 supported display-name keys are accepted together;
+- the three Date/Time fields remain excluded;
+- empty strings do not reliably clear pre-existing custom-field values;
+- numeric zero may display as blank/dash;
+- API acceptance alone does not prove field rendering, topic eligibility, email delivery, or absence of Zoho-native automation.
+
+### Manual Zoho audit after a controlled write
+
+For the first event, use `2026-11-21 23:33:48 UTC` as the reference time:
+
+1. Open **Contacts**, select `b.eakin@kzero.com`, then inspect **Timeline** with a custom range around the reference time and filter to **Field Update**.
+2. Inspect the contact's **Engagement** tab for campaigns, forms, or messages near the reference time.
+3. Open every onboarding journey and use **Trace Contact Path** for the recipient. Confirm there is no entry, execution, or exit at the reference time.
+4. Review sent campaigns, scheduled campaigns, autoresponders, and list-entry workflows for the private `KZero Partner Onboarding` list.
+5. Check the recipient inbox, spam, and deleted items for subscription confirmations or automated messages.
+
+The documented read-only APIs expose list membership, list/campaign summaries, field metadata, and open journey configuration, but they do not provide the same complete recipient-level Timeline/Engagement/Trace Contact Path evidence as the Zoho UI. Absence from an API response is not proof that no communication occurred.
+
+### Remaining blockers before general automation
+
+- obtain a documented provider operation for clearing an existing custom field, or design journey content that never consumes fields whose freshness is unverified;
+- approve a guide URL for every task whose journey template uses `Next Task Guide URL`, or remove that merge-field dependency from the reviewed test journey;
+- manually verify Zoho Timeline, Engagement, journey trace, campaign/autoresponder history, and the recipient inbox;
+- keep unsupported Date/Time-dependent journey logic disabled;
+- complete isolated test-journey validation, topic/deliverability verification, sender/return-path decisions, and scheduler/hosting approval;
+- retain all existing tenant isolation, permission, suppression, private-list, topic, field-metadata, outbox ordering, idempotency, uncertain-outcome, retry, Staff SSO, kill-switch, and feature-flag gates.
 
 ## Exact picklists
 

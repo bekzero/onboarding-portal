@@ -2,8 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { createZohoContactSnapshot, ZohoContactMappingError } from "@/lib/zoho-contact-mapping";
 import { getZohoPublicPortalBaseUrl } from "@/lib/zoho-config";
-import { getTaskGuides } from "@/lib/guide-previews";
 import { getTaskTimeEstimateMinutes } from "@/lib/onboarding-time-estimates";
+import { getZohoTaskGuidance } from "@/lib/zoho-task-guidance";
 import { ZohoAdminValidationError } from "@/lib/zoho-validation";
 import type { ZohoTransaction } from "@/lib/zoho-foundation";
 
@@ -49,6 +49,7 @@ export async function getPersistedZohoContactSnapshotWithClient(
       onboardingTasks: {
         orderBy: { order: "asc" },
         select: {
+          description: true,
           owner: true,
           order: true,
           status: true,
@@ -80,7 +81,10 @@ export async function getPersistedZohoContactSnapshotWithClient(
   if (!nextTask?.templateKey) {
     throw new ZohoAdminValidationError("The plan has no stable task available for synchronization.", 409);
   }
-  const guides = getTaskGuides(nextTask.templateKey);
+  const guidance = getZohoTaskGuidance({
+    description: nextTask.description,
+    templateKey: nextTask.templateKey
+  });
   const portalBaseUrl = getZohoPublicPortalBaseUrl();
   if (!portalBaseUrl) {
     throw new ZohoAdminValidationError("A valid public portal base URL is required.", 503);
@@ -96,13 +100,13 @@ export async function getPersistedZohoContactSnapshotWithClient(
       lastMspActivity: plan.lastActivityAt,
       lastSeTouch: null,
       nextTask: {
-        guideUrl: guides[0]?.href ?? null,
+        guideUrl: guidance.guideUrl,
         minutes: getTaskTimeEstimateMinutes(nextTask.templateKey),
         owner: nextTask.owner,
         since: plan.nextTaskSince,
         status: nextTask.status,
         templateKey: nextTask.templateKey,
-        tip: null,
+        tip: guidance.tip,
         title: nextTask.title
       },
       nudgeStatus: plan.nudgeStatus,

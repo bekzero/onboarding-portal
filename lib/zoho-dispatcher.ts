@@ -15,6 +15,7 @@ import {
 } from "@/lib/zoho-config";
 import { getPersistedZohoContactSnapshot } from "@/lib/zoho-contact-snapshot";
 import { getFullFieldTestIntentKey } from "@/lib/zoho-existing-plan-test-intent";
+import { getZohoJourneyFreshnessBlockers } from "@/lib/zoho-field-lifecycle";
 import type { ZohoDispatchProvider } from "@/lib/zoho-dispatch-provider";
 import { zohoDispatchProvider } from "@/lib/zoho-dispatch-provider";
 import { executeZohoProviderWorkflow } from "@/lib/zoho-dispatch-engine";
@@ -371,6 +372,15 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
       return done({ status: "HELD", reason: "ZOHO_MAPPING_OR_PRIVATE_LIST_UNVERIFIED" });
     }
     const snapshot = await getPersistedZohoContactSnapshot(state.plan.planId, state.contact.id);
+    if (claim.event.eventType === "TRIGGER_JOURNEY" && claim.event.journey) {
+      const freshnessBlockers = getZohoJourneyFreshnessBlockers(claim.event.journey, snapshot.snapshot);
+      if (freshnessBlockers.length > 0) {
+        return done({
+          status: "HELD",
+          reason: `CONTACT_FIELD_FRESHNESS_UNVERIFIED:${freshnessBlockers.join(",")}`
+        });
+      }
+    }
     const contactCapacity = await reserveZohoApiCapacity("CONTACT_SYNC");
     if (!contactCapacity.allowed) return done({ status: "RETRY", reason: "CONTACT_SYNC_RATE_LIMITED", retryAt: contactCapacity.retryAt });
     const contactOptions = {

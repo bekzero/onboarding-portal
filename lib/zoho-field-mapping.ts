@@ -211,6 +211,13 @@ export function buildZohoLeadInfo(
     throw new Error(`Zoho field mapping is incomplete: ${mapping.missing.join(", ")}.`);
   }
 
+  const missingSnapshotFields = ZOHO_LISTSUBSCRIBE_FIELDS.filter(
+    (displayName) => !Object.prototype.hasOwnProperty.call(snapshot, displayName)
+  );
+  if (missingSnapshotFields.length > 0) {
+    throw new Error(`Zoho contact snapshot is missing: ${missingSnapshotFields.join(", ")}.`);
+  }
+
   return Object.fromEntries(
     ZOHO_LISTSUBSCRIBE_FIELDS.map((displayName) => {
       const fieldValue = snapshot[displayName];
