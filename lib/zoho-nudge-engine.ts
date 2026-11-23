@@ -221,7 +221,7 @@ async function prepareEligibleNudge(input: {
   runId: string;
 }) {
   return prisma.$transaction(async (transaction) => {
-    await transaction.$queryRaw(Prisma.sql`
+    await transaction.$executeRaw(Prisma.sql`
       SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-j3-evaluation:${input.planId}`}, 0))
     `);
     const plan = await transaction.onboardingPlan.findUnique({ where: { id: input.planId }, select: planSelect });

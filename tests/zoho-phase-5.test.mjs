@@ -159,7 +159,8 @@ test("Q-Y: schema and engine make daily runs and per-task preparation idempotent
   const engine = await readFile(new URL("../lib/zoho-nudge-engine.ts", import.meta.url), "utf8");
   assert.match(schema, /businessDate\s+String\s+@unique/);
   assert.match(schema, /@@unique\(\[runId, onboardingPlanId\]\)/);
-  assert.match(engine, /pg_advisory_xact_lock/);
+  assert.match(engine, /\$executeRaw\(Prisma\.sql`[\s\S]*pg_advisory_xact_lock/);
+  assert.doesNotMatch(engine, /\$queryRaw\(Prisma\.sql`[\s\S]*zoho-j3-evaluation/);
   assert.match(engine, /j3-eligible/);
   assert.match(engine, /recordZohoJourneyEventsInTransaction/);
   assert.match(engine, /nudgeStatus: "WAITING"/);

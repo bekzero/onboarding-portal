@@ -6,6 +6,7 @@ import { createZohoContactSnapshot } from "../lib/zoho-contact-mapping.ts";
 import {
   classifyZohoFieldLifecycle,
   getZohoJourneyFreshnessBlockers,
+  ZOHO_JOURNEY_GUIDANCE_EVIDENCE,
   ZOHO_JOURNEY_FRESHNESS_FIELDS
 } from "../lib/zoho-field-lifecycle.ts";
 import { buildZohoLeadInfo, ZOHO_LISTSUBSCRIBE_EXCLUDED_FIELDS } from "../lib/zoho-field-mapping.ts";
@@ -139,6 +140,18 @@ test("missing task guidance stays unavailable and stale-sensitive journeys fail 
     J5: ["Next Task Tip", "Next Task Guide URL"],
     J8: []
   });
+  assert.deepEqual(ZOHO_JOURNEY_GUIDANCE_EVIDENCE, {
+    J1: {
+      "Next Task Tip": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE",
+      "Next Task Guide URL": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE"
+    },
+    J3_R1: { "Next Task Tip": "REQUIRED", "Next Task Guide URL": "REQUIRED" },
+    J5: {
+      "Next Task Tip": "REQUIRED",
+      "Next Task Guide URL": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE"
+    },
+    J8: { "Next Task Tip": "VERIFIED_NOT_USED", "Next Task Guide URL": "VERIFIED_NOT_USED" }
+  });
 });
 
 test("fresh optional guidance clears only the journey freshness hold", () => {
@@ -148,6 +161,17 @@ test("fresh optional guidance clears only the journey freshness hold", () => {
   assert.deepEqual(getZohoJourneyFreshnessBlockers("J1", current), []);
   assert.deepEqual(getZohoJourneyFreshnessBlockers("J3_R1", current), []);
   assert.deepEqual(getZohoJourneyFreshnessBlockers("J5", current), []);
+});
+
+test("snapshot link fields remain current KZero values rather than retained Zoho values", () => {
+  const current = snapshot();
+  assert.equal(current["Portal URL"], "https://portal.example.com/portal/test-nfr");
+  assert.equal(
+    current["Next Task Link"],
+    "https://portal.example.com/portal/test-nfr?tab=tasks&task=book-kickoff"
+  );
+  assert.equal(current["SE Booking URL"], "https://booking.example.com/se");
+  assert.equal(current["Next Task Guide URL"], null);
 });
 
 test("completed onboarding retains the final real task without inventing guidance", () => {

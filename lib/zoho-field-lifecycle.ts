@@ -20,15 +20,41 @@ export const ZOHO_PROVIDER_UNSUPPORTED_FIELDS = [
   "Last SE Touch"
 ] as const satisfies readonly ZohoContactDisplayField[];
 
+type ZohoJourney = "J1" | "J3_R1" | "J5" | "J8";
+type StaleSensitiveField = (typeof ZOHO_STALE_SENSITIVE_OPTIONAL_FIELDS)[number];
+type TemplateDependencyEvidence = "REQUIRED" | "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE" | "VERIFIED_NOT_USED";
+
+export const ZOHO_JOURNEY_GUIDANCE_EVIDENCE = {
+  J1: {
+    "Next Task Tip": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE",
+    "Next Task Guide URL": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE"
+  },
+  J3_R1: {
+    "Next Task Tip": "REQUIRED",
+    "Next Task Guide URL": "REQUIRED"
+  },
+  J5: {
+    "Next Task Tip": "REQUIRED",
+    "Next Task Guide URL": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE"
+  },
+  J8: {
+    "Next Task Tip": "VERIFIED_NOT_USED",
+    "Next Task Guide URL": "VERIFIED_NOT_USED"
+  }
+} as const satisfies Record<ZohoJourney, Record<StaleSensitiveField, TemplateDependencyEvidence>>;
+
+function freshnessFieldsFor(journey: ZohoJourney) {
+  return ZOHO_STALE_SENSITIVE_OPTIONAL_FIELDS.filter(
+    (field) => ZOHO_JOURNEY_GUIDANCE_EVIDENCE[journey][field] !== "VERIFIED_NOT_USED"
+  );
+}
+
 export const ZOHO_JOURNEY_FRESHNESS_FIELDS = {
-  // The source documents do not include the deployed Zoho template bodies. Until
-  // each template is audited, these journeys must not consume a retained value.
-  J1: ZOHO_STALE_SENSITIVE_OPTIONAL_FIELDS,
-  J3_R1: ZOHO_STALE_SENSITIVE_OPTIONAL_FIELDS,
-  J5: ZOHO_STALE_SENSITIVE_OPTIONAL_FIELDS,
-  // J8 is a completion message and does not use next-task guidance.
-  J8: []
-} as const satisfies Record<"J1" | "J3_R1" | "J5" | "J8", readonly ZohoContactDisplayField[]>;
+  J1: freshnessFieldsFor("J1"),
+  J3_R1: freshnessFieldsFor("J3_R1"),
+  J5: freshnessFieldsFor("J5"),
+  J8: freshnessFieldsFor("J8")
+} satisfies Record<ZohoJourney, readonly StaleSensitiveField[]>;
 
 function hasValue(value: unknown) {
   return typeof value === "number" || (typeof value === "string" && value.trim().length > 0);
@@ -48,7 +74,7 @@ export function classifyZohoFieldLifecycle(input: {
 }
 
 export function getZohoJourneyFreshnessBlockers(
-  journey: "J1" | "J3_R1" | "J5" | "J8",
+  journey: ZohoJourney,
   snapshot: ZohoContactSnapshot
 ) {
   return ZOHO_JOURNEY_FRESHNESS_FIELDS[journey].filter((field) => {

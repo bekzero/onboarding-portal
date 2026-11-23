@@ -139,16 +139,41 @@ KZero's persisted plan/task/application state is authoritative. Provider state i
 | Missing supported snapshot field | No request | Fail closed before the provider boundary |
 | Unsupported Date/Time field | Omitted | Remains authoritative only in KZero until Zoho documents a compatible write format |
 
-The portal never reads a stale optional Zoho field back as onboarding truth. Journey freshness is intentionally conservative because the repository contains the journey design and required merge-field contract, but not the deployed branded-email template bodies:
+The portal never reads a stale optional Zoho field back as onboarding truth. Rendered Zoho previews were reviewed on November 23, 2026. They establish visible content, but not every subject, HTML attribute, hidden/conditional block, or reminder-node setting. `PARTIAL_REVIEW_NO_VISIBLE_REFERENCE` therefore remains a freshness requirement until the missing evidence is checked:
 
 | Journey | Established fields | Tip / guide decision |
 |---|---|---|
-| J1 Welcome and Kickoff Booking | First Name, Portal URL, Next Task Title/Link/Status, Current Phase, SE identity/booking fields; the internal alert explicitly uses Next Task Title and Link | Hold if Tip or Guide is unavailable until the actual welcome/reminder templates are audited or approved guidance exists |
-| J3-R1 Next Action Nudge | Next Task Title/Link, Nudge Status, SE identity/booking fields; the internal alert explicitly uses Next Task Title and Link | Hold if Tip or Guide is unavailable until the actual nudge/reminder templates are audited or approved guidance exists |
-| J5 Your Next Step Is Ready | Next Task Title and Link are required for the handoff | Hold if Tip or Guide is unavailable until the actual one-message template is audited or approved guidance exists |
-| J8 Completion and Expansion | Completion/milestone fields; no next-task guidance dependency is specified | Tip and Guide do not block J8 |
+| J1 Welcome and Kickoff Booking | Rendered J1-1/J1-2: First Name, SE identity, booking and portal links. Waits use Next Task Status/Current Phase. | Tip and Guide were not visible, but subjects/HTML/conditional elements remain unverified. Both retain a safety hold. |
+| J3-R1 Next Action Nudge | Rendered J3-R1/J3-R2: Current Phase, Next Task Title/Minutes/Tip, next-task button, guide link, SE identity. Waits use Nudge Status. | Tip and Guide are confirmed required. |
+| J5 Your Next Step Is Ready | Rendered template: First Name, Current Phase, Next Task Title/Minutes/Tip, next-task and portal links, SE identity. | Tip is confirmed required. Guide was not visible, but subjects/HTML/conditional elements remain unverified, so Guide retains a safety hold. |
+| J8 Completion and Expansion | Rendered completion template and journey design use First Name, SE identity, feedback and portal links, not current-task guidance. | Tip and Guide do not block J8. |
 
 `Next Task Link` is always generated from the current persisted plan/task and fulfills the primary portal-navigation requirement. It cannot, however, make a retained stale `Next Task Guide URL` safe if a Zoho template renders that separate merge field. J1, J3-R1, and J5 therefore remain held before any provider workflow when either field is unavailable. All journey feature flags remain independently required and disabled by default.
+
+### Link contract
+
+| Template link | Expected source | Verification still required |
+|---|---|---|
+| J1 booking button | `SE Booking URL`, rebuilt from the assigned Sales Engineer stored on the plan | Inspect the button `href` in J1-1 and J1-2 |
+| J1 portal link | `Portal URL`, rebuilt as `/portal/{planId}` | Inspect the rendered anchor target and any hidden/conditional variant |
+| J3 next-step button | `Next Task Link`, rebuilt as `/portal/{planId}?tab=tasks&task={templateKey}` | Inspect both J3-R1 and J3-R2 button `href` values |
+| J3 guide link | `Next Task Guide URL` from the approved `getTaskGuides` mapping | Inspect both guide-link `href` values and conditional behavior when unavailable |
+| J5 next-step button | Current `Next Task Link` | Inspect the button `href` |
+| J5 portal link | Current `Portal URL` | Inspect the portal-link `href` |
+| J8 feedback button | Zoho-template configuration; not part of the 24-field KZero contract | Replace the known portal placeholder with the approved feedback destination and verify it manually |
+| J8 portal link | Current `Portal URL` if implemented as a merge field | Inspect the anchor `href`; do not infer it from visible link text |
+
+KZero never accepts a Zoho-stored link as authoritative. `Portal URL`, `Next Task Link`, `SE Booking URL`, and approved guide URLs are rebuilt from current persisted KZero state for every upsert.
+
+### Wait and exit safety
+
+- **Kickoff booked during J1's three-day wait:** KZero stores `kickoffBookedAt` and emits a prioritized stop-state upsert that changes `Next Task Status` to `Upcoming`. The Zoho journey must re-evaluate `Next Task Status`/`Current Phase` before J1-2. The dispatcher cannot retract an email already sent.
+- **Nudged task completed during J3's two-day wait:** the task transition and `Nudge Status = Done` commit with a stop-state upsert. The Zoho journey must re-evaluate that field before J3-R2. The dispatcher prioritizes stop-state events but cannot cancel a message already accepted by Zoho.
+- **Task changes before a reminder:** KZero cancels an untriggered stale J3 event when the authoritative task no longer matches. Once J3 is already running in Zoho, cancellation depends on the `Done` upsert and the journey's wait/exit configuration.
+- **Recipient becomes unsubscribed or otherwise ineligible:** new KZero journey triggers are blocked. An already-running Zoho journey must independently honor current topic/list suppression; this requires an isolated TEST verification and cannot be inferred from KZero's hold.
+- **Reminder already sent:** it cannot be recalled. The send ledger prevents a duplicate KZero trigger, while later journey nodes remain governed by Zoho's configured exit checks.
+
+Before any isolated journey trigger, inspect every wait node and confirm that its early-exit condition is evaluated before the following email, including the exact comparison value and branch ordering. A documented field update is necessary but is not proof that Zoho cancelled the next node.
 
 ### Verified first controlled Production upsert
 
