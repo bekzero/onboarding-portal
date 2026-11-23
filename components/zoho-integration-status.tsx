@@ -2,7 +2,18 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronRight, CircleOff, RefreshCw } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  CircleOff,
+  ContactRound,
+  RefreshCw,
+  Route,
+  Settings2,
+  ShieldCheck
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -124,6 +135,42 @@ type PlanAutomationSummary = {
 
 type BlockerCategory = "contact" | "identity" | "plan" | "context" | "provider" | "flags";
 type BlockerKind = "action" | "intentional" | "unverified";
+type ZohoCaseSection = "overview" | "contact-sync" | "journeys" | "advanced";
+
+const zohoCaseSections: Array<{
+  description: string;
+  icon: typeof Activity;
+  id: ZohoCaseSection;
+  label: string;
+}> = [
+  { description: "Safety and current state", icon: Activity, id: "overview", label: "Overview" },
+  { description: "Eligibility and outcomes", icon: ContactRound, id: "contact-sync", label: "Contact Sync" },
+  { description: "Journey holds", icon: Route, id: "journeys", label: "Journeys" },
+  { description: "Restricted tools", icon: Settings2, id: "advanced", label: "Advanced" }
+];
+
+const journeyCatalog = [
+  {
+    dependencies: ["Template evidence incomplete: Tip and Guide remain fail-closed"],
+    id: "J1",
+    name: "Welcome and Kickoff Booking"
+  },
+  {
+    dependencies: ["Current Next Task Tip required", "Current approved Guide URL required"],
+    id: "J3_R1",
+    name: "Next Action Nudge"
+  },
+  {
+    dependencies: ["Current Next Task Tip required", "Guide usage remains unverified and fail-closed"],
+    id: "J5",
+    name: "Your Next Step Is Ready"
+  },
+  {
+    dependencies: ["Task Tip and Guide are verified not used"],
+    id: "J8",
+    name: "Completion and Expansion"
+  }
+] as const;
 
 const blockerCopy: Record<string, { category: BlockerCategory; kind: BlockerKind; label: string }> = {
   AUTOMATION_APPROVAL_REQUIRED: { category: "plan", kind: "action", label: "Approve automation for the plan and Onboarding Owner contact." },
@@ -183,6 +230,7 @@ function kindLabel(kind: BlockerKind) {
 
 export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactOption[]; planId: string }) {
   const eligibleContacts = contacts.filter((contact) => contact.automationEnabled);
+  const [activeSection, setActiveSection] = useState<ZohoCaseSection>("overview");
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [planSummary, setPlanSummary] = useState<PlanAutomationSummary | null>(null);
   const [selectedContactId, setSelectedContactId] = useState(eligibleContacts[0]?.id ?? "");
@@ -508,7 +556,59 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     : 0;
 
   return (
-    <div className="grid gap-4">
+    <div className="grid min-w-0 gap-4">
+      <div className="sticky -top-4 z-10 -mx-1 border-b border-border bg-surface/95 px-1 pb-3 pt-1 backdrop-blur md:-top-6" aria-label="Zoho case sections">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" role="tablist">
+          {zohoCaseSections.map((section, index) => {
+            const Icon = section.icon;
+            const selected = activeSection === section.id;
+            return (
+              <button
+                aria-controls={`zoho-case-panel-${section.id}`}
+                aria-selected={selected}
+                className={`flex min-h-14 min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  selected
+                    ? "border-primary/40 bg-primary/15 text-foreground"
+                    : "border-transparent text-secondary hover:border-border hover:bg-input hover:text-foreground"
+                }`}
+                id={`zoho-case-tab-${section.id}`}
+                key={section.id}
+                onClick={() => setActiveSection(section.id)}
+                onKeyDown={(event) => {
+                  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                  event.preventDefault();
+                  const nextIndex = event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? zohoCaseSections.length - 1
+                      : (index + (event.key === "ArrowRight" ? 1 : -1) + zohoCaseSections.length) % zohoCaseSections.length;
+                  const next = zohoCaseSections[nextIndex];
+                  setActiveSection(next.id);
+                  document.getElementById(`zoho-case-tab-${next.id}`)?.focus();
+                }}
+                role="tab"
+                tabIndex={selected ? 0 : -1}
+                type="button"
+              >
+                <Icon className="h-4 w-4 shrink-0 text-primary" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold">{section.label}</span>
+                  <span className="block truncate text-[11px] text-muted">{section.description}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {error ? <p className="break-words rounded-xl border border-danger-border/60 bg-danger-surface px-3 py-2 text-sm text-danger" role="alert">{error}</p> : null}
+
+      <section
+        aria-labelledby="zoho-case-tab-overview"
+        className={activeSection === "overview" ? "grid min-w-0 gap-4" : "hidden"}
+        id="zoho-case-panel-overview"
+        role="tabpanel"
+      >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.18em] text-muted">MSP-specific Zoho readiness</p>
@@ -527,18 +627,65 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
                   : "Review the items below before this contact can be considered for synchronization."}
           </p>
         </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-border bg-input p-3">
+          <p className="text-xs uppercase tracking-[0.14em] text-muted">Safety state</p>
+          <div className="mt-2 flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" /><p className="font-semibold text-foreground">{!status ? "Loading" : status.configuration.globalKillSwitch ? "Disabled" : "Maintenance mode"}</p></div>
+          <p className="mt-1 text-xs leading-5 text-secondary">{!status ? "Checking authoritative configuration" : status.configuration.globalKillSwitch ? "Global kill switch enabled" : `Dispatch mode: ${status.configuration.dispatchMode}`}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-input p-3">
+          <p className="text-xs uppercase tracking-[0.14em] text-muted">Contact sync</p>
+          <p className="mt-2 font-semibold text-foreground">{fullFieldTestIntent?.status ? humanize(fullFieldTestIntent.status) : humanize(planSummary?.enrollmentContactSync.synchronizationState ?? "not prepared")}</p>
+          <p className="mt-1 text-xs leading-5 text-secondary">{fullFieldTestIntent ? `${fullFieldTestIntent.attemptCount} provider attempt${fullFieldTestIntent.attemptCount === 1 ? "" : "s"}` : "No full-field intent recorded"}</p>
+        </div>
+        <div className="rounded-xl border border-border bg-input p-3">
+          <p className="text-xs uppercase tracking-[0.14em] text-muted">Latest outcome</p>
+          <p className="mt-2 font-semibold text-foreground">{fullFieldTestIntent?.lastProviderOutcome ? humanize(fullFieldTestIntent.lastProviderOutcome) : planSummary?.lastSuccessfulContactSync ? "Succeeded" : "No provider outcome"}</p>
+          <p className="mt-1 text-xs leading-5 text-secondary">Provider acceptance is not independent field verification.</p>
+        </div>
+        <div className="rounded-xl border border-border bg-input p-3">
+          <p className="text-xs uppercase tracking-[0.14em] text-muted">Plan and recipient</p>
+          <p className="mt-2 truncate font-semibold text-foreground">{planSummary?.enrollmentContactSync.mspName ?? planId}</p>
+          <p className="mt-1 break-all text-xs leading-5 text-secondary">{planSummary?.enrollmentContactSync.primaryContactEmail ?? "Recipient unavailable"}</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-input p-4">
+        <div className="flex items-center justify-between gap-3"><h5 className="text-sm font-semibold text-foreground">Important blockers</h5><span className="text-xs text-muted">{readiness?.blockers.length ?? 0} total</span></div>
+        {readiness?.blockers.length ? (
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {readiness.blockers.slice(0, 4).map((code) => <li className="flex min-w-0 items-start gap-2 text-sm leading-5 text-secondary" key={code}><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" /><span className="break-words">{blockerCopy[code]?.label ?? humanize(code)}</span></li>)}
+          </ul>
+        ) : <p className="mt-2 text-sm text-secondary">No case-level readiness blockers were reported. Operational feature flags remain authoritative.</p>}
+        {(readiness?.blockers.length ?? 0) > 4 ? <button className="mt-3 text-xs font-medium text-primary hover:underline" onClick={() => setActiveSection("advanced")} type="button">View all blockers in Advanced</button> : null}
+      </div>
+
+      </section>
+
+      <section
+        aria-labelledby="zoho-case-tab-contact-sync"
+        className={activeSection === "contact-sync" ? "grid min-w-0 gap-4" : "hidden"}
+        id="zoho-case-panel-contact-sync"
+        role="tabpanel"
+      >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted">Contact synchronization</p>
+          <h4 className="mt-1 text-lg font-semibold text-foreground">Eligibility, preview, and outcomes</h4>
+          <p className="mt-1 text-sm leading-6 text-secondary">Evaluate current persisted state and inspect provider outcomes. Opening this section never creates work or contacts Zoho.</p>
+        </div>
         <Button className="h-10 shrink-0" disabled={busy || !planSummary} onClick={() => void evaluateEnrollmentSync()}>
           <RefreshCw className={`mr-2 h-4 w-4 ${busy ? "animate-spin" : ""}`} />
           {busy ? "Evaluating..." : "Evaluate Zoho Sync"}
         </Button>
       </div>
-
       {lastEvaluatedAt ? (
         <p className="rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">
           Evaluated {new Date(lastEvaluatedAt).toLocaleString()}. No event or provider request was created.
         </p>
       ) : null}
-      {error ? <p className="rounded-xl border border-danger-border/60 bg-danger-surface px-3 py-2 text-sm text-danger">{error}</p> : null}
 
       <section className="rounded-xl border border-border bg-input p-4" aria-labelledby="zoho-pilot-readiness-heading">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -596,43 +743,102 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
         ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
           <Button className="h-9" disabled={busy || !controlledPilot?.readiness.canPreview} onClick={() => void previewControlledPilot()} variant="outline">Preview Sync</Button>
-          <Button
-            className="h-9"
-            disabled={busy || !controlledPilot?.executionAuthorized || !pilotPreview?.membership?.complete || Boolean(pilotPreview.membership.statuses.length) || pilotPreview.outcome !== null}
-            onClick={() => void runControlledPilot()}
-          >Run Single-Contact Pilot</Button>
         </div>
-        <p className="mt-2 text-xs leading-5 text-warning">The run control remains unavailable until the manual flag is enabled, the global kill switch is deliberately released, every automatic path remains disabled, and a fresh complete preview finds no active or suppressed membership.</p>
+        <p className="mt-2 text-xs leading-5 text-muted">Preview is read-only. Restricted execution controls are isolated under Advanced.</p>
         {pilotMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{pilotMessage}</p> : null}
-        <div className="mt-4 border-t border-border pt-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Full-field lifecycle test</p>
-              <p className="mt-1 text-xs leading-5 text-secondary">
-                Prepares one normal outbox contact intent from the persisted plan snapshot. Preparation performs a fresh suppression check but never sends, subscribes, or triggers a journey.
-              </p>
-              <p className="mt-1 text-xs text-foreground">
-                {planSummary?.enrollmentContactSync.fullFieldTestIntent
-                  ? `Intent ${planSummary.enrollmentContactSync.fullFieldTestIntent.status} · attempts ${planSummary.enrollmentContactSync.fullFieldTestIntent.attemptCount}`
-                  : "No full-field test intent recorded"}
-              </p>
-            </div>
-            <Button
-              className="h-9 shrink-0"
-              disabled={busy || !planSummary?.administrativeControls.canManage || Boolean(planSummary?.enrollmentContactSync.fullFieldTestIntent)}
-              onClick={() => void prepareFullFieldTestIntent()}
-              variant="outline"
-            >Prepare Full-Field Intent</Button>
-            <Button
-              className="h-9 shrink-0"
-              disabled={busy || !exactDispatchWindow || !fullFieldTestIntent || !["PENDING", "RETRY"].includes(fullFieldTestIntent.status)}
-              onClick={() => void dispatchFullFieldTestIntent()}
-            >Dispatch Exact Test Event</Button>
-          </div>
-          <p className="mt-2 text-xs leading-5 text-warning">Dispatch stays disabled unless test mode is active, contact sync is enabled, the global kill switch is deliberately released, and every automatic/journey path remains off.</p>
-          {fullFieldIntentMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{fullFieldIntentMessage}</p> : null}
-        </div>
       </section>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-border bg-input p-3"><p className="text-xs uppercase tracking-[0.12em] text-muted">Subscription</p><p className="mt-2 text-sm font-semibold text-foreground">{planSummary?.subscriptionStatus ? humanize(planSummary.subscriptionStatus) : "Unavailable"}</p></div>
+        <div className="rounded-xl border border-border bg-input p-3"><p className="text-xs uppercase tracking-[0.12em] text-muted">Permission</p><p className="mt-2 text-sm font-semibold text-foreground">{planSummary?.enrollmentContactSync.permissionEvidencePresent ? "Evidence recorded" : "Evidence required"}</p></div>
+        <div className="rounded-xl border border-border bg-input p-3"><p className="text-xs uppercase tracking-[0.12em] text-muted">Last sync</p><p className="mt-2 text-sm font-semibold text-foreground">{planSummary?.lastSuccessfulContactSync ? new Date(planSummary.lastSuccessfulContactSync.updatedAt).toLocaleString() : "Never"}</p></div>
+        <div className="rounded-xl border border-border bg-input p-3"><p className="text-xs uppercase tracking-[0.12em] text-muted">Full-field event</p><p className="mt-2 text-sm font-semibold text-foreground">{fullFieldTestIntent?.status ? humanize(fullFieldTestIntent.status) : "Not prepared"}</p><p className="mt-1 text-xs text-secondary">Attempts: {fullFieldTestIntent?.attemptCount ?? 0}</p></div>
+      </div>
+
+      <details className="rounded-xl border border-border bg-input">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Detailed sync diagnostics</summary>
+        <div className="grid gap-2 border-t border-border px-4 py-4 text-xs text-secondary sm:grid-cols-2">
+          <p>Synchronization state: <span className="text-foreground">{planSummary?.enrollmentContactSync.synchronizationState ?? "Unavailable"}</span></p>
+          <p>Eligibility: <span className="text-foreground">{readiness?.eligibleIfEnabled ? "Eligible if explicitly enabled" : "Blocked"}</span></p>
+          <p>Suppression scan: <span className="text-foreground">{pilotPreview?.membership?.complete ? pilotPreview.membership.statuses.join(", ") || "Complete; no membership found" : "Fresh preview required"}</span></p>
+          <p>Provider outcome: <span className="text-foreground">{fullFieldTestIntent?.lastProviderOutcome ? humanize(fullFieldTestIntent.lastProviderOutcome) : "None"}</span></p>
+          {fullFieldTestIntent ? <p className="break-all sm:col-span-2">Event ID: <span className="text-foreground">{fullFieldTestIntent.id}</span></p> : null}
+        </div>
+      </details>
+
+      <Link className="inline-flex h-10 w-full items-center justify-center rounded-full border border-border px-4 text-sm font-medium text-foreground hover:bg-hover sm:w-fit" href={`/admin/zoho?tab=events&plan=${encodeURIComponent(planId)}`}>
+        View Contact Sync History <ChevronRight className="ml-1 h-4 w-4" />
+      </Link>
+      </section>
+
+      <section
+        aria-labelledby="zoho-case-tab-journeys"
+        className={activeSection === "journeys" ? "grid min-w-0 gap-4" : "hidden"}
+        id="zoho-case-panel-journeys"
+        role="tabpanel"
+      >
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted">Recognized journeys</p>
+          <h4 className="mt-1 text-lg font-semibold text-foreground">Configuration and freshness holds</h4>
+          <p className="mt-1 text-sm leading-6 text-secondary">These cards report configuration and known template dependencies. Runtime eligibility is still rechecked before every trigger.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {journeyCatalog.map((journey) => {
+            const configuration = status?.configuration.journeys[journey.id];
+            const configured = Boolean(configuration?.journeyKeyPresent && configuration?.triggerKeyPresent);
+            const enabled = Boolean(status?.configuration.journeyTriggeringEnabled);
+            const hold = !configured ? "Journey or trigger key is missing" : !enabled ? "Journey triggering is disabled" : "Runtime eligibility and freshness validation required";
+            return (
+              <article className="rounded-xl border border-border bg-input p-4" key={journey.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">{journey.id.replace("_", "-")}</p><h5 className="mt-1 font-semibold text-foreground">{journey.name}</h5></div>
+                  <Badge status={enabled && configured ? "waiting_on_kzero" : "in_progress"}>{enabled && configured ? "Runtime check" : "Disabled"}</Badge>
+                </div>
+                <dl className="mt-3 grid gap-2 text-xs">
+                  <div className="flex justify-between gap-4"><dt className="text-muted">Configuration</dt><dd className="text-right text-foreground">{configured ? "Keys present" : "Incomplete"}</dd></div>
+                  <div className="flex justify-between gap-4"><dt className="text-muted">Hold reason</dt><dd className="max-w-[70%] text-right text-foreground">{hold}</dd></div>
+                </dl>
+                <div className="mt-3 border-t border-border pt-3"><p className="text-xs font-medium text-foreground">Freshness dependencies</p><ul className="mt-2 grid gap-1 text-xs leading-5 text-secondary">{journey.dependencies.map((dependency) => <li key={dependency}>• {dependency}</li>)}</ul></div>
+              </article>
+            );
+          })}
+        </div>
+        <p className="rounded-xl border border-warning-border/50 bg-warning-surface px-3 py-2 text-xs leading-5 text-warning">Configured API connectivity does not mean a journey is active, eligible, or safe to trigger.</p>
+      </section>
+
+      <section
+        aria-labelledby="zoho-case-tab-advanced"
+        className={activeSection === "advanced" ? "grid min-w-0 gap-4" : "hidden"}
+        id="zoho-case-panel-advanced"
+        role="tabpanel"
+      >
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-muted">Restricted administration</p>
+          <h4 className="mt-1 text-lg font-semibold text-foreground">Advanced tools and audited controls</h4>
+          <p className="mt-1 text-sm leading-6 text-secondary">These operations retain their existing confirmations, authorization checks, and feature-flag gates.</p>
+        </div>
+
+        <section className="rounded-xl border border-warning-border/60 bg-warning-surface/40 p-4" aria-labelledby="restricted-sync-actions-heading">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div><h5 className="text-sm font-semibold text-foreground" id="restricted-sync-actions-heading">Restricted synchronization actions</h5><p className="mt-1 text-xs leading-5 text-secondary">Potentially write-capable operations. Server-side safeguards remain authoritative.</p></div><Badge status="waiting_on_msp">Explicit confirmation</Badge></div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-xl border border-border bg-surface p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Controlled single-contact pilot</p>
+              <p className="mt-2 text-sm text-foreground">{controlledPilot?.executionAuthorized ? "Execution window authorized" : "Not authorized"}</p>
+              <p className="mt-1 text-xs leading-5 text-secondary">Requires a fresh complete preview and the exact server-selected target.</p>
+              <Button className="mt-3 h-9" disabled={busy || !controlledPilot?.executionAuthorized || !pilotPreview?.membership?.complete || Boolean(pilotPreview.membership.statuses.length) || pilotPreview.outcome !== null} onClick={() => void runControlledPilot()}>Run Single-Contact Pilot</Button>
+            </div>
+            <div className="rounded-xl border border-border bg-surface p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Full-field lifecycle test</p>
+              <p className="mt-2 text-sm text-foreground">{fullFieldTestIntent ? `${humanize(fullFieldTestIntent.status)} · attempts ${fullFieldTestIntent.attemptCount}` : "No intent recorded"}</p>
+              <p className="mt-1 text-xs leading-5 text-secondary">Preparation records durable work only; it never sends, subscribes, or triggers a journey.</p>
+              {fullFieldTestIntent ? <p className="mt-1 break-all text-xs text-secondary">{fullFieldTestIntent.id}</p> : null}
+              <div className="mt-3 flex flex-wrap gap-2"><Button className="h-9" disabled={busy || !planSummary?.administrativeControls.canManage || Boolean(fullFieldTestIntent)} onClick={() => void prepareFullFieldTestIntent()} variant="outline">Prepare Full-Field Intent</Button><Button className="h-9" disabled={busy || !exactDispatchWindow || !fullFieldTestIntent || !["PENDING", "RETRY"].includes(fullFieldTestIntent.status)} onClick={() => void dispatchFullFieldTestIntent()}>Dispatch Exact Test Event</Button></div>
+            </div>
+          </div>
+          <p className="mt-3 text-xs leading-5 text-warning">Dispatch remains disabled unless the dedicated maintenance posture is active and every unrelated automatic or journey path is off.</p>
+          {pilotMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{pilotMessage}</p> : null}
+          {fullFieldIntentMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{fullFieldIntentMessage}</p> : null}
+        </section>
 
       <section className="rounded-xl border border-border bg-input p-4" aria-labelledby="zoho-readiness-controls-heading">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -913,6 +1119,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
         </Link>
       </div>
       <p className="text-xs leading-5 text-muted">Global discovery and allowlisted test-contact tools remain in the Zoho Automation Admin Center.</p>
+      </section>
     </div>
   );
 }

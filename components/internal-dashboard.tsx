@@ -2783,6 +2783,17 @@ export function InternalDashboard({
   const isModalOpen =
     panelMode === "enroll" || ((panelMode === "preview" || panelMode === "edit" || panelMode === "oidc" || panelMode === "delete" || panelMode === "rollback") && !!selectedCase);
 
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    function handleModalKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closePanel();
+    }
+
+    window.addEventListener("keydown", handleModalKeyDown);
+    return () => window.removeEventListener("keydown", handleModalKeyDown);
+  }, [isModalOpen]);
+
   return (
     <main className="mx-auto grid w-full max-w-7xl min-w-0 gap-4">
       <section className="min-w-0 grid gap-3">
@@ -3310,7 +3321,7 @@ export function InternalDashboard({
           <Card
             className={`w-full overflow-hidden border-border bg-surface ${
               panelMode === "preview"
-                ? "flex max-h-[95vh] max-w-[1040px] flex-col md:max-h-[90vh]"
+                ? "flex min-h-0 min-w-0 max-h-[96dvh] max-w-[1180px] flex-col md:max-h-[92dvh]"
                 : panelMode === "edit" || panelMode === "enroll"
                   ? "flex max-h-[90vh] max-w-[940px] flex-col p-0"
                   : panelMode === "rollback"
@@ -3319,7 +3330,7 @@ export function InternalDashboard({
             }`}
           >
             <div className={`shrink-0 flex items-start justify-between gap-4 border-b border-border bg-surface px-4 ${panelMode === "preview" ? "py-3 md:px-6" : "py-4 md:px-6"} ${(panelMode === "preview" || panelMode === "rollback") ? "sticky top-0 z-20" : panelMode === "edit" || panelMode === "enroll" ? "z-10" : "mb-5"}`}>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs uppercase tracking-[0.24em] text-info">
                   {panelMode === "preview"
                     ? "Case preview"
@@ -3333,10 +3344,10 @@ export function InternalDashboard({
                         ? "Configure OIDC"
                         : "Enroll MSP"}
                 </p>
-                <h3 className={`${panelMode === "preview" ? "mt-1 text-xl" : "mt-2 text-2xl"} font-semibold text-foreground`}>
+                <h3 className={`${panelMode === "preview" ? "mt-1 text-xl" : "mt-2 text-2xl"} break-words font-semibold text-foreground`}>
                   {panelMode === "enroll" ? "Enroll MSP" : selectedCase?.mspName}
                 </h3>
-                <p className="mt-1 text-sm text-secondary">
+                <p className="mt-1 break-words text-sm text-secondary">
                   {panelMode === "enroll"
                     ? "Create a new MSP onboarding case with access, stage, and reporting details."
                     : panelMode === "preview"
@@ -3378,13 +3389,13 @@ export function InternalDashboard({
               <>
                 <div className="shrink-0 border-b border-border bg-surface px-4 py-3 md:px-6">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0 overflow-x-auto">
-                      <div aria-label="Case preview sections" className="flex min-w-max gap-1" role="tablist">
+                    <div className="min-w-0 flex-1">
+                      <div aria-label="Case preview sections" className="grid grid-cols-2 gap-1 sm:grid-cols-4" role="tablist">
                         {CASE_PREVIEW_TABS.map((tab, index) => (
                           <button
                             aria-controls="case-preview-panel"
                             aria-selected={casePreviewTab === tab.id}
-                            className={`h-10 rounded-xl px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                            className={`h-10 min-w-0 rounded-xl px-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:px-3 ${
                               casePreviewTab === tab.id ? "bg-primary/15 text-primary ring-1 ring-inset ring-primary/30" : "text-secondary hover:bg-input hover:text-foreground"
                             }`}
                             id={`case-preview-tab-${tab.id}`}
@@ -3441,7 +3452,7 @@ export function InternalDashboard({
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                   <div
                     aria-labelledby={`case-preview-tab-${casePreviewTab}`}
-                    className="grid gap-6 px-4 py-4 pb-10 md:px-6 md:py-6 md:pb-12"
+                    className="grid gap-4 px-4 py-4 pb-8 md:px-6 md:py-5 md:pb-10"
                     id="case-preview-panel"
                     role="tabpanel"
                     tabIndex={0}
