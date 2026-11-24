@@ -166,7 +166,7 @@ const zohoCaseSections: Array<{
 
 const journeyCatalog = [
   {
-    dependencies: ["Template evidence incomplete: Tip and Guide remain fail-closed"],
+    dependencies: ["Next Task Tip and Guide URL are verified not used"],
     id: "J1",
     name: "Welcome and Kickoff Booking"
   },

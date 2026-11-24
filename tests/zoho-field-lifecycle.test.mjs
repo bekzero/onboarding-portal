@@ -130,20 +130,20 @@ test("actual progression selects fresh guidance for kickoff, setup, employee, an
 test("missing task guidance stays unavailable and stale-sensitive journeys fail closed", () => {
   assert.deepEqual(getZohoTaskGuidance({ description: null, templateKey: "unknown-task" }), { guideUrl: null, tip: null });
   const current = snapshot();
-  assert.deepEqual(getZohoJourneyFreshnessBlockers("J1", current), ["Next Task Guide URL"]);
+  assert.deepEqual(getZohoJourneyFreshnessBlockers("J1", current), []);
   assert.deepEqual(getZohoJourneyFreshnessBlockers("J3_R1", current), ["Next Task Guide URL"]);
   assert.deepEqual(getZohoJourneyFreshnessBlockers("J5", current), ["Next Task Guide URL"]);
   assert.deepEqual(getZohoJourneyFreshnessBlockers("J8", current), []);
   assert.deepEqual(ZOHO_JOURNEY_FRESHNESS_FIELDS, {
-    J1: ["Next Task Tip", "Next Task Guide URL"],
+    J1: [],
     J3_R1: ["Next Task Tip", "Next Task Guide URL"],
     J5: ["Next Task Tip", "Next Task Guide URL"],
     J8: []
   });
   assert.deepEqual(ZOHO_JOURNEY_GUIDANCE_EVIDENCE, {
     J1: {
-      "Next Task Tip": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE",
-      "Next Task Guide URL": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE"
+      "Next Task Tip": "VERIFIED_NOT_USED",
+      "Next Task Guide URL": "VERIFIED_NOT_USED"
     },
     J3_R1: { "Next Task Tip": "REQUIRED", "Next Task Guide URL": "REQUIRED" },
     J5: {

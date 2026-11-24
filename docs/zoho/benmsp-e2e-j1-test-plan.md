@@ -15,7 +15,7 @@ The portal derives this identity from the requested case name:
 
 Do not substitute `benmsp-nfr`; that is the earlier plan with its own completed contact-sync event and audit history. KZero event and journey deduplication include the plan ID, so the new plan receives distinct stable keys. Recipient sequencing remains email-scoped, which is intentional: every earlier event for this address must already be terminal before new work can run.
 
-**Current status: GO for a dormant deployment; NO-GO for the J1 provider trigger.** Reusing the address is not demonstrably impossible and a new mailbox is not required. The code now provides an audited old-context retirement, a distinct enrollment-only preparation gate, and exact event-ID selection. Complete assigned-template evidence for J1 remains mandatory before its provider trigger.
+**Current status: GO for a dormant deployment; the J1 Tip/Guide template-evidence blocker is resolved.** Reusing the address is not demonstrably impossible and a new mailbox is not required. The code provides an audited old-context retirement, a distinct enrollment-only preparation gate, and exact event-ID selection. All remaining provider, consent, suppression, context, freshness, and exact-event gates remain mandatory.
 
 No Production setting, KZero record, Zoho contact, or journey is changed by this plan.
 
@@ -39,16 +39,9 @@ The Case Preview now provides one narrow Staff SSO ADMIN operation that atomical
 
 After that operation, a read-only check must show one `UNASSIGNED` context, no automation-active competing owner, and no unresolved event for the recipient.
 
-### 2. Finish J1 template freshness evidence
+### 2. J1 template freshness evidence
 
-The current dispatcher holds J1 when `Next Task Tip` or `Next Task Guide URL` is unavailable because the rendered J1 previews did not establish the complete subject, HTML, hidden/conditional elements, and reminder-node dependencies. The kickoff task has an approved task-specific Tip but no approved Guide URL.
-
-Before a TEST J1 trigger, either:
-
-- inspect the exact J1-1 and J1-2 assets assigned to the TEST J1 journey and prove that neither field is referenced, then mark those J1 dependencies `VERIFIED_NOT_USED` with regression coverage; or
-- approve a genuine kickoff guide URL if the template really consumes the guide field.
-
-Do not treat an old Zoho root URL as an approved guide and do not weaken the freshness gate based only on visible preview text.
+The assigned J1-1 HTML asset `1329658000000062164` and J1-2 HTML asset `1329658000000062893` were reviewed in full on November 24, 2026. Neither export contains the `Next Task Tip` or `Next Task Guide URL` display name, merge-field identifier, or a case variant. Both fields are therefore `VERIFIED_NOT_USED` for J1 only. J3-R1/J3-R2 and J5 retain their independent guidance requirements.
 
 ### 3. Exact selection for both new lifecycle events
 

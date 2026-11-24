@@ -91,7 +91,7 @@ test("status presentation handles event states and long diagnostics without over
 
 test("journey cards preserve the recognized set and fail-closed freshness messaging", () => {
   for (const journey of ["J1", "J3_R1", "J5", "J8"]) assert.match(zohoUi, new RegExp(`id: "${journey}"`));
-  assert.match(zohoUi, /Template evidence incomplete: Tip and Guide remain fail-closed/);
+  assert.match(zohoUi, /Next Task Tip and Guide URL are verified not used/);
   assert.match(zohoUi, /Current approved Guide URL required/);
   assert.match(zohoUi, /Guide usage remains unverified and fail-closed/);
   assert.match(zohoUi, /Task Tip and Guide are verified not used/);

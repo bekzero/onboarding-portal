@@ -139,16 +139,16 @@ KZero's persisted plan/task/application state is authoritative. Provider state i
 | Missing supported snapshot field | No request | Fail closed before the provider boundary |
 | Unsupported Date/Time field | Omitted | Remains authoritative only in KZero until Zoho documents a compatible write format |
 
-The portal never reads a stale optional Zoho field back as onboarding truth. Rendered Zoho previews were reviewed on November 23, 2026. They establish visible content, but not every subject, HTML attribute, hidden/conditional block, or reminder-node setting. `PARTIAL_REVIEW_NO_VISIBLE_REFERENCE` therefore remains a freshness requirement until the missing evidence is checked:
+The portal never reads a stale optional Zoho field back as onboarding truth. Rendered Zoho previews were reviewed on November 23, 2026. Complete assigned J1 HTML exports were reviewed on November 24, 2026. `PARTIAL_REVIEW_NO_VISIBLE_REFERENCE` remains a freshness requirement for journeys whose assigned source has not been verified:
 
 | Journey | Established fields | Tip / guide decision |
 |---|---|---|
-| J1 Welcome and Kickoff Booking | Rendered J1-1/J1-2: First Name, SE identity, booking and portal links. Waits use Next Task Status/Current Phase. | Tip and Guide were not visible, but subjects/HTML/conditional elements remain unverified. Both retain a safety hold. |
+| J1 Welcome and Kickoff Booking | Assigned J1-1 asset `1329658000000062164` and J1-2 asset `1329658000000062893`: First Name, SE identity, booking link, and the J1-1 portal link. | The complete exported HTML references neither `Next Task Tip` nor `Next Task Guide URL`; both are `VERIFIED_NOT_USED` for J1 only. |
 | J3-R1 Next Action Nudge | Rendered J3-R1/J3-R2: Current Phase, Next Task Title/Minutes/Tip, next-task button, guide link, SE identity. Waits use Nudge Status. | Tip and Guide are confirmed required. |
 | J5 Your Next Step Is Ready | Rendered template: First Name, Current Phase, Next Task Title/Minutes/Tip, next-task and portal links, SE identity. | Tip is confirmed required. Guide was not visible, but subjects/HTML/conditional elements remain unverified, so Guide retains a safety hold. |
 | J8 Completion and Expansion | Rendered completion template and journey design use First Name, SE identity, feedback and portal links, not current-task guidance. | Tip and Guide do not block J8. |
 
-`Next Task Link` is always generated from the current persisted plan/task and fulfills the primary portal-navigation requirement. It cannot, however, make a retained stale `Next Task Guide URL` safe if a Zoho template renders that separate merge field. J1, J3-R1, and J5 therefore remain held before any provider workflow when either field is unavailable. All journey feature flags remain independently required and disabled by default.
+`Next Task Link` is always generated from the current persisted plan/task and fulfills the primary portal-navigation requirement. It cannot, however, make a retained stale `Next Task Guide URL` safe if a Zoho template renders that separate merge field. J3-R1 and J5 therefore retain their independent freshness holds. J1 no longer depends on Tip or Guide, while all other J1 feature, eligibility, suppression, sequencing, wait/exit, and authorization gates remain independently required and disabled by default.
 
 ### Link contract
 

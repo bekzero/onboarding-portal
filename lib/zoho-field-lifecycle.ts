@@ -26,8 +26,8 @@ type TemplateDependencyEvidence = "REQUIRED" | "PARTIAL_REVIEW_NO_VISIBLE_REFERE
 
 export const ZOHO_JOURNEY_GUIDANCE_EVIDENCE = {
   J1: {
-    "Next Task Tip": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE",
-    "Next Task Guide URL": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE"
+    "Next Task Tip": "VERIFIED_NOT_USED",
+    "Next Task Guide URL": "VERIFIED_NOT_USED"
   },
   J3_R1: {
     "Next Task Tip": "REQUIRED",

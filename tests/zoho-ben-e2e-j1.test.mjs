@@ -80,15 +80,19 @@ test("J1 maintenance requires independent contact verification and enables only 
   assert.ok(evaluateExactLifecycleMaintenance(posture({ ...journey, journey: null })).blockers.includes("EVENT_TYPE_NOT_APPROVED"));
 });
 
-test("J1 remains fail-closed until exact assigned template evidence is complete", () => {
+test("J1 assigned templates are verified not to use task Tip or Guide URL", () => {
   assert.deepEqual(ZOHO_JOURNEY_GUIDANCE_EVIDENCE.J1, {
-    "Next Task Tip": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE",
-    "Next Task Guide URL": "PARTIAL_REVIEW_NO_VISIBLE_REFERENCE"
+    "Next Task Tip": "VERIFIED_NOT_USED",
+    "Next Task Guide URL": "VERIFIED_NOT_USED"
   });
   assert.deepEqual(getZohoJourneyFreshnessBlockers("J1", {
     "Next Task Tip": null,
     "Next Task Guide URL": null
-  }), ["Next Task Tip", "Next Task Guide URL"]);
+  }), []);
+  assert.deepEqual(ZOHO_JOURNEY_GUIDANCE_EVIDENCE.J3_R1, {
+    "Next Task Tip": "REQUIRED",
+    "Next Task Guide URL": "REQUIRED"
+  });
 });
 
 test("context retirement is ADMIN-only, locked, audited, reversible before successor creation, and never dispatches", async () => {
