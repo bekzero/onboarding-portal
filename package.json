@@ -47,7 +47,10 @@
     "diagnose:zoho-phase-7b1-oauth-grant": "node --experimental-transform-types --env-file=.env.zoho-test.local --env-file=.env.zoho-readonly.local scripts/zoho-phase-7b1-readonly.mjs oauth-grant-diagnostic",
     "diagnose:zoho-phase-7b1-mailing-list:fallback": "node --experimental-transform-types --env-file=.env.zoho-test.local --env-file=.env.zoho-readonly.local --env-file=.env.zoho-readonly-fallback.local scripts/zoho-phase-7b1-readonly.mjs mailing-list-diagnostic",
     "verify:zoho-phase-7b1-readonly": "node --experimental-transform-types --env-file=.env.zoho-test.local --env-file=.env.zoho-readonly.local scripts/zoho-phase-7b1-readonly.mjs live",
-    "verify:zoho-phase-1a": "node scripts/verify-zoho-phase-1a.mjs"
+    "verify:zoho-phase-1a": "node scripts/verify-zoho-phase-1a.mjs",
+    "audit:zoho-legacy-journeys": "node scripts/zoho-legacy-journey-audit.mjs",
+    "audit:zoho-legacy-journeys:json": "node scripts/zoho-legacy-journey-audit.mjs --json",
+    "test:zoho-legacy-protection": "node --test --experimental-transform-types tests/zoho-legacy-protection.test.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

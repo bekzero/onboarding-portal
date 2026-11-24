@@ -5,6 +5,7 @@ import { getZohoTestConfiguration } from "@/lib/zoho-config";
 import { getPersistedZohoContactSnapshotWithClient } from "@/lib/zoho-contact-snapshot";
 import { createZohoAutomationAuditInTransaction } from "@/lib/zoho-foundation";
 import { ZohoAdminValidationError } from "@/lib/zoho-validation";
+import { assertZohoPlanAutomationEligible } from "@/lib/zoho-legacy-eligibility";
 
 const CONFIRMATION = "ACTIVATE ISOLATED ZOHO TEST PLAN";
 
@@ -42,6 +43,7 @@ export async function activateIsolatedZohoTestPlan(input: {
       include: { planContacts: { where: { id: input.contactId } } }
     });
     if (!plan) throw new ZohoAdminValidationError("Onboarding plan not found.", 404);
+    await assertZohoPlanAutomationEligible(transaction, plan.id);
     if (plan.automationOrigin !== "NATIVE") {
       throw new ZohoAdminValidationError("Legacy plans cannot be activated by the test fixture.", 409);
     }

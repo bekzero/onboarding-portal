@@ -20,6 +20,7 @@ import {
 import { checkZohoListMembership } from "@/lib/zoho-phase2";
 import { prisma } from "@/lib/prisma";
 import { ZohoAdminValidationError } from "@/lib/zoho-validation";
+import { assertZohoPlanAutomationEligible } from "@/lib/zoho-legacy-eligibility";
 
 export const FULL_FIELD_TEST_INTENT_CONFIRMATION = "PREPARE ONE FULL-FIELD ZOHO TEST INTENT";
 export const FULL_FIELD_TEST_INTENT_AUDIT_ACTION = "test_j1.existing_plan_contact_intent_prepared";
@@ -55,6 +56,7 @@ export async function prepareExistingFullFieldTestIntent(input: {
   }
 
   const loaded = await loadConfiguredPilotPlan(input.planId);
+  await assertZohoPlanAutomationEligible(prisma, loaded.plan.id);
   const existingIntent = await getExistingFullFieldTestIntent(input.planId);
   if (existingIntent) {
     return {
@@ -175,7 +177,7 @@ export async function prepareExistingFullFieldTestIntent(input: {
       await createZohoAutomationAuditInTransaction(transaction, {
         action: FULL_FIELD_TEST_INTENT_AUDIT_ACTION,
         actor: input.actor,
-        evidenceReference: result.event.id,
+        evidenceReference: result.event?.id,
         onboardingPlanId: loaded.plan.id,
         reason: "Prepared one allowlisted full-field UPSERT_CONTACT intent from the persisted plan snapshot. No provider request, journey, nudge, or subscription update occurred.",
         recipientEmail: loaded.owner.email

@@ -12,6 +12,7 @@ import {
   normalizeSalesEngineerInput,
   ZohoAdminValidationError
 } from "@/lib/zoho-validation";
+import { assertZohoPlanAutomationEligible } from "@/lib/zoho-legacy-eligibility";
 
 const contactSelection = {
   automationEnabled: true,
@@ -49,6 +50,14 @@ async function getPlanOrThrow(transaction: ZohoTransaction, planId: string) {
   }
 
   return plan;
+}
+
+async function assertAutomationCanBeEnabled(
+  transaction: ZohoTransaction,
+  onboardingPlanId: string,
+  automationEnabled: boolean
+) {
+  if (automationEnabled) await assertZohoPlanAutomationEligible(transaction, onboardingPlanId);
 }
 
 async function assertActivePlanKeepsOwner(
@@ -111,6 +120,7 @@ export async function addPlanContact(
   try {
     return await prisma.$transaction(async (transaction) => {
       const plan = await getPlanOrThrow(transaction, planId);
+      await assertAutomationCanBeEnabled(transaction, plan.id, contactInput.automationEnabled);
       const contact = await transaction.planContact.create({
         data: {
           ...contactInput,
@@ -149,6 +159,7 @@ export async function updatePlanContact(
   try {
     return await prisma.$transaction(async (transaction) => {
       const plan = await getPlanOrThrow(transaction, planId);
+      await assertAutomationCanBeEnabled(transaction, plan.id, contactInput.automationEnabled);
       const existing = await transaction.planContact.findFirst({
         where: { id: contactId, onboardingPlanId: plan.id }
       });

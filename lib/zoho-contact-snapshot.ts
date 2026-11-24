@@ -6,6 +6,7 @@ import { getTaskTimeEstimateMinutes } from "@/lib/onboarding-time-estimates";
 import { getZohoTaskGuidance } from "@/lib/zoho-task-guidance";
 import { ZohoAdminValidationError } from "@/lib/zoho-validation";
 import type { ZohoTransaction } from "@/lib/zoho-foundation";
+import { assertZohoPlanAutomationEligible } from "@/lib/zoho-legacy-eligibility";
 
 type SnapshotClient = ZohoTransaction | typeof prisma;
 
@@ -14,6 +15,9 @@ export async function getPersistedZohoContactSnapshotWithClient(
   planId: string,
   contactId: string
 ) {
+  const identity = await client.onboardingPlan.findUnique({ where: { planId }, select: { id: true } });
+  if (!identity) throw new ZohoAdminValidationError("Onboarding plan not found.", 404);
+  await assertZohoPlanAutomationEligible(client, identity.id);
   const plan = await client.onboardingPlan.findUnique({
     where: { planId },
     select: {

@@ -31,7 +31,8 @@ export type ZohoNudgeReason =
   | "UNCERTAIN_SEQUENCE"
   | "FAILED_SEQUENCE_REVIEW_REQUIRED"
   | "STALE_SEQUENCE_REVIEW_REQUIRED"
-  | "ALREADY_NUDGED";
+  | "ALREADY_NUDGED"
+  | "LEGACY_PLAN_AUTOMATION_PROTECTED";
 
 export type ZohoNudgeRuleInput = {
   automationEnrollmentState: string;

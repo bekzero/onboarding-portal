@@ -18,6 +18,7 @@ import {
 } from "@/lib/zoho-test-contact-core";
 import { ZohoAdminValidationError, normalizeRequiredEmail } from "@/lib/zoho-validation";
 import { prisma } from "@/lib/prisma";
+import { assertRecipientHasNoLegacyAutomationPlan } from "@/lib/zoho-legacy-eligibility";
 
 const CONFIRMATION = "SYNC ALLOWLISTED TEST CONTACT";
 const REQUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -87,6 +88,7 @@ export async function syncZohoTestContact(input: {
     throw new ZohoAdminValidationError("A valid one-time test request identifier is required.");
   }
   const { normalizedEmail } = normalizeRequiredEmail(input.email, "Test contact email");
+  await assertRecipientHasNoLegacyAutomationPlan(prisma, normalizedEmail);
   const test = getZohoTestContactSyncConfiguration();
   if (getZohoDispatchConfiguration().exactEventDispatchEnabled) {
     throw new ZohoAdminValidationError("Test Contact Sync is unavailable during exact-event maintenance.", 403);

@@ -6,6 +6,7 @@ import {
   type ZohoOutboxEventType
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getZohoPlanAutomationEligibility } from "@/lib/zoho-legacy-eligibility";
 
 export type ZohoTransaction = Prisma.TransactionClient;
 
@@ -107,6 +108,11 @@ export async function createZohoOutboxEventInTransaction(
     return { created: false, event: existingEvent };
   }
 
+  const eligibility = await getZohoPlanAutomationEligibility(transaction, input.onboardingPlanId);
+  if (!eligibility.allowed) {
+    return { created: false, event: null, blockedReason: eligibility.reason };
+  }
+
   const plan = await transaction.onboardingPlan.findUnique({
     where: { id: input.onboardingPlanId },
     select: { automationEnrollmentState: true, planId: true }
@@ -158,6 +164,10 @@ export async function createZohoJourneyTriggerEventInTransaction(
   input: CreateJourneyTriggerInput
 ) {
   await lockStableKey(transaction, `zoho-journey:${input.dedupeKey}`);
+  const eligibility = await getZohoPlanAutomationEligibility(transaction, input.onboardingPlanId);
+  if (!eligibility.allowed) {
+    return { created: false, event: null, journeySend: null, blockedReason: eligibility.reason };
+  }
 
   const plan = await transaction.onboardingPlan.findUnique({
     where: { id: input.onboardingPlanId },

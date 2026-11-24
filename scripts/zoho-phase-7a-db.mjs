@@ -33,7 +33,7 @@ const MIGRATIONS_DIRECTORY = join(process.cwd(), "prisma", "migrations");
 function repositoryMigrationManifest() {
   const directories = readdirSync(MIGRATIONS_DIRECTORY, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   if (JSON.stringify(directories) !== JSON.stringify(CURRENT_MIGRATIONS)) {
-    throw new Error("Repository migration directories do not exactly match the approved 13-migration manifest.");
+    throw new Error("Repository migration directories do not exactly match the approved 14-migration manifest.");
   }
   return Object.fromEntries(CURRENT_MIGRATIONS.map((name) => {
     const sql = readFileSync(join(MIGRATIONS_DIRECTORY, name, "migration.sql"));
@@ -151,7 +151,7 @@ function assertMigrationChecksums(info) {
 
 function assertRecognizedPreflightHistory(info, profile) {
   const classification = classifyExactMigrationHistory(info);
-  const allowed = profile === 'test' ? new Set(['empty', 'historical12']) : new Set(['empty', 'baseline9', 'current13']);
+  const allowed = profile === 'test' ? new Set(['empty', 'historical12']) : new Set(['empty', 'baseline9', 'current13', 'current14']);
   if (!allowed.has(classification)) throw new Error(`The ${profile} target has unsupported migration history: ${classification}.`);
   if (classification !== 'empty') assertMigrationChecksums(info);
   return classification;
@@ -214,7 +214,7 @@ try {
       });
       pool = new Pool({ connectionString: target.connectionString, max: 4 });
       const initialized = await inspect(pool);
-      assertExactMigrationHistory(initialized, 'current13');
+      assertExactMigrationHistory(initialized, 'current14');
       assertMigrationChecksums(initialized);
       console.log(JSON.stringify({
         initialized: true,
@@ -250,7 +250,7 @@ try {
     process.exitCode = 0;
     }
   } else if (mode === 'verify') {
-    assertExactMigrationHistory(beforeInfo, targetProfile === 'test' ? 'historical12' : 'current13');
+    assertExactMigrationHistory(beforeInfo, targetProfile === 'test' ? 'historical12' : 'current14');
     assertMigrationChecksums(beforeInfo);
     run('node', ['scripts/verify-zoho-phase-1a.mjs'], {
       ...process.env,
@@ -271,7 +271,7 @@ try {
     const migrationDurationMs = Date.now() - startedAt;
     pool = new Pool({ connectionString: target.connectionString, max: 4 });
     const afterInfo = await inspect(pool);
-    assertExactMigrationHistory(afterInfo, 'current13');
+    assertExactMigrationHistory(afterInfo, 'current14');
     assertMigrationChecksums(afterInfo);
     const after = await snapshot(pool);
     const differences = compareSnapshots(before, after);

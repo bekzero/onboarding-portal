@@ -16,6 +16,7 @@ import {
 } from "@/lib/zoho-pilot-evidence-core";
 import { prisma } from "@/lib/prisma";
 import { isValidEmailAddress, ZohoAdminValidationError } from "@/lib/zoho-validation";
+import { assertZohoPlanAutomationEligible } from "@/lib/zoho-legacy-eligibility";
 
 export const LIST_PRIVACY_AUDIT_ACTION = "zoho.mailing_list.privacy_verified";
 export const DOWNSTREAM_AUTOMATION_REVIEW_BLOCKED_ACTION = "msp_pilot.downstream_automation_review_blocked";
@@ -105,6 +106,7 @@ async function requireIndividuallyRecordedPermission(planId: string, recipientEm
 export async function approvePilotPlanAutomation(input: { actor: string; planId: string }) {
   assertPilotAdministrationSafeguards();
   const loaded = await loadConfiguredPilotPlan(input.planId);
+  await assertZohoPlanAutomationEligible(prisma, loaded.plan.id);
   await requireIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail);
   if (loaded.plan.automationOrigin !== "NATIVE") {
     throw new ZohoAdminValidationError("Legacy plans require the separate historical enrollment workflow.", 409);
@@ -157,6 +159,7 @@ export async function approvePilotPlanAutomation(input: { actor: string; planId:
 export async function assignPilotCommunicationContext(input: { actor: string; planId: string }) {
   assertPilotAdministrationSafeguards();
   const loaded = await loadConfiguredPilotPlan(input.planId);
+  await assertZohoPlanAutomationEligible(prisma, loaded.plan.id);
   await requireIndividuallyRecordedPermission(loaded.plan.id, loaded.owner.normalizedEmail);
   if (loaded.plan.automationEnrollmentState !== "ACTIVE" || !loaded.owner.automationEnabled) {
     throw new ZohoAdminValidationError("Approve the plan and Onboarding Owner before assigning communication context.", 409);

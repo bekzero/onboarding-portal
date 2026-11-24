@@ -23,6 +23,7 @@ import {
   loadConfiguredPilotPlan
 } from "@/lib/zoho-pilot-admin";
 import { prisma } from "@/lib/prisma";
+import { assertZohoPlanAutomationEligible } from "@/lib/zoho-legacy-eligibility";
 import {
   evaluateSingleContactPilotReadiness,
   executeSingleContactPilotCore,
@@ -323,6 +324,7 @@ export async function executeSingleContactPilot(input: { actor: string; confirma
     throw new ZohoAdminValidationError("Enter the exact one-contact pilot confirmation phrase.");
   }
   const state = await loadPilotState(input.planId);
+  await assertZohoPlanAutomationEligible(prisma, state.plan.id);
   const readiness = evaluateState(state, true);
   const nonReservationBlockers = readiness.blockers.filter((blocker) => blocker !== "PILOT_EXECUTION_ALREADY_RESERVED");
   if (nonReservationBlockers.length) {

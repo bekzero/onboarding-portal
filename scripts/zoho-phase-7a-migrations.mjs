@@ -17,14 +17,16 @@ export const ZOHO_MIGRATIONS = Object.freeze([
 ]);
 
 export const STAFF_SSO_MIGRATION = "20261106150000_add_staff_sso_configuration";
+export const LEGACY_COHORT_MIGRATION = "20261124190000_add_immutable_zoho_legacy_cohort";
 export const HISTORICAL_TEST_MIGRATIONS = Object.freeze([...BASELINE_MIGRATIONS, ...ZOHO_MIGRATIONS]);
-export const CURRENT_MIGRATIONS = Object.freeze([...HISTORICAL_TEST_MIGRATIONS, STAFF_SSO_MIGRATION]);
-export const REHEARSAL_PENDING_MIGRATIONS = Object.freeze([...ZOHO_MIGRATIONS, STAFF_SSO_MIGRATION]);
+export const CURRENT_MIGRATIONS = Object.freeze([...HISTORICAL_TEST_MIGRATIONS, STAFF_SSO_MIGRATION, LEGACY_COHORT_MIGRATION]);
+export const REHEARSAL_PENDING_MIGRATIONS = Object.freeze([...ZOHO_MIGRATIONS, STAFF_SSO_MIGRATION, LEGACY_COHORT_MIGRATION]);
 
 export const MIGRATION_PROFILES = Object.freeze({
   baseline9: BASELINE_MIGRATIONS,
   historical12: HISTORICAL_TEST_MIGRATIONS,
-  current13: CURRENT_MIGRATIONS
+  current13: Object.freeze([...HISTORICAL_TEST_MIGRATIONS, STAFF_SSO_MIGRATION]),
+  current14: CURRENT_MIGRATIONS
 });
 
 export function assertExactMigrationHistory(info, profileName) {

@@ -26,10 +26,27 @@ import {
   isUncertainJourneyFailure
 } from "@/lib/zoho-dispatch-rules";
 import { blockZohoApi, reserveZohoApiCapacity } from "@/lib/zoho-throttle";
+import { LEGACY_AUTOMATION_BLOCK_REASON } from "@/lib/zoho-legacy-eligibility";
 
 type ClaimedEvent = { event: ZohoOutboxEvent; claimId: string; contextVersion: number };
 type FinalState = "SUCCEEDED" | "HELD" | "RETRY" | "DEAD" | "CANCELLED";
 const MAX_ATTEMPTS = 5;
+
+async function quarantineLegacyQueuedEvents() {
+  return prisma.$executeRaw(Prisma.sql`
+    UPDATE "zoho_outbox_events" event
+    SET
+      "status" = 'CANCELLED',
+      "holdReason" = ${LEGACY_AUTOMATION_BLOCK_REASON},
+      "nextAttemptAt" = NULL,
+      "updatedAt" = CURRENT_TIMESTAMP
+    WHERE (event."status" = 'PENDING' OR event."status" = 'RETRY' OR event."status" = 'HELD')
+      AND EXISTS (
+        SELECT 1 FROM "zoho_legacy_automation_plans" legacy
+        WHERE legacy."onboardingPlanId" = event."onboardingPlanId"
+      )
+  `);
+}
 
 function getEventReason(payload: Prisma.JsonValue) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
@@ -258,6 +275,7 @@ async function loadDispatchState(event: ZohoOutboxEvent) {
       nudgeTaskKey: true,
       planId: true,
       tenantType: true,
+      zohoLegacyAutomationProtection: { select: { onboardingPlanId: true } },
       onboardingTasks: { orderBy: { order: "asc" }, select: { owner: true, status: true, templateKey: true } },
       planContacts: {
         where: { normalizedEmail: event.recipientEmailNormalized, automationEnabled: true },
@@ -302,6 +320,9 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
   if (config.globalKillSwitch) return done({ status: "HELD", reason: "GLOBAL_KILL_SWITCH_ENABLED" });
   if (config.mode === "disabled") return done({ status: "HELD", reason: "DISPATCH_MODE_DISABLED" });
   const state = await loadDispatchState(claim.event);
+  if (state?.plan.zohoLegacyAutomationProtection) {
+    return done({ status: "CANCELLED", reason: LEGACY_AUTOMATION_BLOCK_REASON });
+  }
   if (!state?.contact) return done({ status: "CANCELLED", reason: "RECIPIENT_NO_LONGER_ASSIGNED" });
   const allowedPlanState = claim.event.isStopState
     ? ["ACTIVE", "PAUSED", "COMPLETE"].includes(state.plan.automationEnrollmentState)
@@ -563,6 +584,7 @@ export async function dispatchZohoOutboxBatch(input: { provider?: ZohoDispatchPr
   if (config.exactEventDispatchEnabled || config.globalKillSwitch || config.mode === "disabled") {
     return { claimed: 0, completed: 0, recoveredExpiredClaims: 0, disabled: true };
   }
+  await quarantineLegacyQueuedEvents();
   const recoveredExpiredClaims = await recoverExpiredClaims(new Date());
   let claimed = 0;
   let completed = 0;
@@ -585,6 +607,7 @@ export async function dispatchExactZohoOutboxEvent(
   if (!config.exactEventDispatchEnabled || config.globalKillSwitch || config.mode === "disabled") {
     return { claimed: false, completed: false, disabled: true };
   }
+  await quarantineLegacyQueuedEvents();
   const claim = await claimEventById(eventId, new Date(), config.leaseSeconds);
   if (!claim) return { claimed: false, completed: false, disabled: false };
   await processClaim(claim, input.provider ?? zohoDispatchProvider);

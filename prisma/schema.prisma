@@ -273,8 +273,19 @@ model OnboardingPlan {
   zohoJourneySends                 ZohoJourneySend[]
   zohoAutomationAudits             ZohoAutomationAudit[]
   zohoNudgeDecisions               ZohoNudgeEvaluationDecision[]
+  zohoLegacyAutomationProtection   ZohoLegacyAutomationPlan?
 
   @@map("onboarding_plans")
+}
+
+model ZohoLegacyAutomationPlan {
+  onboardingPlanId String         @id
+  planId           String         @unique
+  capturedAt       DateTime       @default(now())
+  captureMigration String
+  onboardingPlan   OnboardingPlan @relation(fields: [onboardingPlanId], references: [id], onDelete: Restrict)
+
+  @@map("zoho_legacy_automation_plans")
 }
 
 model OnboardingTask {

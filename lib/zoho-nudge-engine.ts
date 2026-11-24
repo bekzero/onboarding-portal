@@ -20,7 +20,7 @@ import {
   recordZohoContactSyncEventsInTransaction,
   recordZohoJourneyEventsInTransaction
 } from "@/lib/zoho-lifecycle-events";
-import { evaluateZohoNudgeEligibility, type ZohoNudgeRuleInput } from "@/lib/zoho-nudge-rules";
+import { evaluateZohoNudgeEligibility, type ZohoNudgeReason, type ZohoNudgeRuleInput } from "@/lib/zoho-nudge-rules";
 
 type NudgeClient = ZohoTransaction | PrismaClient;
 type Decision = ReturnType<typeof evaluateZohoNudgeEligibility>;
@@ -64,7 +64,8 @@ const planSelect = {
       taskKey: true,
       updatedAt: true
     }
-  }
+  },
+  zohoLegacyAutomationProtection: { select: { onboardingPlanId: true } }
 } satisfies Prisma.OnboardingPlanSelect;
 
 type NudgePlan = Prisma.OnboardingPlanGetPayload<{ select: typeof planSelect }>;
@@ -127,6 +128,14 @@ function decide(plan: NudgePlan, facts: Awaited<ReturnType<typeof loadContextFac
     priorJ3Attempted: Boolean(prior?.attemptedAt),
     priorJ3Result: prior?.providerResult ?? null
   };
+  if (plan.zohoLegacyAutomationProtection) {
+    return {
+      currentTask,
+      decision: { status: "BLOCKED" as const, reason: "LEGACY_PLAN_AUTOMATION_PROTECTED" as ZohoNudgeReason },
+      owner,
+      prior
+    };
+  }
   return { currentTask, decision: evaluateZohoNudgeEligibility(ruleInput), owner, prior };
 }
 
