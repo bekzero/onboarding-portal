@@ -7,6 +7,7 @@ import { getSanitizedZohoError } from "@/lib/zoho-api";
 import { ZohoApiError } from "@/lib/zoho-api-core";
 import {
   getZohoDispatchConfiguration,
+  getZohoExactEventConfiguration,
   getZohoJourneyConfiguration,
   getZohoListKey,
   getZohoMspEnrollmentPilotConfiguration,
@@ -29,6 +30,15 @@ import { blockZohoApi, reserveZohoApiCapacity } from "@/lib/zoho-throttle";
 type ClaimedEvent = { event: ZohoOutboxEvent; claimId: string; contextVersion: number };
 type FinalState = "SUCCEEDED" | "HELD" | "RETRY" | "DEAD" | "CANCELLED";
 const MAX_ATTEMPTS = 5;
+
+function getEventReason(payload: Prisma.JsonValue) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const event = (payload as Record<string, unknown>).event;
+  if (!event || typeof event !== "object" || Array.isArray(event)) return null;
+  return typeof (event as Record<string, unknown>).reason === "string"
+    ? (event as Record<string, unknown>).reason as string
+    : null;
+}
 
 function safeText(value: string) {
   return value.replace(/[\r\n]/g, " ").slice(0, 300);
@@ -300,15 +310,32 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     return done({ status: "CANCELLED", reason: "PLAN_NOT_ELIGIBLE_FOR_CONTACT_SYNCHRONIZATION" });
   }
   const test = getZohoTestConfiguration();
+  let exactTestJ1Journey = false;
   if (config.mode === "test") {
     const target = getZohoMspEnrollmentPilotConfiguration();
+    const exact = getZohoExactEventConfiguration();
+    const exactTestTarget =
+      test.allowedPlanIds.size === 1 &&
+      test.allowedPlanIds.has(state.plan.planId) &&
+      test.allowedEmails.size === 1 &&
+      test.allowedEmails.has(claim.event.recipientEmailNormalized);
+    const exactTestJ1LifecycleEvent =
+      exact.allowedEventIds.size === 1 &&
+      exact.allowedEventIds.has(claim.event.id) &&
+      exactTestTarget &&
+      getEventReason(claim.event.payload) === "plan.created.test-j1" &&
+      (claim.event.eventType === "UPSERT_CONTACT" ||
+        (claim.event.eventType === "TRIGGER_JOURNEY" && claim.event.journey === "J1"));
+    exactTestJ1Journey = exactTestJ1LifecycleEvent && claim.event.eventType === "TRIGGER_JOURNEY";
     const exactEventAllowed =
       config.exactEventDispatchEnabled &&
-      target.configured &&
-      target.planId === state.plan.planId &&
-      target.email === claim.event.recipientEmailNormalized &&
-      claim.event.eventType === "UPSERT_CONTACT" &&
-      claim.event.eventKey === getFullFieldTestIntentKey(target.planId, target.email);
+      (exactTestJ1LifecycleEvent || (
+        target.configured &&
+        target.planId === state.plan.planId &&
+        target.email === claim.event.recipientEmailNormalized &&
+        claim.event.eventType === "UPSERT_CONTACT" &&
+        claim.event.eventKey === getFullFieldTestIntentKey(target.planId, target.email)
+      ));
     const legacyTestEventAllowed =
       !config.exactEventDispatchEnabled &&
       test.enabled &&
@@ -380,6 +407,63 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
           reason: `CONTACT_FIELD_FRESHNESS_UNVERIFIED:${freshnessBlockers.join(",")}`
         });
       }
+    }
+    if (exactTestJ1Journey) {
+      const contactEvent = await prisma.zohoOutboxEvent.findFirst({
+        where: {
+          onboardingPlanId: claim.event.onboardingPlanId,
+          recipientEmailNormalized: claim.event.recipientEmailNormalized,
+          eventType: "UPSERT_CONTACT",
+          sequence: { lt: claim.event.sequence },
+          status: "SUCCEEDED"
+        },
+        orderBy: { sequence: "desc" }
+      });
+      const contactPayload = contactEvent?.payload && typeof contactEvent.payload === "object" && !Array.isArray(contactEvent.payload)
+        ? contactEvent.payload as Record<string, unknown>
+        : null;
+      const verification = contactEvent ? await prisma.zohoAutomationAudit.findFirst({
+        where: {
+          action: "test_j1.contact_values_verified",
+          actor: { startsWith: "oidc:" },
+          evidenceReference: contactEvent.id,
+          onboardingPlanId: claim.event.onboardingPlanId,
+          recipientEmailNormalized: claim.event.recipientEmailNormalized
+        },
+        select: { id: true }
+      }) : null;
+      if (
+        !contactEvent ||
+        !verification ||
+        !contactPayload?.snapshot ||
+        JSON.stringify(contactPayload.snapshot) !== JSON.stringify(snapshot.snapshot)
+      ) {
+        return done({ status: "HELD", reason: "TEST_J1_CONTACT_VALUES_STALE_OR_UNVERIFIED" });
+      }
+    }
+    if (exactTestJ1Journey) {
+      if (!config.journeyTriggeringEnabled || !claim.event.journey) return done({ status: "HELD", reason: "JOURNEY_TRIGGERING_DISABLED" });
+      const journey = getJourneyKeys(claim.event.journey, config.mode);
+      const listKey = getZohoListKey();
+      if (!listKey) return done({ status: "HELD", reason: "LIST_CONFIGURATION_MISSING" });
+      const triggerCapacity = await reserveZohoApiCapacity("JOURNEY_TRIGGER");
+      if (!triggerCapacity.allowed) return done({ status: "RETRY", reason: "JOURNEY_TRIGGER_RATE_LIMITED", retryAt: triggerCapacity.retryAt });
+      apiOperation = "JOURNEY_TRIGGER";
+      journeyRequestStarted = true;
+      const result = await provider.triggerJourney({
+        journeyKey: journey.journeyKey,
+        leadEmail: claim.event.recipientEmailNormalized,
+        listKey,
+        triggerKey: journey.triggerKey
+      });
+      if (result.classification === "IGNORED") return done({
+        status: "DEAD", reason: "ZOHO_IGNORED_LEAD", outcome: result.classification,
+        journeyResult: result.classification, journeyMetadata: { code: result.code, classification: result.classification }
+      });
+      return done({
+        status: "SUCCEEDED", outcome: result.classification,
+        journeyResult: result.classification, journeyMetadata: { code: result.code, classification: result.classification }
+      });
     }
     const contactCapacity = await reserveZohoApiCapacity("CONTACT_SYNC");
     if (!contactCapacity.allowed) return done({ status: "RETRY", reason: "CONTACT_SYNC_RATE_LIMITED", retryAt: contactCapacity.retryAt });

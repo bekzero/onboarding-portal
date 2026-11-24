@@ -177,6 +177,8 @@ Before any isolated journey trigger, inspect every wait node and confirm that it
 
 ### Verified first controlled Production upsert
 
+The follow-on plan for reusing `b.eakin@kzero.com` in a distinct new onboarding case and beginning an isolated TEST J1 is documented in [BenMSP E2E TEST J1 plan](./benmsp-e2e-j1-test-plan.md). It accounts for Zoho restoring deleted-contact history and does not treat deletion as consent, suppression clearance, or a clean field state.
+
 At approximately `2026-11-21T23:33:48Z`, exact event `cmwpz7q920001jx07nhzr1yc7` sent one allowlisted `UPSERT_CONTACT` request for plan `benmsp-nfr` and recipient `b.eakin@kzero.com`. The provider accepted application code `0` with status `success`; the event reached `SUCCEEDED` on attempt 1. No KZero journey send was recorded. Production was immediately restored to the global-kill-switch/disabled-dispatch configuration.
 
 The event established:

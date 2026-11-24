@@ -48,6 +48,11 @@ type DashboardQuickFilter = "all" | "waiting_on_msp" | "waiting_on_kzero" | "oid
 type DashboardSortColumn = "msp" | "customer" | "gmm" | "stage" | "progress" | "waiting_on" | "apps" | "enrolled" | "updated";
 type DashboardSortDirection = "asc" | "desc";
 type ServerErrorKind = "network" | "server" | "unauthorized";
+type DeleteMspApiResponse = {
+  code?: string;
+  error?: string;
+  success?: boolean;
+};
 type DashboardCase = OnboardingCase & {
   activeTaskOwner?: string;
   activeTaskStatus?: string;
@@ -1592,6 +1597,7 @@ export function InternalDashboard({
   const [rollbackErrorMessage, setRollbackErrorMessage] = useState<string | null>(null);
   const [isApplyingRollback, setIsApplyingRollback] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
   const [isCompletingKzeroStep, setIsCompletingKzeroStep] = useState(false);
   const [isCaseActionsMenuOpen, setIsCaseActionsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2058,6 +2064,7 @@ export function InternalDashboard({
     setOidcState(null);
     setRollbackTaskId("");
     setRollbackErrorMessage(null);
+    setDeleteErrorMessage(null);
   }
 
   function openPreview(item: DashboardCase) {
@@ -2249,6 +2256,7 @@ export function InternalDashboard({
 
   function openDelete(item: DashboardCase) {
     setSelectedCaseId(item.onboardingPlanId);
+    setDeleteErrorMessage(null);
     setPanelMode("delete");
   }
 
@@ -2650,15 +2658,25 @@ export function InternalDashboard({
     }
 
     setIsDeleting(true);
+    setDeleteErrorMessage(null);
 
     try {
       if (useServerData && selectedCase.mspId) {
         const response = await fetch(`/api/admin/msps/${selectedCase.mspId}`, {
           method: "DELETE"
         });
+        const payload = (await response.json().catch(() => null)) as DeleteMspApiResponse | null;
+
+        if (response.status === 409 && payload?.code === "MSP_HAS_AUTOMATION_HISTORY") {
+          setDeleteErrorMessage(
+            payload.error ??
+              "This MSP has protected Zoho automation history and cannot be deleted. Retire or reassign its communication context instead."
+          );
+          return;
+        }
 
         if (!response.ok) {
-          throw new Error("delete_failed");
+          throw new Error(payload?.error ?? "Could not delete the MSP from the server.");
         }
 
         await loadDashboardCases();
@@ -2685,11 +2703,9 @@ export function InternalDashboard({
 
       persistOverrides(nextOverrides);
       closePanel();
-    } catch {
+    } catch (error) {
       if (!allowLocalFallback || useServerData) {
-        setServerUnavailableState("Could not delete the MSP from the server.", {
-          preserveServerData: useServerData
-        });
+        setDeleteErrorMessage(getSafeApiErrorMessage(error) ?? "Could not delete the MSP from the server.");
         return;
       }
 
@@ -3729,6 +3745,12 @@ export function InternalDashboard({
                   <p className="mt-2 text-foreground">{selectedCase.mspName}</p>
                   <p className="mt-1 text-sm text-secondary">{selectedCase.primaryContactEmail}</p>
                 </div>
+                {deleteErrorMessage ? (
+                  <div className="rounded-2xl border border-warning-border/60 bg-warning-surface px-4 py-3" role="alert">
+                    <p className="text-sm font-semibold text-warning">Deletion is not available for this MSP.</p>
+                    <p className="mt-1 text-sm leading-6 text-secondary">{deleteErrorMessage}</p>
+                  </div>
+                ) : null}
                 <div className="flex gap-3">
                   <Button className="flex-1" disabled={isDeleting} onClick={handleDeleteMsp}>
                     {isDeleting ? "Deleting..." : "Delete MSP"}

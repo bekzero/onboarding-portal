@@ -104,6 +104,18 @@ export function getZohoTestConfiguration() {
   };
 }
 
+export function getZohoExactEventConfiguration() {
+  const eventIds = value("ZOHO_EXACT_EVENT_IDS")
+    .split(",")
+    .map((eventId) => eventId.trim())
+    .filter(Boolean);
+
+  return {
+    allowedEventIds: new Set(eventIds),
+    enabled: getZohoDispatchConfiguration().exactEventDispatchEnabled
+  } as const;
+}
+
 export function getZohoTestJ1EnrollmentConfiguration() {
   const test = getZohoTestConfiguration();
   const dispatch = getZohoDispatchConfiguration();
@@ -112,6 +124,7 @@ export function getZohoTestJ1EnrollmentConfiguration() {
   const topicId = getZohoTopicId();
   return {
     ...test,
+    enabled: enabled("ZOHO_TEST_J1_ENROLLMENT_ENABLED"),
     automaticDispatchDisabled: !dispatch.automaticDispatchEnabled,
     dispatchModeIsTest: dispatch.mode === "test",
     fieldMappingVerified: enabled("ZMA_FIELD_MAPPING_VERIFIED"),
@@ -172,6 +185,7 @@ export function getZohoConfigurationStatus() {
     contactSynchronizationEnabled: dispatch.contactSyncEnabled,
     dispatchMode: dispatch.mode,
     exactEventDispatchEnabled: dispatch.exactEventDispatchEnabled,
+    exactEventAllowlistedCount: getZohoExactEventConfiguration().allowedEventIds.size,
     eventEmissionEnabled:
       process.env.ZOHO_EVENT_EMISSION_ENABLED?.trim().toLowerCase() === "true",
     globalKillSwitch: dispatch.globalKillSwitch,
@@ -197,6 +211,7 @@ export function getZohoConfigurationStatus() {
       allowlistedPlanCount: getZohoTestConfiguration().allowedPlanIds.size,
       enabled: getZohoTestConfiguration().enabled
     },
+    testJ1EnrollmentEnabled: enabled("ZOHO_TEST_J1_ENROLLMENT_ENABLED"),
     testContactSync: {
       allowlistedEmailCount: getZohoTestContactSyncConfiguration().allowedEmails.size,
       enabled: getZohoTestContactSyncConfiguration().enabled,

@@ -10,6 +10,8 @@ import {
 import { dispatchExactZohoOutboxEvent, dispatchZohoOutboxBatch, getZohoDispatcherSummary } from "@/lib/zoho-dispatcher";
 import { evaluateExactEventMaintenancePosture } from "@/lib/zoho-exact-event-dispatch-core";
 import { getExistingFullFieldTestIntent } from "@/lib/zoho-existing-plan-test-intent";
+import { authorizeExactTestJ1LifecycleDispatch } from "@/lib/zoho-exact-lifecycle-maintenance";
+import { zohoAdminErrorResponse } from "@/lib/zoho-route-response";
 
 export async function GET() {
   const authError = await getAdminApiAuthError();
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { confirmation?: unknown; eventId?: unknown; maxEvents?: unknown; planId?: unknown } | null;
   if (typeof body?.eventId === "string" || typeof body?.planId === "string") {
     if (
-      body.confirmation !== "DISPATCH ONE ALLOWLISTED FULL-FIELD TEST EVENT" ||
+      typeof body.confirmation !== "string" ||
       typeof body.eventId !== "string" ||
       typeof body.planId !== "string"
     ) {
@@ -37,7 +39,19 @@ export async function POST(request: Request) {
     }
     const approvedEvent = await getExistingFullFieldTestIntent(body.planId);
     if (!approvedEvent || approvedEvent.id !== body.eventId) {
-      return NextResponse.json({ error: "The requested event is not the exact configured full-field test intent." }, { status: 403 });
+      try {
+        const lifecycleEvent = await authorizeExactTestJ1LifecycleDispatch({
+          confirmation: body.confirmation,
+          eventId: body.eventId,
+          planId: body.planId
+        });
+        return NextResponse.json(await dispatchExactZohoOutboxEvent(lifecycleEvent.id));
+      } catch (error) {
+        return zohoAdminErrorResponse(error);
+      }
+    }
+    if (body.confirmation !== "DISPATCH ONE ALLOWLISTED FULL-FIELD TEST EVENT") {
+      return NextResponse.json({ error: "Enter the exact full-field test confirmation phrase." }, { status: 400 });
     }
     const posture = getZohoConfigurationStatus();
     const target = getZohoMspEnrollmentPilotConfiguration();

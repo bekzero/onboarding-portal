@@ -73,7 +73,9 @@ test("advanced write controls remain disabled by authoritative state", () => {
   assert.match(zohoUi, /!exactDispatchWindow/);
   assert.match(zohoUi, /!\["PENDING", "RETRY"\]\.includes\(fullFieldTestIntent\.status\)/);
   assert.match(zohoUi, /status\.configuration\.exactEventDispatchEnabled/);
-  assert.match(zohoUi, /!status\.configuration\.journeyTriggeringEnabled/);
+  assert.match(zohoUi, /exactDispatchBase && !status\?\.configuration\.journeyTriggeringEnabled/);
+  assert.match(zohoUi, /exactDispatchBase && status\?\.configuration\.journeyTriggeringEnabled === true/);
+  assert.match(zohoUi, /exactEventAllowlistedCount === 1/);
   assert.match(zohoUi, /!status\.configuration\.automaticDispatchEnabled/);
 });
 

@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma, type AccessMode, type OidcConfig } from "@prisma/client";
 import { createTaskCompletedAdminNotification } from "@/lib/admin-notifications";
+import { hasProtectedMspZohoHistory, MspHasAutomationHistoryError } from "@/lib/msp-deletion-protection";
 import { decryptStoredOidcClientSecret, encryptOidcClientSecret } from "@/lib/oidc-secret-crypto";
 import { getPlanBundle, type FirstCustomerPilot, type PlanBundle, type SaaSApp as MockSaaSApp, type Task as MockTask, type TaskStatus } from "@/lib/mock-data";
 import { prisma } from "@/lib/prisma";
@@ -1139,8 +1140,33 @@ export async function updateMsp(mspId: string, input: UpdateMspInput) {
 export async function deleteMsp(mspId: string) {
   ensureDatabaseConfigured();
 
-  await prisma.msp.delete({
-    where: { id: mspId }
+  await prisma.$transaction(async (transaction) => {
+    const msp = await transaction.msp.findUnique({
+      where: { id: mspId },
+      select: {
+        onboardingPlans: {
+          select: {
+            _count: {
+              select: {
+                zohoAutomationAudits: true,
+                zohoCommunicationContexts: true,
+                zohoJourneySends: true,
+                zohoNudgeDecisions: true,
+                zohoOutboxEvents: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (msp && hasProtectedMspZohoHistory(msp.onboardingPlans)) {
+      throw new MspHasAutomationHistoryError();
+    }
+
+    await transaction.msp.delete({
+      where: { id: mspId }
+    });
   });
 }
 

@@ -16,6 +16,7 @@ import {
   getZohoDispatchConfiguration,
   getZohoJourneyConfiguration,
   getZohoListKey,
+  getZohoTestJ1EnrollmentConfiguration,
   getZohoTestConfiguration
 } from "@/lib/zoho-config";
 import {
@@ -416,7 +417,9 @@ export async function verifyPlanContactSubscription(input: {
   reason: unknown;
   status: unknown;
 }) {
-  const testConfiguration = getZohoTestConfiguration();
+  const testJ1Configuration = getZohoTestJ1EnrollmentConfiguration();
+  const dispatchConfiguration = getZohoDispatchConfiguration();
+  const configurationStatus = getZohoConfigurationStatus();
   const allowedStatuses = new Set<SubscriptionEligibilityStatus>([
     "CONFIRMED",
     "INELIGIBLE",
@@ -461,17 +464,31 @@ export async function verifyPlanContactSubscription(input: {
     });
     if (
       input.status === "CONFIRMED" &&
-      testConfiguration.enabled &&
-      testConfiguration.allowedPlanIds.size === 1 &&
-      testConfiguration.allowedEmails.size === 1 &&
-      testConfiguration.allowedPlanIds.has(input.planId) &&
-      testConfiguration.allowedEmails.has(normalizeZohoRecipientEmail(contact.email))
+      !testJ1Configuration.enabled &&
+      dispatchConfiguration.globalKillSwitch &&
+      dispatchConfiguration.mode === "disabled" &&
+      !dispatchConfiguration.contactSyncEnabled &&
+      !dispatchConfiguration.exactEventDispatchEnabled &&
+      !dispatchConfiguration.automaticDispatchEnabled &&
+      !dispatchConfiguration.journeyTriggeringEnabled &&
+      !dispatchConfiguration.productionApproved &&
+      !configurationStatus.eventEmissionEnabled &&
+      !configurationStatus.nudgeEvaluationEnabled &&
+      !configurationStatus.mspEnrollmentContactSyncEnabled &&
+      !configurationStatus.singleContactPilotEnabled &&
+      !configurationStatus.testContactSync.enabled &&
+      !configurationStatus.testMode.enabled &&
+      testJ1Configuration.allowedPlanIds.size === 1 &&
+      testJ1Configuration.allowedEmails.size === 1 &&
+      testJ1Configuration.allowedPlanIds.has(input.planId) &&
+      testJ1Configuration.allowedEmails.has(normalizeZohoRecipientEmail(contact.email))
     ) {
       await transaction.zohoOutboxEvent.updateMany({
         where: {
           eventType: "TRIGGER_JOURNEY",
           holdReason: { in: ["SUBSCRIPTION_NOT_VERIFIED", "SUBSCRIPTION_NOT_CONFIRMED"] },
           journey: "J1",
+          payload: { path: ["event", "reason"], equals: "plan.created.test-j1" },
           onboardingPlanId: contact.onboardingPlanId,
           recipientEmailNormalized: normalizeZohoRecipientEmail(contact.email),
           status: "HELD"

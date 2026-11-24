@@ -31,6 +31,7 @@ type StatusPayload = {
     dispatchMode: string;
     eventEmissionEnabled: boolean;
     exactEventDispatchEnabled: boolean;
+    exactEventAllowlistedCount: number;
     fieldMappingVerified: boolean;
     globalKillSwitch: boolean;
     journeyTriggeringEnabled: boolean;
@@ -44,6 +45,7 @@ type StatusPayload = {
     productionDispatchApproved: boolean;
     singleContactPilotEnabled: boolean;
     testContactSync: { enabled: boolean };
+    testJ1EnrollmentEnabled: boolean;
     testMode: { allowlistedEmailCount: number; allowlistedPlanCount: number; enabled: boolean };
     topicIdPresent: boolean;
   };
@@ -108,6 +110,19 @@ type PlanAutomationSummary = {
       status: string;
       updatedAt: string;
     } | null;
+    testJ1LifecycleEvents: Array<{
+      attemptCount: number;
+      createdAt: string;
+      eventType: "UPSERT_CONTACT" | "TRIGGER_JOURNEY";
+      holdReason: string | null;
+      id: string;
+      journey: "J1" | null;
+      lastProviderOutcome: string | null;
+      planId: string;
+      recipientEmailNormalized: string;
+      status: string;
+      updatedAt: string;
+    }>;
     pilotReadiness: {
       blockers: string[];
       candidateEligible: boolean;
@@ -255,6 +270,11 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   const [downstreamReviewComplete, setDownstreamReviewComplete] = useState(false);
   const [downstreamReviewResult, setDownstreamReviewResult] = useState<"" | "ACTIVE_AUTOMATION_FOUND" | "NO_UNINTENDED_AUTOMATION">("");
   const [downstreamReviewedItems, setDownstreamReviewedItems] = useState<Record<string, boolean>>({});
+  const [successorPlanId, setSuccessorPlanId] = useState("");
+  const [contextRetirementReason, setContextRetirementReason] = useState("");
+  const [contactVerificationEvidence, setContactVerificationEvidence] = useState("");
+  const [subscriptionVerificationReason, setSubscriptionVerificationReason] = useState("");
+  const [subscriptionVerificationEvidence, setSubscriptionVerificationEvidence] = useState("");
 
   const loadDetails = useCallback(async () => {
     const [statusResponse, planResponse] = await Promise.all([
@@ -380,7 +400,7 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   }
 
   async function runReadinessControl(
-    action: "APPROVE_AUTOMATION" | "ASSIGN_CONTEXT" | "CONFIRM_SUBSCRIPTION" | "VERIFY_LIST_PRIVACY" | "VERIFY_DOWNSTREAM_AUTOMATION",
+    action: "APPROVE_AUTOMATION" | "ASSIGN_CONTEXT" | "CONFIRM_SUBSCRIPTION" | "VERIFY_LIST_PRIVACY" | "VERIFY_DOWNSTREAM_AUTOMATION" | "RETIRE_CONTEXT_FOR_TEST_SUCCESSOR" | "RESTORE_RETIRED_CONTEXT" | "VERIFY_TEST_J1_CONTACT_VALUES",
     confirmation: string,
     details: Record<string, unknown> = {}
   ) {
@@ -511,6 +531,51 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     }
   }
 
+  async function dispatchTestJ1LifecycleEvent(event: PlanAutomationSummary["enrollmentContactSync"]["testJ1LifecycleEvents"][number]) {
+    const phrase = event.eventType === "UPSERT_CONTACT"
+      ? "DISPATCH ONE ALLOWLISTED TEST J1 CONTACT EVENT"
+      : "DISPATCH ONE ALLOWLISTED TEST J1 JOURNEY EVENT";
+    const confirmation = window.prompt(`This processes only event ${event.id}. Enter ${phrase} to continue.`);
+    if (!confirmation) return;
+    setBusy(true);
+    setError(null);
+    setFullFieldIntentMessage(null);
+    try {
+      const result = await post("/api/admin/zoho/dispatch", { confirmation, eventId: event.id, planId });
+      setFullFieldIntentMessage(result.completed
+        ? "The exact TEST J1 event was processed. Independently verify the sanitized outcome before continuing."
+        : "The exact TEST J1 event was not dispatched; inspect sequencing and maintenance safeguards.");
+      await loadDetails();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The exact TEST J1 event could not be dispatched.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyTestJ1Subscription() {
+    const contact = eligibleContacts.find((item) => item.id === selectedContactId) ?? eligibleContacts[0];
+    if (!contact || !window.confirm("Record CONFIRMED subscription eligibility for this exact plan contact and release only its held TEST J1 event?")) return;
+    setBusy(true);
+    setError(null);
+    setReadinessControlMessage(null);
+    try {
+      await post("/api/admin/zoho/verify-subscription", {
+        contactId: contact.id,
+        evidenceReference: subscriptionVerificationEvidence,
+        planId,
+        reason: subscriptionVerificationReason,
+        status: "CONFIRMED"
+      });
+      setReadinessControlMessage("Subscription eligibility was audited. The allowlisted held TEST J1 event may now be pending; no provider request was made.");
+      await loadDetails();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Subscription eligibility could not be recorded.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const blockerGroups = useMemo(() => {
     const groups = new Map<BlockerCategory, Array<{ code: string; kind: BlockerKind; label: string }>>();
     for (const code of planSummary?.enrollmentContactSync.readiness.blockers ?? []) {
@@ -526,7 +591,8 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
   const pilotReadiness = planSummary?.enrollmentContactSync.pilotReadiness;
   const controlledPilot = planSummary?.enrollmentContactSync.controlledPilot;
   const fullFieldTestIntent = planSummary?.enrollmentContactSync.fullFieldTestIntent;
-  const exactDispatchWindow = Boolean(
+  const testJ1LifecycleEvents = planSummary?.enrollmentContactSync.testJ1LifecycleEvents ?? [];
+  const exactDispatchBase = Boolean(
     status &&
     !status.configuration.globalKillSwitch &&
     status.configuration.dispatchMode === "test" &&
@@ -537,18 +603,21 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
     status.configuration.oauthConfigured &&
     status.configuration.topicIdPresent &&
     !status.configuration.eventEmissionEnabled &&
-    !status.configuration.journeyTriggeringEnabled &&
     !status.configuration.automaticDispatchEnabled &&
     !status.configuration.productionDispatchApproved &&
     !status.configuration.mspEnrollmentContactSyncEnabled &&
     !status.configuration.nudgeEvaluationEnabled &&
     !status.configuration.singleContactPilotEnabled &&
     !status.configuration.testContactSync.enabled &&
+    !status.configuration.testJ1EnrollmentEnabled &&
     status.configuration.exactEventDispatchEnabled &&
+    status.configuration.exactEventAllowlistedCount === 1 &&
     !status.configuration.testMode.enabled &&
     status.configuration.testMode.allowlistedEmailCount === 1 &&
     status.configuration.testMode.allowlistedPlanCount === 1
   );
+  const exactDispatchWindow = exactDispatchBase && !status?.configuration.journeyTriggeringEnabled;
+  const exactJourneyDispatchWindow = exactDispatchBase && status?.configuration.journeyTriggeringEnabled === true;
   const primaryStatus = displayStatus(readiness?.classification ?? "UNABLE_TO_VERIFY");
   const PrimaryIcon = primaryStatus.icon;
   const configuredJourneys = status
@@ -835,6 +904,60 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
               <div className="mt-3 flex flex-wrap gap-2"><Button className="h-9" disabled={busy || !planSummary?.administrativeControls.canManage || Boolean(fullFieldTestIntent)} onClick={() => void prepareFullFieldTestIntent()} variant="outline">Prepare Full-Field Intent</Button><Button className="h-9" disabled={busy || !exactDispatchWindow || !fullFieldTestIntent || !["PENDING", "RETRY"].includes(fullFieldTestIntent.status)} onClick={() => void dispatchFullFieldTestIntent()}>Dispatch Exact Test Event</Button></div>
             </div>
           </div>
+          {testJ1LifecycleEvents.length > 0 ? (
+            <details className="mt-3 rounded-xl border border-border bg-surface">
+              <summary className="cursor-pointer px-3 py-3 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                Allowlisted TEST J1 lifecycle events ({testJ1LifecycleEvents.length})
+              </summary>
+              <div className="grid gap-3 border-t border-border p-3">
+                {testJ1LifecycleEvents.map((event) => {
+                  const isJourney = event.eventType === "TRIGGER_JOURNEY";
+                  const canDispatch = isJourney ? exactJourneyDispatchWindow : exactDispatchWindow;
+                  return (
+                    <div className="rounded-xl border border-border bg-input p-3" key={event.id}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground">{isJourney ? "TEST J1 Welcome journey" : "Full-field contact synchronization"}</p>
+                          <p className="mt-1 break-all text-xs text-secondary">{event.id}</p>
+                          <p className="mt-1 text-xs text-secondary">{humanize(event.status)} · attempts {event.attemptCount}{event.lastProviderOutcome ? ` · ${humanize(event.lastProviderOutcome)}` : ""}</p>
+                        </div>
+                        <Button className="h-9 shrink-0" disabled={busy || !canDispatch || !["PENDING", "RETRY"].includes(event.status)} onClick={() => void dispatchTestJ1LifecycleEvent(event)}>
+                          {isJourney ? "Dispatch Exact J1 Event" : "Dispatch Exact Contact Event"}
+                        </Button>
+                      </div>
+                      {!isJourney && event.status === "SUCCEEDED" ? (
+                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <input aria-label="Independent contact field verification evidence" className="h-10 min-w-0 rounded-xl border border-border bg-surface px-3 text-sm text-foreground" onChange={(input) => setContactVerificationEvidence(input.target.value)} placeholder="Zoho contact/timeline evidence reference" value={contactVerificationEvidence} />
+                          <Button
+                            className="h-10"
+                            disabled={busy || !planSummary?.administrativeControls.canManage || contactVerificationEvidence.trim().length < 8}
+                            onClick={() => void runReadinessControl(
+                              "VERIFY_TEST_J1_CONTACT_VALUES",
+                              "Record independent field verification for this exact contact event? This does not release or dispatch J1.",
+                              {
+                                confirmation: "VERIFY EXACT TEST J1 CONTACT VALUES",
+                                eventId: event.id,
+                                evidenceReference: contactVerificationEvidence
+                              }
+                            )}
+                            variant="outline"
+                          >Record Field Verification</Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              {planSummary?.subscriptionStatus !== "CONFIRMED" ? (
+                <div className="grid gap-2 border-t border-border p-3 sm:grid-cols-2">
+                  <input aria-label="TEST J1 subscription verification reason" className="h-10 rounded-xl border border-border bg-input px-3 text-sm text-foreground" onChange={(event) => setSubscriptionVerificationReason(event.target.value)} placeholder="Independent authorization reason" value={subscriptionVerificationReason} />
+                  <input aria-label="TEST J1 subscription evidence reference" className="h-10 rounded-xl border border-border bg-input px-3 text-sm text-foreground" onChange={(event) => setSubscriptionVerificationEvidence(event.target.value)} placeholder="Consent/evidence reference" value={subscriptionVerificationEvidence} />
+                  <Button className="h-9 justify-self-start sm:col-span-2" disabled={busy || !planSummary?.administrativeControls.canManage || !subscriptionVerificationReason.trim() || !subscriptionVerificationEvidence.trim()} onClick={() => void verifyTestJ1Subscription()} variant="outline">Record TEST J1 Subscription Eligibility</Button>
+                  <p className="text-xs leading-5 text-secondary sm:col-span-2">This records an existing plan-contact decision and releases only the exact allowlisted held J1 intent. Provider suppression checks still run before any contact write.</p>
+                </div>
+              ) : null}
+            </details>
+          ) : null}
           <p className="mt-3 text-xs leading-5 text-warning">Dispatch remains disabled unless the dedicated maintenance posture is active and every unrelated automatic or journey path is off.</p>
           {pilotMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{pilotMessage}</p> : null}
           {fullFieldIntentMessage ? <p className="mt-3 rounded-xl border border-success-border/50 bg-success-surface px-3 py-2 text-xs leading-5 text-success">{fullFieldIntentMessage}</p> : null}
@@ -882,6 +1005,40 @@ export function ZohoIntegrationStatus({ contacts, planId }: { contacts: ContactO
             >
               Assign Context
             </Button>
+            {planSummary?.administrativeControls.communicationContextAssigned ? (
+              <div className="mt-3 grid gap-2 border-t border-border pt-3">
+                <input aria-label="Successor plan ID" className="h-10 rounded-xl border border-border bg-input px-3 text-sm text-foreground" onChange={(event) => setSuccessorPlanId(event.target.value)} placeholder="Exact allowlisted successor plan ID" value={successorPlanId} />
+                <textarea aria-label="Communication context retirement reason" className="min-h-20 resize-y rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground" onChange={(event) => setContextRetirementReason(event.target.value)} placeholder="Reason for retiring this plan's communication context" value={contextRetirementReason} />
+                <Button
+                  className="h-9 justify-self-start"
+                  disabled={busy || !planSummary.administrativeControls.canManage || successorPlanId.trim().length < 3 || contextRetirementReason.trim().length < 12}
+                  onClick={() => void runReadinessControl(
+                    "RETIRE_CONTEXT_FOR_TEST_SUCCESSOR",
+                    "Retire this plan's context for the exact allowlisted successor? Existing history and events are preserved.",
+                    {
+                      confirmation: "RETIRE CONTEXT FOR ALLOWLISTED TEST SUCCESSOR",
+                      reason: contextRetirementReason,
+                      successorPlanId
+                    }
+                  )}
+                  variant="outline"
+                >Retire Context for Successor</Button>
+              </div>
+            ) : planSummary?.communicationContext?.state === "UNASSIGNED" ? (
+              <div className="mt-3 grid gap-2 border-t border-border pt-3">
+                <input aria-label="Retired successor plan ID" className="h-10 rounded-xl border border-border bg-input px-3 text-sm text-foreground" onChange={(event) => setSuccessorPlanId(event.target.value)} placeholder="Successor plan ID used for retirement" value={successorPlanId} />
+                <Button
+                  className="h-9 justify-self-start"
+                  disabled={busy || !planSummary.administrativeControls.canManage || successorPlanId.trim().length < 3}
+                  onClick={() => void runReadinessControl(
+                    "RESTORE_RETIRED_CONTEXT",
+                    "Restore this plan's retired context only if the successor plan has not been created?",
+                    { confirmation: "RESTORE RETIRED COMMUNICATION CONTEXT", successorPlanId }
+                  )}
+                  variant="outline"
+                >Restore Retired Context</Button>
+              </div>
+            ) : null}
           </div>
           <div className="flex min-h-32 flex-col rounded-xl border border-border bg-surface p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">Mailing-list privacy</p>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminApiAuthError } from "@/lib/admin-auth";
 import { deleteMsp, updateMsp } from "@/lib/msp-persistence";
+import { MspHasAutomationHistoryError } from "@/lib/msp-deletion-protection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,6 +52,12 @@ export async function DELETE(
     await deleteMsp(mspId);
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof MspHasAutomationHistoryError) {
+      return NextResponse.json(
+        { code: error.code, error: error.message },
+        { status: 409 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Could not delete MSP.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
