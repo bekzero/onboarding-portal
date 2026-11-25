@@ -47,6 +47,7 @@ type SyncInput = {
 };
 
 type JourneyInput = SyncInput & {
+  eventMetadata?: Record<string, string>;
   handoffKey?: string;
   journey: ZohoJourneyType;
   marketingApprovalRequired?: boolean;
@@ -115,7 +116,12 @@ async function buildImmutablePayload(
   transaction: ZohoTransaction,
   planId: string,
   contactId: string,
-  event: { occurrenceKey: string; reason: string; taskKey?: string | null }
+  event: {
+    metadata?: Record<string, string>;
+    occurrenceKey: string;
+    reason: string;
+    taskKey?: string | null;
+  }
 ): Promise<{ holdReason?: string; payload: Prisma.InputJsonValue }> {
   try {
     const { snapshot } = await getPersistedZohoContactSnapshotWithClient(
@@ -129,7 +135,8 @@ async function buildImmutablePayload(
         event: {
           occurrenceKey: event.occurrenceKey,
           reason: event.reason,
-          taskKey: event.taskKey ?? null
+          taskKey: event.taskKey ?? null,
+          ...(event.metadata ?? {})
         },
         revalidateBeforeDispatch: true,
         snapshot
@@ -143,7 +150,8 @@ async function buildImmutablePayload(
         event: {
           occurrenceKey: event.occurrenceKey,
           reason: event.reason,
-          taskKey: event.taskKey ?? null
+          taskKey: event.taskKey ?? null,
+          ...(event.metadata ?? {})
         },
         revalidateBeforeDispatch: true,
         snapshotError: sanitizeReason(error)
@@ -219,7 +227,10 @@ async function recordZohoJourneyEvents(
       true,
       input.marketingApprovalRequired
     );
-    const snapshot = await buildImmutablePayload(transaction, plan.planId, recipient.id, input);
+    const snapshot = await buildImmutablePayload(transaction, plan.planId, recipient.id, {
+      ...input,
+      metadata: input.eventMetadata
+    });
     const holdReason = snapshot.holdReason ?? disposition.holdReason;
     const dedupeKey = createStableZohoKey(
       "journey",
@@ -287,6 +298,7 @@ export async function recordAllowlistedZohoTestJ1EnrollmentInTransaction(
   if (!plan || !owner) throw new Error("The allowlisted TEST J1 plan and Onboarding Owner are required.");
 
   const exactTarget =
+    config.targetConfigured &&
     config.allowedPlanIds.size === 1 &&
     config.allowedEmails.size === 1 &&
     config.allowedPlanIds.has(plan.planId) &&
@@ -354,6 +366,10 @@ export async function recordAllowlistedZohoTestJ1EnrollmentInTransaction(
     taskKey: initialTask.templateKey
   }, true);
   const journeyEvents = await recordZohoJourneyEvents(transaction, {
+    eventMetadata: {
+      testJ1KeyFingerprint: config.j1KeyFingerprint ?? "",
+      testJ1SelectionMode: config.j1SelectionMode
+    },
     journey: "J1",
     occurrenceKey: `plan-created-j1:${plan.planId}`,
     onboardingPlanId: plan.id,

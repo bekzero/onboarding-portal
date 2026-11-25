@@ -12,6 +12,7 @@ import {
   getZohoListKey,
   getZohoMspEnrollmentPilotConfiguration,
   getZohoTestConfiguration,
+  getZohoTestJ1EnrollmentConfiguration,
   getZohoTestJourneyConfiguration
 } from "@/lib/zoho-config";
 import { getPersistedZohoContactSnapshot } from "@/lib/zoho-contact-snapshot";
@@ -54,6 +55,20 @@ function getEventReason(payload: Prisma.JsonValue) {
   if (!event || typeof event !== "object" || Array.isArray(event)) return null;
   return typeof (event as Record<string, unknown>).reason === "string"
     ? (event as Record<string, unknown>).reason as string
+    : null;
+}
+
+function getTestJ1Authorization(payload: Prisma.JsonValue) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const event = (payload as Record<string, unknown>).event;
+  if (!event || typeof event !== "object" || Array.isArray(event)) return null;
+  const record = event as Record<string, unknown>;
+  return typeof record.testJ1KeyFingerprint === "string" &&
+    typeof record.testJ1SelectionMode === "string"
+    ? {
+        fingerprint: record.testJ1KeyFingerprint,
+        mode: record.testJ1SelectionMode
+      }
     : null;
 }
 
@@ -253,8 +268,23 @@ async function finishClaim(
   });
 }
 
-function getJourneyKeys(journey: ZohoJourneyType, mode: "test" | "production") {
+function getJourneyKeys(
+  journey: ZohoJourneyType,
+  mode: "test" | "production",
+  allowExactProductionJ1Reuse = false
+) {
   const production = getZohoJourneyConfiguration()[journey];
+  if (
+    mode === "test" &&
+    journey === "J1" &&
+    allowExactProductionJ1Reuse &&
+    getZohoTestJ1EnrollmentConfiguration().usesProductionJ1
+  ) {
+    if (!production.journeyKey || !production.triggerKey) {
+      throw new ZohoApiError("Verified Production J1 configuration is incomplete.", "CONFIGURATION");
+    }
+    return production;
+  }
   const selected = mode === "test" ? getZohoTestJourneyConfiguration()[journey] : production;
   if (!selected.journeyKey || !selected.triggerKey) {
     throw new ZohoApiError("Journey configuration is incomplete.", "CONFIGURATION");
@@ -335,7 +365,9 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
   if (config.mode === "test") {
     const target = getZohoMspEnrollmentPilotConfiguration();
     const exact = getZohoExactEventConfiguration();
+    const testJ1 = getZohoTestJ1EnrollmentConfiguration();
     const exactTestTarget =
+      testJ1.targetConfigured &&
       test.allowedPlanIds.size === 1 &&
       test.allowedPlanIds.has(state.plan.planId) &&
       test.allowedEmails.size === 1 &&
@@ -461,10 +493,34 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
       ) {
         return done({ status: "HELD", reason: "TEST_J1_CONTACT_VALUES_STALE_OR_UNVERIFIED" });
       }
+      if (getZohoTestJ1EnrollmentConfiguration().usesProductionJ1) {
+        const testJ1Configuration = getZohoTestJ1EnrollmentConfiguration();
+        const authorization = getTestJ1Authorization(claim.event.payload);
+        if (
+          authorization?.mode !== testJ1Configuration.j1SelectionMode ||
+          !authorization.fingerprint ||
+          authorization.fingerprint !== testJ1Configuration.j1KeyFingerprint
+        ) {
+          return done({ status: "HELD", reason: "TEST_J1_JOURNEY_CONFIGURATION_CHANGED" });
+        }
+        const approval = await prisma.zohoAutomationAudit.findFirst({
+          where: {
+            action: "test_j1.production_journey_reuse_approved",
+            actor: { startsWith: "oidc:" },
+            evidenceReference: { not: null },
+            onboardingPlanId: claim.event.onboardingPlanId,
+            recipientEmailNormalized: claim.event.recipientEmailNormalized
+          },
+          select: { id: true }
+        });
+        if (!approval) {
+          return done({ status: "HELD", reason: "PRODUCTION_J1_REUSE_NOT_ADMIN_APPROVED" });
+        }
+      }
     }
     if (exactTestJ1Journey) {
       if (!config.journeyTriggeringEnabled || !claim.event.journey) return done({ status: "HELD", reason: "JOURNEY_TRIGGERING_DISABLED" });
-      const journey = getJourneyKeys(claim.event.journey, config.mode);
+      const journey = getJourneyKeys(claim.event.journey, config.mode, true);
       const listKey = getZohoListKey();
       if (!listKey) return done({ status: "HELD", reason: "LIST_CONFIGURATION_MISSING" });
       const triggerCapacity = await reserveZohoApiCapacity("JOURNEY_TRIGGER");

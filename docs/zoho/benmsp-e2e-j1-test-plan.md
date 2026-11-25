@@ -62,7 +62,7 @@ Complete these checks immediately before opening the Enroll MSP form:
    - absent from all three complete scans: the integration may attempt `listsubscribe` later, subject to independently supported permission/subscription evidence.
 4. Search Zoho **All Contacts**, the exact private list, and the contact Timeline. Record whether the deleted contact or archived history remains visible. Do not infer consent from absence.
 5. If Zoho exposes the record, capture the existing values for all 24 supported fields. Pay particular attention to `Plan ID`, `Portal URL`, `Next Task ID`, `Next Task Title`, `Next Task Link`, `Next Task Tip`, `Next Task Guide URL`, `Nudge Status`, `Apps Submitted`, and `Apps Approved`.
-6. Open the exact isolated TEST J1 journey and use **Trace Contact Path** for `b.eakin@kzero.com`. Record whether the address previously entered, exited, or remains active. J1 is not documented as re-entry-enabled. If the same TEST J1 asset rejects prior participants, use a newly reviewed isolated TEST J1 clone and new test keys rather than requiring another email address.
+6. Open the assigned Production J1 journey and use **Trace Contact Path** for `b.eakin@kzero.com`. Record whether the address previously entered, exited, or remains active. Confirm the journey's recipient re-entry rule and the exit/cancellation behavior of the delayed J1-2 reminder. Production J1 reuse must not be approved if a prior path blocks re-entry or if obsolete reminders cannot be safely prevented.
 7. Confirm the private-list setting, numeric topic, field metadata, OAuth presence/scopes, sender, return path, and downstream-automation review remain valid. Read-only API success does not establish recipient-level journey history.
 8. In KZero, query the old plan by plan ID and recipient. Confirm its earlier contact event is terminal, no `PENDING`, `RETRY`, `HELD`, or `PROCESSING` row remains, and no journey send is `UNKNOWN`.
 
@@ -77,7 +77,8 @@ Do not begin until the three blocking prerequisites and Phase A are complete.
    - dispatch mode `test` for preparation validation;
    - the existing private ListKey and topic `1329658000000062845`;
    - verified field mapping and private-list evidence;
-   - distinct TEST J1 journey and trigger keys that do not equal Production J1 keys.
+   - the existing Production J1 journey and trigger keys, with `ZMA_PRODUCTION_J1_KEYS_VERIFIED=true` only after their exact assigned values are independently verified;
+   - `ZOHO_TEST_J1_PRODUCTION_REUSE_ENABLED=true` only for this reviewed preparation deployment.
 3. Set only `ZOHO_TEST_J1_ENROLLMENT_ENABLED=true` for the atomic preparation. Keep legacy `ZOHO_TEST_SYNC_ENABLED=false`, the kill switch on, contact synchronization off, journeys off, automatic dispatch off, and test-contact writes off. The enrollment gate can create the two durable events but cannot call Zoho.
 4. Sign in with an individually authenticated Staff SSO `ADMIN` account and open **Enroll MSP**.
 5. Enter:
@@ -92,7 +93,7 @@ Do not begin until the three blocking prerequisites and Phase A are complete.
    - Stage: `Kickoff`, Progress: `0`, Submitted Apps: `0`;
    - current access/OIDC details required for the real test case.
 6. Confirm Zoho permission only when genuine evidence supports this exact onboarding/list use. Enter a new evidence reference attributable to the new plan. Do not reuse the old plan's audit row as if it belonged to the new case.
-7. Select **Prepare the exact allowlisted full-field contact and isolated TEST J1 intents** and save once.
+7. Select **Prepare the exact allowlisted full-field contact and isolated TEST J1 intents**, explicitly approve reuse of the real Production J1, provide the re-entry/reminder review evidence reference, and save once. “Isolated” describes KZero's exact-event execution boundary; it does not mean a cloned Zoho journey.
 8. Restore the safe project-level Production configuration immediately after preparation and use a new safe deployment for restoration. Do not dispatch while preparing.
 
 The enrollment transaction must produce:
@@ -104,7 +105,10 @@ The enrollment transaction must produce:
 - one plan-created full-field `UPSERT_CONTACT` event;
 - one plan-created `TRIGGER_JOURNEY/J1` event, initially `HELD` for subscription when status is not `CONFIRMED`;
 - one `test_j1.enrollment_intents_prepared` audit;
+- one attributable `test_j1.production_journey_reuse_approved` audit;
 - no provider request.
+
+The held J1 event stores a one-way fingerprint of the selected journey/trigger pair. It stores neither key. Exact J1 dispatch fails closed if the configured keys or selection mode differ from the prepared event.
 
 Verify stable keys include `benmspe2etest-nfr`, event payload `Plan ID` equals that value, the first task is `book-kickoff` in `waiting_on_msp`, and no old `benmsp-nfr` event ID is attached to the new plan.
 
@@ -127,15 +131,15 @@ This phase needs separate authorization and a reviewed exact contact-event maint
 
 Do not proceed to J1 while any template-consumed field is stale or cannot be proven current.
 
-## Phase D: subscription decision and isolated TEST J1
+## Phase D: subscription decision and isolated execution of the real Production J1
 
 1. Record a new plan-scoped subscription decision only with genuine, independently supportable evidence authorizing the exact private-list addition. Enrollment, the NFR agreement, deletion from the list, absence from suppression lists, and the old plan's permission record are not sufficient by themselves.
 2. Use the existing authenticated subscription-verification operation to set the new contact to `CONFIRMED`. The operation must write a new attributable audit and release only the new plan's held J1 event. Preserve all other events and blockers.
-3. Re-run readiness. Require current context ownership, permission, subscription, complete suppression scan, private list/topic/field verification, current task snapshot, distinct TEST J1 keys, and no earlier unresolved recipient event.
-4. Confirm TEST J1 accepts this recipient. A previous path on the same journey asset may return `ALREADY_TRIGGERED`; that is not acceptance evidence for a new J1 test. Use a newly reviewed TEST J1 clone if provider history blocks re-entry.
+3. Re-run readiness. Require current context ownership, permission, subscription, complete suppression scan, private list/topic/field verification, current task snapshot, the unchanged fingerprint-bound verified Production J1 keys, and no earlier unresolved recipient event.
+4. Reconfirm Production J1 permits this recipient to re-enter. A previous path may return `ALREADY_TRIGGERED`; that is not acceptance evidence for this test and is a stop condition. Do not bypass the journey's re-entry policy.
 5. After the contact event succeeds, compare the current Zoho values with its stored snapshot and record the exact contact-event field-verification audit. A provider acceptance alone is insufficient.
-6. Create a separately authorized temporary maintenance deployment that permits only the exact J1 event. Set `ZOHO_EXACT_EVENT_IDS` to that single ID, enable only exact dispatch, contact-sync validation, journey triggering, and the isolated TEST J1 keys. Keep event emission, automatic dispatch, production approval, enrollment sync, nudges, legacy test-contact writes, the single-contact pilot, and every Production journey key disabled.
-7. Dispatch the exact J1 event once through the reviewed exact-event operation. The dispatcher revalidates the independently verified contact-event snapshot and triggers only the isolated TEST J1; it does not repeat `listsubscribe`. Hold an uncertain trigger outcome without retrying it.
+6. Create a separately authorized temporary maintenance deployment that permits only the exact J1 event. Set `ZOHO_EXACT_EVENT_IDS` to that single ID and enable only exact dispatch, contact-sync validation, journey triggering, and verified Production J1 reuse. Keep event emission, automatic dispatch, production approval, enrollment sync, nudges, legacy test-contact writes, and the single-contact pilot disabled.
+7. Dispatch the exact J1 event once through the reviewed exact-event operation. The dispatcher revalidates the independently verified contact-event snapshot, ADMIN approval, and key fingerprint, then triggers only J1; it does not repeat `listsubscribe`. Hold an uncertain trigger outcome without retrying it.
 8. Immediately restore and promote a prebuilt safe deployment, then verify the kill switch and all write gates are disabled across Production traffic.
 
 ## Acceptance evidence
@@ -147,13 +151,13 @@ The J1 test is successful only when all of the following are recorded:
 - contact membership is active, not unsubscribed/bounced, and topic-eligible;
 - the 24-field payload matches the current KZero snapshot, with stale restored values explicitly identified;
 - unsupported Date/Time fields were omitted and zero counters were interpreted correctly;
-- the isolated TEST J1 provider result is `TRIGGERED`, not merely `ALREADY_TRIGGERED` or HTTP 200;
+- the Production J1 provider result is `TRIGGERED`, not merely `ALREADY_TRIGGERED` or HTTP 200;
 - J1-1 arrives once with the correct first name, assigned-SE identity, booking link, and new plan portal URL;
-- the journey trace shows exactly one entry into the isolated TEST J1;
-- booking kickoff during the wait updates the stop-state fields and prevents J1-2 in the test journey;
+- the journey trace shows exactly one new entry into J1;
+- booking kickoff during the wait updates the stop-state fields and the verified Production J1 exit rule prevents J1-2;
 - no Production journey, nudge, campaign, autoresponder, unrelated MSP, or old BenMSP event is affected;
 - Production is restored to the dormant configuration.
 
 ## Stop conditions
 
-Stop without requiring a new mailbox when any check is uncertain. A new email address is necessary only if Zoho Support or an isolated TEST J1 proves that this exact address cannot be re-added or cannot enter a newly cloned TEST J1 because of irreversible provider-level history. Suppression, missing consent, incomplete scans, stale template-consumed fields, unresolved KZero context ownership, or absent exact-event isolation are blockers to resolve, not reasons to bypass safeguards.
+Stop without requiring a new mailbox when any check is uncertain. If the real Production J1 cannot safely accept this recipient because of re-entry history or delayed-reminder behavior, this controlled test is blocked; do not clone, substitute keys, or bypass the provider rule. Suppression, missing consent, incomplete scans, stale template-consumed fields, unresolved KZero context ownership, or absent exact-event isolation are blockers to resolve, not reasons to bypass safeguards.

@@ -223,6 +223,8 @@ type EnrollmentFormState = {
   submittedSaasAppCount: number;
   tenantName: string;
   prepareZohoTestJ1: boolean;
+  productionJ1ReuseConfirmed: boolean;
+  productionJ1ReviewEvidence: string;
   zohoContactPermissionConfirmed: boolean;
   zohoContactPermissionEvidence: string;
 };
@@ -1053,6 +1055,8 @@ function createEnrollmentState(): EnrollmentFormState {
     submittedSaasAppCount: 0,
     tenantName: "",
     prepareZohoTestJ1: false,
+    productionJ1ReuseConfirmed: false,
+    productionJ1ReviewEvidence: "",
     zohoContactPermissionConfirmed: false,
     zohoContactPermissionEvidence: ""
   };
@@ -2326,6 +2330,14 @@ export function InternalDashboard({
       setEnrollmentErrorMessage("TEST J1 preparation requires permission evidence, the owner first name, and complete Sales Engineer details.");
       return;
     }
+    if (
+      enrollmentState.prepareZohoTestJ1 &&
+      (!enrollmentState.productionJ1ReuseConfirmed ||
+        enrollmentState.productionJ1ReviewEvidence.trim().length < 8)
+    ) {
+      setEnrollmentErrorMessage("Production J1 reuse requires explicit approval and a review evidence reference.");
+      return;
+    }
 
     setEnrollmentErrorMessage(null);
 
@@ -2354,7 +2366,11 @@ export function InternalDashboard({
               confirmed: enrollmentState.zohoContactPermissionConfirmed,
               evidenceReference: permissionEvidenceReference
             },
-            zohoTestJ1Preparation: { confirmed: enrollmentState.prepareZohoTestJ1 }
+            zohoTestJ1Preparation: {
+              confirmed: enrollmentState.prepareZohoTestJ1,
+              productionJourneyReuseConfirmed: enrollmentState.productionJ1ReuseConfirmed,
+              reviewEvidenceReference: enrollmentState.productionJ1ReviewEvidence.trim() || undefined
+            }
           })
         });
 
@@ -4649,7 +4665,8 @@ export function InternalDashboard({
                       </div>
                       <p className="mt-3 text-xs leading-5 text-muted">Recording permission does not automatically subscribe the contact or trigger onboarding emails.</p>
                       {staffIdentity?.role === "ADMIN" ? (
-                        <label className="mt-3 flex items-start gap-3 rounded-2xl border border-info-border bg-info-surface px-4 py-3 text-sm leading-5 text-secondary">
+                        <div className="mt-3 grid gap-3 rounded-2xl border border-info-border bg-info-surface px-4 py-3 text-sm leading-5 text-secondary">
+                        <label className="flex items-start gap-3">
                           <input
                             checked={enrollmentState.prepareZohoTestJ1}
                             className="mt-0.5 h-4 w-4 rounded border-border bg-input"
@@ -4657,9 +4674,32 @@ export function InternalDashboard({
                             type="checkbox"
                           />
                           <span>
-                            Prepare the exact allowlisted full-field contact and isolated TEST J1 intents. This records durable work only; it does not call Zoho or release any automation safeguard.
+                            Prepare the exact allowlisted full-field contact and held J1 intents. This records durable work only; it does not call Zoho or release any automation safeguard.
                           </span>
                         </label>
+                        {enrollmentState.prepareZohoTestJ1 ? (
+                          <div className="grid gap-3 border-t border-info-border pt-3">
+                            <label className="flex items-start gap-3">
+                              <input
+                                checked={enrollmentState.productionJ1ReuseConfirmed}
+                                className="mt-0.5 h-4 w-4 rounded border-border bg-input"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, productionJ1ReuseConfirmed: event.target.checked }))}
+                                type="checkbox"
+                              />
+                              <span>I approve use of the verified Production J1 for this exact test after reviewing recipient re-entry and delayed-reminder exit behavior.</span>
+                            </label>
+                            <label className="grid gap-2">
+                              <span>J1 review evidence reference</span>
+                              <input
+                                className="h-10 rounded-xl border border-border bg-input px-3 text-foreground"
+                                onChange={(event) => setEnrollmentState((current) => ({ ...current, productionJ1ReviewEvidence: event.target.value }))}
+                                placeholder="Journey review ticket or evidence reference"
+                                value={enrollmentState.productionJ1ReviewEvidence}
+                              />
+                            </label>
+                          </div>
+                        ) : null}
+                        </div>
                       ) : null}
                       {enrollmentErrorMessage ? (
                         <p className="mt-2 text-sm text-danger" role="alert">{enrollmentErrorMessage}</p>

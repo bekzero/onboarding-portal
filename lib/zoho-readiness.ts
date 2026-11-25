@@ -90,6 +90,15 @@ function hasJ1Configuration() {
   if (!testMode) return hasConfiguration("ZMA_J1_TRIGGER_KEY");
   const testJourney = process.env.ZMA_TEST_J1_JOURNEY_KEY?.trim() ?? "";
   const testTrigger = process.env.ZMA_TEST_J1_TRIGGER_KEY?.trim() ?? "";
+  const productionReuse =
+    process.env.ZOHO_TEST_J1_PRODUCTION_REUSE_ENABLED?.trim().toLowerCase() === "true" &&
+    process.env.ZMA_PRODUCTION_J1_KEYS_VERIFIED?.trim().toLowerCase() === "true";
+  if (productionReuse) {
+    return Boolean(
+      process.env.ZMA_J1_JOURNEY_KEY?.trim() &&
+      process.env.ZMA_J1_TRIGGER_KEY?.trim()
+    );
+  }
   return Boolean(
     testJourney &&
     testTrigger &&

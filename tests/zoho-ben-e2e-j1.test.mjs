@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { evaluateExactLifecycleMaintenance } from "../lib/zoho-exact-lifecycle-maintenance-core.ts";
 import { getZohoJourneyFreshnessBlockers, ZOHO_JOURNEY_GUIDANCE_EVIDENCE } from "../lib/zoho-field-lifecycle.ts";
+import {
+  fingerprintZohoJ1Keys,
+  selectControlledTestJ1Keys
+} from "../lib/zoho-j1-key-selection.ts";
 
 const contactEvent = {
   eventType: "UPSERT_CONTACT",
@@ -95,6 +99,47 @@ test("J1 assigned templates are verified not to use task Tip or Guide URL", () =
   });
 });
 
+test("Production J1 reuse requires both explicit enablement and verified exact keys", () => {
+  const production = { journeyKey: "production-j1", triggerKey: "production-trigger" };
+  const testKeys = { journeyKey: "", triggerKey: "" };
+  assert.equal(selectControlledTestJ1Keys({
+    production,
+    productionKeysVerified: false,
+    productionReuseEnabled: true,
+    test: testKeys
+  }).configured, false);
+  assert.equal(selectControlledTestJ1Keys({
+    production,
+    productionKeysVerified: true,
+    productionReuseEnabled: false,
+    test: production
+  }).configured, false);
+  const selected = selectControlledTestJ1Keys({
+    production,
+    productionKeysVerified: true,
+    productionReuseEnabled: true,
+    test: testKeys
+  });
+  assert.equal(selected.mode, "VERIFIED_PRODUCTION_REUSE");
+  assert.deepEqual(selected.keys, production);
+  assert.equal(fingerprintZohoJ1Keys(production).length, 64);
+  assert.notEqual(
+    fingerprintZohoJ1Keys(production),
+    fingerprintZohoJ1Keys({ ...production, triggerKey: "changed" })
+  );
+});
+
+test("Distinct TEST J1 keys remain available only when they differ from Production", () => {
+  const selected = selectControlledTestJ1Keys({
+    production: { journeyKey: "production-j1", triggerKey: "production-trigger" },
+    productionKeysVerified: false,
+    productionReuseEnabled: false,
+    test: { journeyKey: "test-j1", triggerKey: "test-trigger" }
+  });
+  assert.equal(selected.configured, true);
+  assert.equal(selected.mode, "DISTINCT_TEST");
+});
+
 test("context retirement is ADMIN-only, locked, audited, reversible before successor creation, and never dispatches", async () => {
   const [route, context] = await Promise.all([
     readFile(new URL("../app/api/admin/zoho/automation/plans/[planId]/readiness-controls/route.ts", import.meta.url), "utf8"),
@@ -123,12 +168,20 @@ test("new TEST J1 enrollment uses a separate preparation gate and creates durabl
     readFile(new URL("../lib/zoho-phase2.ts", import.meta.url), "utf8")
   ]);
   assert.match(config, /ZOHO_TEST_J1_ENROLLMENT_ENABLED/);
+  assert.match(config, /ZOHO_TEST_J1_PRODUCTION_REUSE_ENABLED/);
+  assert.match(config, /ZMA_PRODUCTION_J1_KEYS_VERIFIED/);
+  assert.match(config, /CONTROLLED_TEST_J1_PLAN_ID = "benmspe2etest-nfr"/);
+  assert.match(config, /CONTROLLED_TEST_J1_RECIPIENT = "b\.eakin@kzero\.com"/);
   assert.match(persistence, /recordAllowlistedZohoTestJ1EnrollmentInTransaction/);
+  assert.match(persistence, /productionJourneyReuseConfirmed/);
+  assert.match(persistence, /test_j1\.production_journey_reuse_approved/);
   assert.match(persistence, /zoho-context:/);
   assert.match(lifecycle, /occurrenceKey: `plan-created:\$\{plan\.planId\}`/);
   assert.match(lifecycle, /occurrenceKey: `plan-created-j1:\$\{plan\.planId\}`/);
   assert.match(lifecycle, /reason: "plan\.created\.test-j1"/);
   assert.match(lifecycle, /journeyHeldForSubscription/);
+  assert.match(lifecycle, /testJ1KeyFingerprint/);
+  assert.match(lifecycle, /testJ1SelectionMode/);
   assert.match(phase2, /getZohoTestJ1EnrollmentConfiguration/);
   assert.match(phase2, /payload: \{ path: \["event", "reason"\], equals: "plan\.created\.test-j1" \}/);
   assert.match(phase2, /dispatchConfiguration\.globalKillSwitch/);
@@ -146,7 +199,12 @@ test("exact dispatcher preserves contact-before-J1 sequencing and refuses stale 
   assert.match(dispatcher, /sequence" < event\."sequence"/);
   assert.match(dispatcher, /test_j1\.contact_values_verified/);
   assert.match(dispatcher, /TEST_J1_CONTACT_VALUES_STALE_OR_UNVERIFIED/);
+  assert.match(dispatcher, /TEST_J1_JOURNEY_CONFIGURATION_CHANGED/);
+  assert.match(dispatcher, /PRODUCTION_J1_REUSE_NOT_ADMIN_APPROVED/);
+  assert.match(dispatcher, /getJourneyKeys\(claim\.event\.journey, config\.mode, true\)/);
   assert.match(service, /JSON\.stringify\(payload\.snapshot\) !== JSON\.stringify\(current\.snapshot\)/);
+  assert.match(service, /test_j1\.production_journey_reuse_approved/);
+  assert.match(service, /verified Production J1 configuration changed after intent preparation/i);
   assert.match(service, /exact\.allowedEventIds/);
   assert.match(service, /TEST_J1_CONTACT_DISPATCH_CONFIRMATION/);
   assert.match(service, /TEST_J1_JOURNEY_DISPATCH_CONFIRMATION/);

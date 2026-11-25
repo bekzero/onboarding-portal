@@ -24,6 +24,7 @@ import {
 } from "@/lib/zoho-lifecycle-events";
 import { isValidHttpUrl, normalizeChangedRequiredEmail, normalizeRequiredEmail } from "@/lib/zoho-validation";
 import { createZohoAutomationAuditInTransaction } from "@/lib/zoho-foundation";
+import { getZohoTestJ1EnrollmentConfiguration } from "@/lib/zoho-config";
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 
@@ -543,7 +544,11 @@ type CreateMspInput = {
   zohoAuditActor?: string;
   zohoAuditActorAttributable?: boolean;
   zohoContactPermission?: EnrollmentContactPermission;
-  zohoTestJ1Preparation?: { confirmed?: boolean };
+  zohoTestJ1Preparation?: {
+    confirmed?: boolean;
+    productionJourneyReuseConfirmed?: boolean;
+    reviewEvidenceReference?: string;
+  };
 };
 
 type UpdateMspInput = {
@@ -825,6 +830,8 @@ export async function createMsp(input: CreateMspInput) {
   const primaryContactFirstName = input.primaryContactFirstName?.trim() || null;
   const primaryContactLastName = input.primaryContactLastName?.trim() || null;
   const prepareTestJ1 = input.zohoTestJ1Preparation?.confirmed === true;
+  const testJ1Configuration = getZohoTestJ1EnrollmentConfiguration();
+  const productionJ1ReviewEvidence = input.zohoTestJ1Preparation?.reviewEvidenceReference?.trim() ?? "";
   const { email: primaryContactEmail, normalizedEmail: primaryContactEmailNormalized } =
     normalizeRequiredEmail(input.primaryContactEmail, "Primary contact email");
   if (assignedSeBookingUrl && !isValidHttpUrl(assignedSeBookingUrl)) {
@@ -841,6 +848,15 @@ export async function createMsp(input: CreateMspInput) {
     }
     if (!primaryContactFirstName || !assignedSeEmail || !assignedSeBookingUrl) {
       throw new Error("TEST J1 preparation requires the owner first name and complete Sales Engineer details.");
+    }
+    if (
+      testJ1Configuration.usesProductionJ1 &&
+      (input.zohoTestJ1Preparation?.productionJourneyReuseConfirmed !== true ||
+        productionJ1ReviewEvidence.length < 8)
+    ) {
+      throw new Error(
+        "Production J1 reuse requires explicit ADMIN confirmation and evidence that re-entry and delayed-reminder behavior were reviewed."
+      );
     }
   }
 
@@ -925,6 +941,16 @@ export async function createMsp(input: CreateMspInput) {
           reason: "Administrator-recorded permission evidence for the allowlisted full-field TEST J1 workflow; this does not independently prove subscription eligibility.",
           recipientEmail: primaryContactEmail
         });
+        if (testJ1Configuration.usesProductionJ1) {
+          await createZohoAutomationAuditInTransaction(transaction, {
+            action: "test_j1.production_journey_reuse_approved",
+            actor: input.zohoAuditActor!,
+            evidenceReference: productionJ1ReviewEvidence,
+            onboardingPlanId: createdPlan.id,
+            reason: "An individually authenticated ADMIN approved the verified Production J1 journey for this exact E2E test after reviewing recipient re-entry and delayed-reminder/exit behavior. This audit does not dispatch either event.",
+            recipientEmail: primaryContactEmail
+          });
+        }
         await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-context:${primaryContactEmailNormalized}`}, 0))`;
         const existingContext = await transaction.zohoCommunicationContext.findUnique({
           where: { recipientEmailNormalized: primaryContactEmailNormalized },

@@ -50,7 +50,11 @@ export async function POST(request: NextRequest) {
       primaryContactLastName?: string;
       slug?: string;
       zohoContactPermission?: { confirmed?: boolean; evidenceReference?: string };
-      zohoTestJ1Preparation?: { confirmed?: boolean };
+      zohoTestJ1Preparation?: {
+        confirmed?: boolean;
+        productionJourneyReuseConfirmed?: boolean;
+        reviewEvidenceReference?: string;
+      };
     };
 
     if (body.zohoTestJ1Preparation?.confirmed) {
@@ -75,7 +79,12 @@ export async function POST(request: NextRequest) {
         confirmed: permission.confirmed,
         evidenceReference: permission.evidenceReference
       },
-      zohoTestJ1Preparation: { confirmed: body.zohoTestJ1Preparation?.confirmed === true }
+      zohoTestJ1Preparation: {
+        confirmed: body.zohoTestJ1Preparation?.confirmed === true,
+        productionJourneyReuseConfirmed:
+          body.zohoTestJ1Preparation?.productionJourneyReuseConfirmed === true,
+        reviewEvidenceReference: body.zohoTestJ1Preparation?.reviewEvidenceReference
+      }
     });
     return NextResponse.json({ msp: adminCase }, { status: 201 });
   } catch (error) {

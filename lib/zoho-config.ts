@@ -1,5 +1,9 @@
 import "server-only";
 import { normalizeZohoRecipientEmail } from "@/lib/zoho-foundation";
+import {
+  fingerprintZohoJ1Keys,
+  selectControlledTestJ1Keys
+} from "@/lib/zoho-j1-key-selection";
 
 function value(name: string) {
   return process.env[name]?.trim() || "";
@@ -116,14 +120,32 @@ export function getZohoExactEventConfiguration() {
   } as const;
 }
 
+export const CONTROLLED_TEST_J1_PLAN_ID = "benmspe2etest-nfr";
+export const CONTROLLED_TEST_J1_RECIPIENT = "b.eakin@kzero.com";
+
 export function getZohoTestJ1EnrollmentConfiguration() {
   const test = getZohoTestConfiguration();
   const dispatch = getZohoDispatchConfiguration();
   const testJ1 = getZohoTestJourneyConfiguration().J1;
   const productionJ1 = getZohoJourneyConfiguration().J1;
+  const productionReuseEnabled = enabled("ZOHO_TEST_J1_PRODUCTION_REUSE_ENABLED");
+  const productionKeysVerified = enabled("ZMA_PRODUCTION_J1_KEYS_VERIFIED");
+  const selectedJ1 = selectControlledTestJ1Keys({
+    production: productionJ1,
+    productionKeysVerified,
+    productionReuseEnabled,
+    test: testJ1
+  });
   const topicId = getZohoTopicId();
+  const targetConfigured =
+    test.allowedPlanIds.size === 1 &&
+    test.allowedPlanIds.has(CONTROLLED_TEST_J1_PLAN_ID) &&
+    test.allowedEmails.size === 1 &&
+    test.allowedEmails.has(CONTROLLED_TEST_J1_RECIPIENT);
   return {
     ...test,
+    approvedPlanId: CONTROLLED_TEST_J1_PLAN_ID,
+    approvedRecipient: CONTROLLED_TEST_J1_RECIPIENT,
     enabled: enabled("ZOHO_TEST_J1_ENROLLMENT_ENABLED"),
     automaticDispatchDisabled: !dispatch.automaticDispatchEnabled,
     dispatchModeIsTest: dispatch.mode === "test",
@@ -132,12 +154,12 @@ export function getZohoTestJ1EnrollmentConfiguration() {
     listConfigured: Boolean(getZohoListKey()),
     listPrivacyVerified: enabled("ZMA_PRIVATE_LIST_VERIFIED"),
     productionDispatchDisabled: !dispatch.productionApproved,
-    testJ1Configured: Boolean(
-      testJ1.journeyKey &&
-      testJ1.triggerKey &&
-      testJ1.journeyKey !== productionJ1.journeyKey &&
-      testJ1.triggerKey !== productionJ1.triggerKey
-    ),
+    productionJ1ReuseConfigured: selectedJ1.mode === "VERIFIED_PRODUCTION_REUSE",
+    j1KeyFingerprint: selectedJ1.keys ? fingerprintZohoJ1Keys(selectedJ1.keys) : null,
+    j1SelectionMode: selectedJ1.mode,
+    testJ1Configured: selectedJ1.configured,
+    targetConfigured,
+    usesProductionJ1: selectedJ1.mode === "VERIFIED_PRODUCTION_REUSE",
     topicId,
     topicIdValid: /^\d+$/.test(topicId)
   } as const;

@@ -30,6 +30,17 @@ function eventReason(payload: Prisma.JsonValue) {
     : null;
 }
 
+function eventTestJ1Authorization(payload: Prisma.JsonValue) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const event = (payload as Record<string, unknown>).event;
+  if (!event || typeof event !== "object" || Array.isArray(event)) return null;
+  const record = event as Record<string, unknown>;
+  return typeof record.testJ1KeyFingerprint === "string" &&
+    typeof record.testJ1SelectionMode === "string"
+    ? { fingerprint: record.testJ1KeyFingerprint, mode: record.testJ1SelectionMode }
+    : null;
+}
+
 export async function getTestJ1LifecycleEvents(planId: string) {
   const events = await prisma.zohoOutboxEvent.findMany({
     where: {
@@ -244,6 +255,46 @@ export async function authorizeExactTestJ1LifecycleDispatch(input: {
   });
   if (!isolation.allowed) {
     throw new ZohoAdminValidationError(`The exact TEST J1 maintenance posture is blocked: ${isolation.blockers.join(", ")}.`, 409);
+  }
+  const testJ1Configuration = getZohoTestJ1EnrollmentConfiguration();
+  if (
+    event.planId !== testJ1Configuration.approvedPlanId ||
+    event.recipientEmailNormalized !== testJ1Configuration.approvedRecipient ||
+    !testJ1Configuration.targetConfigured
+  ) {
+    throw new ZohoAdminValidationError(
+      "Only the approved BenMSP E2E TEST J1 plan and recipient are eligible.",
+      403
+    );
+  }
+  if (event.eventType === "TRIGGER_JOURNEY" && testJ1Configuration.usesProductionJ1) {
+    const authorization = eventTestJ1Authorization(event.payload);
+    if (
+      authorization?.mode !== testJ1Configuration.j1SelectionMode ||
+      !authorization.fingerprint ||
+      authorization.fingerprint !== testJ1Configuration.j1KeyFingerprint
+    ) {
+      throw new ZohoAdminValidationError(
+        "The verified Production J1 configuration changed after intent preparation.",
+        409
+      );
+    }
+    const approval = await prisma.zohoAutomationAudit.findFirst({
+      where: {
+        action: "test_j1.production_journey_reuse_approved",
+        actor: { startsWith: "oidc:" },
+        evidenceReference: { not: null },
+        onboardingPlanId: event.onboardingPlanId,
+        recipientEmailNormalized: event.recipientEmailNormalized
+      },
+      select: { id: true }
+    });
+    if (!approval) {
+      throw new ZohoAdminValidationError(
+        "Production J1 reuse requires an attributable ADMIN review of re-entry and delayed-reminder behavior.",
+        409
+      );
+    }
   }
   return event;
 }
