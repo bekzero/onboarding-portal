@@ -8,6 +8,8 @@ export type ExactLifecycleEvent = {
   status: string;
 };
 
+const APPROVED_TEST_J1_ORIGINS = new Set(["plan.created.test-j1", "plan.reconciled.test-j1"]);
+
 export function evaluateExactLifecycleMaintenance(input: {
   allowedEmail: string;
   allowedEventIds: Set<string>;
@@ -39,7 +41,7 @@ export function evaluateExactLifecycleMaintenance(input: {
   const contactEvent = input.event.eventType === "UPSERT_CONTACT" && input.event.journey === null;
   const j1Event = input.event.eventType === "TRIGGER_JOURNEY" && input.event.journey === "J1";
   if (!contactEvent && !j1Event) blockers.push("EVENT_TYPE_NOT_APPROVED");
-  if (input.event.reason !== "plan.created.test-j1") blockers.push("EVENT_ORIGIN_NOT_APPROVED");
+  if (!input.event.reason || !APPROVED_TEST_J1_ORIGINS.has(input.event.reason)) blockers.push("EVENT_ORIGIN_NOT_APPROVED");
   if (input.event.status !== "PENDING" && input.event.status !== "RETRY") blockers.push("EVENT_NOT_DISPATCHABLE");
   if (
     input.allowedEventIds.size !== 1 ||

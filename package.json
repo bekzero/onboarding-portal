@@ -27,6 +27,7 @@
     "test:zoho-original-j1": "node --test --experimental-transform-types tests/zoho-original-j1.test.mjs",
     "test:zoho-existing-plan-intent": "node --test --experimental-transform-types tests/zoho-existing-plan-test-intent.test.mjs",
     "test:zoho-ben-e2e-j1": "node --test --experimental-transform-types tests/zoho-ben-e2e-j1.test.mjs",
+    "test:zoho-j1-reconciliation": "node --test --experimental-transform-types tests/zoho-test-j1-reconciliation.test.mjs",
     "check:zoho-phase-7a-config": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs config",
     "initialize:zoho-phase-7a-empty": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs initialize",
     "test:zoho-phase-7a-db": "node --env-file=.env.zoho-test.local scripts/zoho-phase-7a-db.mjs verify",

@@ -49,6 +49,12 @@ The dedicated exact-event endpoint accepts the new plan-created full-field `UPSE
 
 The contact and J1 events use different confirmation phrases and separate maintenance deployments. J1 also requires an individually attributable audit tying independent Zoho field verification to the exact successful contact event, and the persisted KZero snapshot must remain byte-for-byte equivalent at authorization and claim time. The exact J1 path triggers the journey only; it does not silently repeat the already verified contact write.
 
+## Snapshot reconciliation after a successful contact event
+
+If authoritative KZero values change after the contact event succeeds, never replay or rewrite that event and never let its original J1 consume stale values. The dormant, ADMIN-only reconciliation operation requires the exact plan/email allowlists and server-configured original contact/J1 IDs. Under one serializable transaction and recipient-scoped advisory lock it creates a new full-field contact event, creates a replacement HELD J1 explicitly linked to that contact event, cancels the original HELD J1 as superseded, and records an audit. Stable event keys make retries idempotent; partial or concurrent failures roll back.
+
+Dispatch the replacement contact in its own exact-event window. After a definitive provider outcome, independently compare Zoho with that event's snapshot. Recording field verification rechecks the current KZero snapshot and releases only the explicitly linked replacement J1. Its later exact-J1 window must still revalidate the linked successful contact outcome, verification audit, snapshot equality, consent, suppression, legacy eligibility, sequencing, and J1 key fingerprint.
+
 ## Phase A: read-only recipient preflight
 
 Complete these checks immediately before opening the Enroll MSP form:

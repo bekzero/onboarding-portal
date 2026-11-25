@@ -120,6 +120,14 @@ export function getZohoExactEventConfiguration() {
   } as const;
 }
 
+export function getZohoTestJ1ReconciliationConfiguration() {
+  return {
+    enabled: enabled("ZOHO_TEST_J1_RECONCILIATION_ENABLED"),
+    originalContactEventId: value("ZOHO_TEST_J1_RECONCILIATION_CONTACT_EVENT_ID"),
+    originalJ1EventId: value("ZOHO_TEST_J1_RECONCILIATION_J1_EVENT_ID")
+  } as const;
+}
+
 export const CONTROLLED_TEST_J1_PLAN_ID = "benmspe2etest-nfr";
 export const CONTROLLED_TEST_J1_RECIPIENT = "b.eakin@kzero.com";
 

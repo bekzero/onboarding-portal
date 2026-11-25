@@ -28,6 +28,12 @@ import {
 } from "@/lib/zoho-dispatch-rules";
 import { blockZohoApi, reserveZohoApiCapacity } from "@/lib/zoho-throttle";
 import { LEGACY_AUTOMATION_BLOCK_REASON } from "@/lib/zoho-legacy-eligibility";
+import {
+  getLinkedTestJ1ContactEventId,
+  isApprovedTestJ1EventReason,
+  isDefinitiveContactProviderOutcome,
+  TEST_J1_RECONCILIATION_EVENT_REASON
+} from "@/lib/zoho-test-j1-reconciliation-core";
 
 type ClaimedEvent = { event: ZohoOutboxEvent; claimId: string; contextVersion: number };
 type FinalState = "SUCCEEDED" | "HELD" | "RETRY" | "DEAD" | "CANCELLED";
@@ -376,7 +382,7 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
       exact.allowedEventIds.size === 1 &&
       exact.allowedEventIds.has(claim.event.id) &&
       exactTestTarget &&
-      getEventReason(claim.event.payload) === "plan.created.test-j1" &&
+      isApprovedTestJ1EventReason(getEventReason(claim.event.payload)) &&
       (claim.event.eventType === "UPSERT_CONTACT" ||
         (claim.event.eventType === "TRIGGER_JOURNEY" && claim.event.journey === "J1"));
     exactTestJ1Journey = exactTestJ1LifecycleEvent && claim.event.eventType === "TRIGGER_JOURNEY";
@@ -462,16 +468,30 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
       }
     }
     if (exactTestJ1Journey) {
-      const contactEvent = await prisma.zohoOutboxEvent.findFirst({
-        where: {
-          onboardingPlanId: claim.event.onboardingPlanId,
-          recipientEmailNormalized: claim.event.recipientEmailNormalized,
-          eventType: "UPSERT_CONTACT",
-          sequence: { lt: claim.event.sequence },
-          status: "SUCCEEDED"
-        },
-        orderBy: { sequence: "desc" }
-      });
+      const linkedContactEventId = getLinkedTestJ1ContactEventId(claim.event.payload);
+      const contactEvent = linkedContactEventId
+        ? await prisma.zohoOutboxEvent.findUnique({ where: { id: linkedContactEventId } })
+        : getEventReason(claim.event.payload) === TEST_J1_RECONCILIATION_EVENT_REASON
+          ? null
+          : await prisma.zohoOutboxEvent.findFirst({
+              where: {
+                onboardingPlanId: claim.event.onboardingPlanId,
+                recipientEmailNormalized: claim.event.recipientEmailNormalized,
+                eventType: "UPSERT_CONTACT",
+                sequence: { lt: claim.event.sequence },
+                status: "SUCCEEDED"
+              },
+              orderBy: { sequence: "desc" }
+            });
+      const contactEventMatches = Boolean(
+        contactEvent &&
+        contactEvent.onboardingPlanId === claim.event.onboardingPlanId &&
+        contactEvent.recipientEmailNormalized === claim.event.recipientEmailNormalized &&
+        contactEvent.eventType === "UPSERT_CONTACT" &&
+        contactEvent.sequence < claim.event.sequence &&
+        contactEvent.status === "SUCCEEDED" &&
+        isDefinitiveContactProviderOutcome(contactEvent.lastProviderOutcome)
+      );
       const contactPayload = contactEvent?.payload && typeof contactEvent.payload === "object" && !Array.isArray(contactEvent.payload)
         ? contactEvent.payload as Record<string, unknown>
         : null;
@@ -486,7 +506,7 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
         select: { id: true }
       }) : null;
       if (
-        !contactEvent ||
+        !contactEventMatches ||
         !verification ||
         !contactPayload?.snapshot ||
         JSON.stringify(contactPayload.snapshot) !== JSON.stringify(snapshot.snapshot)

@@ -12,8 +12,14 @@ import {
 } from "@/lib/zoho-config";
 import { evaluateExactLifecycleMaintenance } from "@/lib/zoho-exact-lifecycle-maintenance-core";
 import { createZohoAutomationAuditInTransaction, isZohoEventEmissionEnabled } from "@/lib/zoho-foundation";
-import { getPersistedZohoContactSnapshot } from "@/lib/zoho-contact-snapshot";
+import { getPersistedZohoContactSnapshot, getPersistedZohoContactSnapshotWithClient } from "@/lib/zoho-contact-snapshot";
 import { prisma } from "@/lib/prisma";
+import {
+  getLinkedTestJ1ContactEventId,
+  isApprovedTestJ1EventReason,
+  isDefinitiveContactProviderOutcome,
+  TEST_J1_RECONCILIATION_EVENT_REASON
+} from "@/lib/zoho-test-j1-reconciliation-core";
 import { ZohoAdminValidationError } from "@/lib/zoho-validation";
 
 export const TEST_J1_CONTACT_VALUES_VERIFIED_ACTION = "test_j1.contact_values_verified";
@@ -68,13 +74,13 @@ export async function getTestJ1LifecycleEvents(planId: string) {
     }
   });
   return events
-    .filter((event) => eventReason(event.payload) === "plan.created.test-j1")
+    .filter((event) => isApprovedTestJ1EventReason(eventReason(event.payload)))
     .map(({ payload: _payload, sequence: _sequence, ...event }) => event);
 }
 
 async function loadExactLifecycleEvent(eventId: string, planId: string) {
   const event = await prisma.zohoOutboxEvent.findUnique({ where: { id: eventId } });
-  if (!event || event.planId !== planId || eventReason(event.payload) !== "plan.created.test-j1") {
+  if (!event || event.planId !== planId || !isApprovedTestJ1EventReason(eventReason(event.payload))) {
     throw new ZohoAdminValidationError("The requested event is not an allowlisted TEST J1 lifecycle event.", 403);
   }
   return event;
@@ -91,6 +97,31 @@ async function hasContactValueVerification(planInternalId: string, email: string
     },
     select: { id: true }
   }));
+}
+
+async function getJourneyContactDependency(event: Awaited<ReturnType<typeof loadExactLifecycleEvent>>) {
+  if (event.eventType !== "TRIGGER_JOURNEY") return null;
+  const linkedId = getLinkedTestJ1ContactEventId(event.payload);
+  if (eventReason(event.payload) === TEST_J1_RECONCILIATION_EVENT_REASON && !linkedId) return null;
+  if (linkedId) {
+    const linked = await prisma.zohoOutboxEvent.findUnique({ where: { id: linkedId } });
+    return linked &&
+      linked.onboardingPlanId === event.onboardingPlanId &&
+      linked.recipientEmailNormalized === event.recipientEmailNormalized &&
+      linked.eventType === "UPSERT_CONTACT" &&
+      linked.sequence < event.sequence
+      ? linked
+      : null;
+  }
+  return prisma.zohoOutboxEvent.findFirst({
+    where: {
+      onboardingPlanId: event.onboardingPlanId,
+      recipientEmailNormalized: event.recipientEmailNormalized,
+      eventType: "UPSERT_CONTACT",
+      sequence: { lt: event.sequence }
+    },
+    orderBy: { sequence: "desc" }
+  });
 }
 
 export async function recordTestJ1ContactValuesVerification(input: {
@@ -122,7 +153,7 @@ export async function recordTestJ1ContactValuesVerification(input: {
   if (event.eventType !== "UPSERT_CONTACT" || event.status !== "SUCCEEDED") {
     throw new ZohoAdminValidationError("Only a successfully processed TEST J1 contact event can be independently verified.", 409);
   }
-  if (!event.lastProviderOutcome || ["UNKNOWN", "ACCEPTED_PENDING_VERIFICATION"].includes(event.lastProviderOutcome)) {
+  if (!isDefinitiveContactProviderOutcome(event.lastProviderOutcome)) {
     throw new ZohoAdminValidationError("The contact event has an uncertain or incomplete provider outcome.", 409);
   }
   const test = getZohoTestConfiguration();
@@ -132,9 +163,33 @@ export async function recordTestJ1ContactValuesVerification(input: {
   ) throw new ZohoAdminValidationError("The exact TEST J1 plan and recipient are not safely allowlisted.", 403);
 
   return prisma.$transaction(async (transaction) => {
+    await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`zoho-test-j1-contact-verification:${event.id}`}, 0))`;
     const current = await transaction.zohoOutboxEvent.findUnique({ where: { id: event.id } });
-    if (!current || current.status !== "SUCCEEDED" || current.attemptCount !== event.attemptCount) {
+    if (
+      !current ||
+      current.status !== "SUCCEEDED" ||
+      current.attemptCount !== event.attemptCount ||
+      !isDefinitiveContactProviderOutcome(current.lastProviderOutcome)
+    ) {
       throw new ZohoAdminValidationError("The contact event changed. Reinspect it before recording verification.", 409);
+    }
+    const contact = await transaction.planContact.findFirst({
+      where: {
+        onboardingPlanId: event.onboardingPlanId,
+        normalizedEmail: event.recipientEmailNormalized,
+        role: "ONBOARDING_OWNER"
+      },
+      select: { id: true, subscriptionStatus: true }
+    });
+    const payload = current.payload && typeof current.payload === "object" && !Array.isArray(current.payload)
+      ? current.payload as Record<string, unknown>
+      : null;
+    if (!contact || contact.subscriptionStatus !== "CONFIRMED" || !payload?.snapshot) {
+      throw new ZohoAdminValidationError("Confirmed subscription eligibility and a complete contact snapshot are required.", 409);
+    }
+    const persisted = await getPersistedZohoContactSnapshotWithClient(transaction, event.planId, contact.id);
+    if (JSON.stringify(payload.snapshot) !== JSON.stringify(persisted.snapshot)) {
+      throw new ZohoAdminValidationError("The contact snapshot changed after synchronization. Prepare another reviewed reconciliation sequence.", 409);
     }
     const existing = await transaction.zohoAutomationAudit.findFirst({
       where: {
@@ -145,17 +200,31 @@ export async function recordTestJ1ContactValuesVerification(input: {
       },
       select: { id: true }
     });
-    if (existing) return { changed: false } as const;
-    await createZohoAutomationAuditInTransaction(transaction, {
-      action: TEST_J1_CONTACT_VALUES_VERIFIED_ACTION,
-      actor: input.actor,
-      evidenceReference: event.id,
-      onboardingPlanId: event.onboardingPlanId,
-      planId: event.planId,
-      reason: `An individually authenticated ADMIN independently compared the TEST J1 contact values with Zoho. Evidence: ${input.evidenceReference.trim().slice(0, 300)}. This did not release or dispatch the J1 event.`,
-      recipientEmail: event.recipientEmailNormalized
+    if (!existing) {
+      await createZohoAutomationAuditInTransaction(transaction, {
+        action: TEST_J1_CONTACT_VALUES_VERIFIED_ACTION,
+        actor: input.actor,
+        evidenceReference: event.id,
+        onboardingPlanId: event.onboardingPlanId,
+        planId: event.planId,
+        reason: `An individually authenticated ADMIN independently compared the TEST J1 contact values with Zoho. Evidence: ${input.evidenceReference.trim().slice(0, 300)}. Only an explicitly linked replacement J1 may be released; no provider request occurred.`,
+        recipientEmail: event.recipientEmailNormalized
+      });
+    }
+    const released = await transaction.zohoOutboxEvent.updateMany({
+      where: {
+        eventType: "TRIGGER_JOURNEY",
+        holdReason: "CONTACT_VALUES_NOT_VERIFIED",
+        journey: "J1",
+        onboardingPlanId: event.onboardingPlanId,
+        payload: { path: ["event", "dependsOnContactEventId"], equals: event.id },
+        recipientEmailNormalized: event.recipientEmailNormalized,
+        status: "HELD"
+      },
+      data: { holdReason: null, nextAttemptAt: new Date(), status: "PENDING" }
     });
-    return { changed: true } as const;
+    if (released.count > 1) throw new ZohoAdminValidationError("More than one replacement J1 depended on the contact event.", 409);
+    return { changed: !existing, releasedJourney: released.count === 1 } as const;
   });
 }
 
@@ -173,23 +242,12 @@ export async function authorizeExactTestJ1LifecycleDispatch(input: {
   }
   const [plan, contactVerification] = await Promise.all([
     prisma.onboardingPlan.findUnique({ where: { id: event.onboardingPlanId }, select: { id: true } }),
-    event.eventType === "TRIGGER_JOURNEY"
-      ? prisma.zohoOutboxEvent.findFirst({
-          where: {
-            onboardingPlanId: event.onboardingPlanId,
-            recipientEmailNormalized: event.recipientEmailNormalized,
-            eventType: "UPSERT_CONTACT",
-            sequence: { lt: event.sequence }
-          },
-          orderBy: { sequence: "desc" }
-        })
-      : Promise.resolve(null)
+    getJourneyContactDependency(event)
   ]);
   if (!plan) throw new ZohoAdminValidationError("The TEST J1 plan no longer exists.", 409);
   const verified = contactVerification
     ? contactVerification.status === "SUCCEEDED" &&
-      Boolean(contactVerification.lastProviderOutcome) &&
-      !["UNKNOWN", "ACCEPTED_PENDING_VERIFICATION"].includes(contactVerification.lastProviderOutcome ?? "") &&
+      isDefinitiveContactProviderOutcome(contactVerification.lastProviderOutcome) &&
       await hasContactValueVerification(event.onboardingPlanId, event.recipientEmailNormalized, contactVerification.id)
     : event.eventType === "UPSERT_CONTACT";
   if (event.eventType === "TRIGGER_JOURNEY" && contactVerification) {
