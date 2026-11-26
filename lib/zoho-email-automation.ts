@@ -3,7 +3,14 @@ import "server-only";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { checkZohoListMembership } from "@/lib/zoho-phase2";
-import { getZohoConfigurationStatus, getZohoDispatchConfiguration, getZohoTopicId } from "@/lib/zoho-config";
+import {
+  getZohoConfigurationStatus,
+  getZohoDispatchConfiguration,
+  getZohoTopicId,
+  isZohoProductionJourneyEnabled,
+  isZohoProductionRolloutPlanAllowed,
+  isZohoProductionRuntime
+} from "@/lib/zoho-config";
 import { createZohoAutomationAuditInTransaction } from "@/lib/zoho-foundation";
 import { prepareZohoEmailAutomationEventsInTransaction } from "@/lib/zoho-lifecycle-events";
 import {
@@ -33,6 +40,7 @@ async function loadPlanState(client: Client, planId: string) {
       automationTaskMappingState: true,
       currentStage: true,
       id: true,
+      planId: true,
       kickoffBookedAt: true,
       msp: { select: { name: true, primaryContactEmail: true } },
       onboardingTasks: {
@@ -98,7 +106,11 @@ function configurationReadiness() {
       portalBaseUrlPresent: configuration.portalBaseUrlPresent,
       topicId: getZohoTopicId()
     }),
-    j1ConfigurationReady: Boolean(j1.journeyKeyPresent && j1.triggerKeyPresent)
+    j1ConfigurationReady: Boolean(
+      j1.journeyKeyPresent &&
+      j1.triggerKeyPresent &&
+      (!isZohoProductionRuntime() || isZohoProductionJourneyEnabled("J1"))
+    )
   };
 }
 
@@ -131,6 +143,8 @@ async function enablementInput(
       owner.normalizedEmail === plan.msp.primaryContactEmail.trim().toLowerCase()
     ),
     permissionEvidencePresent: Boolean(evidence?.permission),
+    productionRolloutAllowed:
+      !isZohoProductionRuntime() || isZohoProductionRolloutPlanAllowed(plan.planId),
     salesEngineerDetailsComplete: Boolean(
       plan.assignedSeName?.trim() &&
       plan.assignedSeEmail &&
@@ -189,7 +203,15 @@ export async function getZohoEmailAutomationStatus(
       where: { onboardingPlanId: plan.id },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 12,
-      select: { createdAt: true, eventType: true, journey: true, status: true, attemptCount: true, updatedAt: true }
+      select: {
+        attemptCount: true,
+        createdAt: true,
+        eventType: true,
+        journey: true,
+        lastProviderOutcome: true,
+        status: true,
+        updatedAt: true
+      }
     }),
     prisma.zohoJourneySend.findFirst({
       where: { onboardingPlanId: plan.id, attemptedAt: { not: null } },
@@ -227,7 +249,9 @@ export async function getZohoEmailAutomationStatus(
         : event.status === "HELD"
           ? "Waiting for a safety or eligibility requirement."
           : event.status === "RETRY"
-            ? "A recoverable provider error will be retried safely."
+            ? event.lastProviderOutcome === "ACCEPTED_PENDING_VERIFICATION"
+              ? "Zoho accepted the contact update; KZero is waiting for read-only membership verification."
+              : "A recoverable provider error will be retried safely."
             : null,
       label: plainEventDescription(event),
       state: event.status
@@ -252,7 +276,8 @@ export async function getZohoEmailAutomationStatus(
     contact: {
       attempts: lastContact?.attemptCount ?? 0,
       email: owner?.email ?? plan.msp.primaryContactEmail,
-      lastStatus: lastContact?.status ?? "NOT_STARTED"
+      lastStatus: lastContact?.status ?? "NOT_STARTED",
+      providerOutcome: lastContact?.lastProviderOutcome ?? null
     },
     currentStage: plan.currentStage || plan.onboardingTasks.find((task) => task.status !== "complete")?.title || "Not set",
     lastEmail: lastJourney ? {
@@ -269,7 +294,13 @@ export async function getZohoEmailAutomationStatus(
     nextEmail: scheduledJourney ? {
       journey: scheduledJourney.journey,
       state: scheduledJourney.status,
-      timing: scheduledJourney.status === "PENDING" ? "Ready when sending is approved" : "Retry waiting for a safe provider window"
+      timing: lastContact?.status !== "SUCCEEDED" || lastContact.lastProviderOutcome !== "VERIFIED"
+        ? "Waiting for contact synchronization and verification"
+        : !systemSendingActive
+          ? "Ready when system sending is approved"
+          : scheduledJourney.status === "PENDING"
+            ? "Queued for automatic processing"
+            : "Retry waiting for a safe provider window"
     } : null,
     planId,
     warning: enabled && !systemSendingActive

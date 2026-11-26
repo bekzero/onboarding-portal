@@ -206,6 +206,6 @@ test("dispatcher checks stale-sensitive field freshness before any journey provi
   const source = await readFile(new URL("../lib/zoho-dispatcher.ts", import.meta.url), "utf8");
   assert.match(source, /getZohoJourneyFreshnessBlockers\(claim\.event\.journey, snapshot\.snapshot\)/);
   const freshnessCheck = source.indexOf("getZohoJourneyFreshnessBlockers(claim.event.journey, snapshot.snapshot)");
-  const providerWorkflow = source.indexOf("const workflow = await executeZohoProviderWorkflow", freshnessCheck);
-  assert.ok(freshnessCheck >= 0 && providerWorkflow > freshnessCheck);
+  const providerTrigger = source.indexOf("const result = await provider.triggerJourney", freshnessCheck);
+  assert.ok(freshnessCheck >= 0 && providerTrigger > freshnessCheck);
 });

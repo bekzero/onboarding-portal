@@ -4,6 +4,14 @@ import {
   fingerprintZohoJ1Keys,
   selectControlledTestJ1Keys
 } from "@/lib/zoho-j1-key-selection";
+import { getZohoProductionRolloutConfiguration } from "@/lib/zoho-production-rollout";
+
+export {
+  getZohoProductionRolloutConfiguration,
+  isZohoProductionJourneyEnabled,
+  isZohoProductionRolloutPlanAllowed,
+  isZohoProductionRuntime
+} from "@/lib/zoho-production-rollout";
 
 function value(name: string) {
   return process.env[name]?.trim() || "";
@@ -76,6 +84,7 @@ export function getZohoNudgeConfiguration() {
     enabled: enabled("ZMA_NUDGE_EVALUATION_ENABLED")
   } as const;
 }
+
 
 export function getZohoPublicPortalBaseUrl() {
   const configured = value("PORTAL_PUBLIC_BASE_URL") || value("AUTH_URL");
@@ -236,6 +245,8 @@ export function getZohoConfigurationStatus() {
     oauthConfigured: Boolean(oauth.clientId && oauth.clientSecret && oauth.refreshToken),
     portalBaseUrlPresent: Boolean(getZohoPublicPortalBaseUrl()),
     productionDispatchApproved: dispatch.productionApproved,
+    productionRolloutPlanCount: getZohoProductionRolloutConfiguration().allowedPlanIds.size,
+    productionJourneyRollout: [...getZohoProductionRolloutConfiguration().enabledJourneys],
     testMode: {
       allowlistedEmailCount: getZohoTestConfiguration().allowedEmails.size,
       allowlistedPlanCount: getZohoTestConfiguration().allowedPlanIds.size,

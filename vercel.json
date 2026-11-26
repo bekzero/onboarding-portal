@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/zoho-dispatch-schedule.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "schedule/v1beta"
+        }
+      ],
+      "maxDuration": 300
+    }
+  },
+  "schedules": {
+    "zoho-automatic-dispatch": {
+      "function": "api/zoho-dispatch-schedule",
+      "jitter": 15,
+      "schedule": "*/15 * * * *",
+      "timezone": "UTC"
+    }
+  }
+}

@@ -178,8 +178,16 @@ test("production flags and cron remain disabled in the example environment", asy
   assert.match(env, /ZOHO_DISPATCH_MODE=disabled/);
 });
 
-test("no Vercel cron schedule was introduced", async () => {
+test("Vercel privately schedules only the dispatcher while defaults remain dormant", async () => {
   const packageJson = await readFile(new URL("../package.json", import.meta.url), "utf8");
   assert.match(packageJson, /test:zoho-phase-4/);
-  await assert.rejects(readFile(new URL("../vercel.json", import.meta.url), "utf8"), /ENOENT/);
+  const vercel = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
+  assert.equal(vercel.crons, undefined);
+  assert.equal(vercel.schedules["zoho-automatic-dispatch"].schedule, "*/15 * * * *");
+  assert.equal(vercel.schedules["zoho-automatic-dispatch"].jitter, 15);
+  assert.equal(vercel.schedules["zoho-automatic-dispatch"].function, "api/zoho-dispatch-schedule");
+  assert.deepEqual(
+    vercel.functions["api/zoho-dispatch-schedule.ts"].experimentalTriggers,
+    [{ type: "schedule/v1beta" }]
+  );
 });

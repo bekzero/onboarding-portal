@@ -8,6 +8,7 @@ import {
 import { createMsp, getAdminDashboardCases, isDatabasePersistenceConfigured } from "@/lib/msp-persistence";
 import { formatStaffAuditActor } from "@/lib/staff-auth";
 import { validateEnrollmentContactPermission } from "@/lib/zoho-enrollment-sync-core";
+import { validateEnrollmentSubscriptionAuthorization } from "@/lib/zoho-subscription-authorization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +51,11 @@ export async function POST(request: NextRequest) {
       primaryContactLastName?: string;
       slug?: string;
       zohoContactPermission?: { confirmed?: boolean; evidenceReference?: string };
+      zohoSubscriptionAuthorization?: {
+        authorizationBasis?: string;
+        confirmed?: boolean;
+        evidenceReference?: string;
+      };
       zohoTestJ1Preparation?: {
         confirmed?: boolean;
         productionJourneyReuseConfirmed?: boolean;
@@ -57,7 +63,7 @@ export async function POST(request: NextRequest) {
       };
     };
 
-    if (body.zohoTestJ1Preparation?.confirmed) {
+    if (body.zohoTestJ1Preparation?.confirmed || body.zohoSubscriptionAuthorization?.confirmed) {
       const sensitiveAuthError = await getSensitiveAdminApiAuthError(request, "ADMIN");
       if (sensitiveAuthError) return sensitiveAuthError;
     }
@@ -69,6 +75,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    const subscription = validateEnrollmentSubscriptionAuthorization(body.zohoSubscriptionAuthorization);
+    if (!subscription.valid) {
+      return NextResponse.json({ error: subscription.error }, { status: 400 });
+    }
 
     const staffIdentity = await getCurrentStaffIdentity();
     const adminCase = await createMsp({
@@ -78,6 +88,11 @@ export async function POST(request: NextRequest) {
       zohoContactPermission: {
         confirmed: permission.confirmed,
         evidenceReference: permission.evidenceReference
+      },
+      zohoSubscriptionAuthorization: {
+        authorizationBasis: subscription.authorizationBasis,
+        confirmed: subscription.confirmed,
+        evidenceReference: subscription.evidenceReference
       },
       zohoTestJ1Preparation: {
         confirmed: body.zohoTestJ1Preparation?.confirmed === true,

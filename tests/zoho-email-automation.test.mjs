@@ -20,6 +20,7 @@ function eligible(overrides = {}) {
     ownerExists: true,
     ownerValid: true,
     permissionEvidencePresent: true,
+    productionRolloutAllowed: true,
     salesEngineerDetailsComplete: true,
     subscriptionEvidencePresent: true,
     subscriptionStatus: "CONFIRMED",
@@ -58,6 +59,12 @@ test("immutable legacy cohort always fails closed", () => {
   const result = evaluateEmailAutomationEnablement(eligible({ legacyProtected: true }));
   assert.equal(result.ready, false);
   assert.ok(result.blockers.some((item) => item.code === "LEGACY_PLAN_PROTECTED"));
+});
+
+test("Production rollout approval is independently fail closed", () => {
+  const result = evaluateEmailAutomationEnablement(eligible({ productionRolloutAllowed: false }));
+  assert.equal(result.ready, false);
+  assert.ok(result.blockers.some((item) => item.code === "PRODUCTION_ROLLOUT_NOT_APPROVED"));
 });
 
 test("unsubscribed and bounced recipients cannot be enabled", () => {

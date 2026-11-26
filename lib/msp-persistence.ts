@@ -25,6 +25,10 @@ import {
 import { isValidHttpUrl, normalizeChangedRequiredEmail, normalizeRequiredEmail } from "@/lib/zoho-validation";
 import { createZohoAutomationAuditInTransaction } from "@/lib/zoho-foundation";
 import { getZohoTestJ1EnrollmentConfiguration } from "@/lib/zoho-config";
+import {
+  validateEnrollmentSubscriptionAuthorization,
+  type EnrollmentSubscriptionAuthorization
+} from "@/lib/zoho-subscription-authorization";
 
 const DEFAULT_SALES_ENGINEER = "Ben Eakin";
 
@@ -544,6 +548,7 @@ type CreateMspInput = {
   zohoAuditActor?: string;
   zohoAuditActorAttributable?: boolean;
   zohoContactPermission?: EnrollmentContactPermission;
+  zohoSubscriptionAuthorization?: EnrollmentSubscriptionAuthorization;
   zohoTestJ1Preparation?: {
     confirmed?: boolean;
     productionJourneyReuseConfirmed?: boolean;
@@ -830,12 +835,24 @@ export async function createMsp(input: CreateMspInput) {
   const primaryContactFirstName = input.primaryContactFirstName?.trim() || null;
   const primaryContactLastName = input.primaryContactLastName?.trim() || null;
   const prepareTestJ1 = input.zohoTestJ1Preparation?.confirmed === true;
+  const subscriptionAuthorization = validateEnrollmentSubscriptionAuthorization(
+    input.zohoSubscriptionAuthorization
+  );
   const testJ1Configuration = getZohoTestJ1EnrollmentConfiguration();
   const productionJ1ReviewEvidence = input.zohoTestJ1Preparation?.reviewEvidenceReference?.trim() ?? "";
   const { email: primaryContactEmail, normalizedEmail: primaryContactEmailNormalized } =
     normalizeRequiredEmail(input.primaryContactEmail, "Primary contact email");
   if (assignedSeBookingUrl && !isValidHttpUrl(assignedSeBookingUrl)) {
     throw new Error("Assigned Sales Engineer booking URL must be a valid HTTP or HTTPS URL.");
+  }
+  if (!subscriptionAuthorization.valid) {
+    throw new Error(subscriptionAuthorization.error);
+  }
+  if (
+    subscriptionAuthorization.confirmed &&
+    (!input.zohoAuditActorAttributable || !input.zohoAuditActor?.startsWith("oidc:"))
+  ) {
+    throw new Error("Subscription authorization requires an individually authenticated ADMIN.");
   }
   if (prepareTestJ1) {
     if (
@@ -905,7 +922,15 @@ export async function createMsp(input: CreateMspInput) {
               lastName: primaryContactLastName,
               normalizedEmail: primaryContactEmailNormalized,
               role: "ONBOARDING_OWNER",
-              subscriptionStatus: "UNKNOWN"
+              subscriptionEvidenceReference: subscriptionAuthorization.confirmed
+                ? subscriptionAuthorization.evidenceReference
+                : null,
+              subscriptionStatus: subscriptionAuthorization.confirmed ? "CONFIRMED" : "UNKNOWN",
+              subscriptionVerificationSource: subscriptionAuthorization.confirmed
+                ? "Enrollment authorization evidence"
+                : null,
+              subscriptionVerifiedAt: subscriptionAuthorization.confirmed ? createdAt : null,
+              subscriptionVerifiedBy: subscriptionAuthorization.confirmed ? input.zohoAuditActor : null
             }
           },
           planId,
@@ -932,6 +957,16 @@ export async function createMsp(input: CreateMspInput) {
     });
     const createdPlan = created.onboardingPlans[0];
     if (createdPlan) {
+      if (subscriptionAuthorization.confirmed) {
+        await createZohoAutomationAuditInTransaction(transaction, {
+          action: "msp_enrollment.subscription_authorization_recorded",
+          actor: input.zohoAuditActor!,
+          evidenceReference: subscriptionAuthorization.evidenceReference,
+          onboardingPlanId: createdPlan.id,
+          reason: `Administrator-recorded evidence independently supports onboarding email authorization: ${subscriptionAuthorization.authorizationBasis}. Provider suppression remains authoritative and is rechecked before activation.`,
+          recipientEmail: primaryContactEmail
+        });
+      }
       if (prepareTestJ1) {
         await createZohoAutomationAuditInTransaction(transaction, {
           action: "msp_enrollment.contact_permission_recorded",
@@ -1527,7 +1562,7 @@ async function advanceOnboardingPlanTask({
     });
 
     const occurrenceKey = `task-completed:${activeTemplateTask.templateKey}:${lastActivityAt.toISOString()}`;
-    await recordZohoContactSyncEventsInTransaction(transaction, {
+    const taskContactEvents = await recordZohoContactSyncEventsInTransaction(transaction, {
       allowStopState: finishNudge || metrics.status === "complete",
       isStopState: finishNudge || metrics.status === "complete",
       occurrenceKey,
@@ -1538,7 +1573,9 @@ async function advanceOnboardingPlanTask({
 
     if (requireOwner === "kzero_se" && isQualifyingKzeroHandoff(transition)) {
       const handoffKey = `${activeTemplateTask.templateKey}:to:${nextTemplateTask?.templateKey}`;
+      const contactEvent = taskContactEvents.find((result) => result.event)?.event ?? null;
       await recordZohoJourneyEventsInTransaction(transaction, {
+        eventMetadata: contactEvent ? { dependsOnContactEventId: contactEvent.id } : undefined,
         handoffKey,
         journey: "J5",
         occurrenceKey: `kzero-handoff:${handoffKey}`,
@@ -1549,7 +1586,7 @@ async function advanceOnboardingPlanTask({
     }
 
     if (isApprovedJ8Transition(onboardingPlan.tenantType, transition)) {
-      await recordZohoContactSyncEventsInTransaction(transaction, {
+      const completionContactEvents = await recordZohoContactSyncEventsInTransaction(transaction, {
         allowStopState: true,
         isStopState: true,
         occurrenceKey,
@@ -1559,6 +1596,9 @@ async function advanceOnboardingPlanTask({
         taskKey: "complete-first-customer-rollout"
       });
       await recordZohoJourneyEventsInTransaction(transaction, {
+        eventMetadata: completionContactEvents.find((result) => result.event)?.event
+          ? { dependsOnContactEventId: completionContactEvents.find((result) => result.event)!.event!.id }
+          : undefined,
         journey: "J8",
         marketingApprovalRequired:
           process.env.ZMA_J8_NFR_RULE_APPROVED?.trim().toLowerCase() !== "true",

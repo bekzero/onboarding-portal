@@ -20,6 +20,7 @@ import { getZohoTestJ1EnrollmentConfiguration } from "@/lib/zoho-config";
 import { getZohoAutomationReadinessWithClient } from "@/lib/zoho-readiness";
 import { classifyZohoEventDisposition } from "@/lib/zoho-lifecycle-rules";
 import { shouldPrepareInitialJ1 } from "@/lib/zoho-email-automation-core";
+import { isZohoProductionJourneyEnabled, isZohoProductionRuntime } from "@/lib/zoho-production-rollout";
 
 export {
   didActiveTaskChange,
@@ -232,7 +233,11 @@ async function recordZohoJourneyEvents(
       ...input,
       metadata: input.eventMetadata
     });
-    const holdReason = snapshot.holdReason ?? disposition.holdReason;
+    const holdReason = snapshot.holdReason ?? disposition.holdReason ?? (
+      isZohoProductionRuntime() && !isZohoProductionJourneyEnabled(input.journey)
+        ? "JOURNEY_NOT_IN_PRODUCTION_ROLLOUT"
+        : undefined
+    );
     const dedupeKey = createStableZohoKey(
       "journey",
       input.journey,
@@ -487,7 +492,7 @@ export async function recordZohoPlanCreatedEventsInTransaction(
     !plan.kickoffBookedAt;
 
   if (!readiness?.readyForDataSync) return { created: false, reasonCodes };
-  await recordZohoContactSyncEventsInTransaction(transaction, {
+  const contactEvents = await recordZohoContactSyncEventsInTransaction(transaction, {
     occurrenceKey: `plan-created:${plan.planId}`,
     onboardingPlanId: plan.id,
     reason: "plan.created",
@@ -499,7 +504,9 @@ export async function recordZohoPlanCreatedEventsInTransaction(
       reasonCodes: initialJ1StateValid ? reasonCodes : [...reasonCodes, "J1_INITIAL_STATE_INVALID"]
     };
   }
+  const contactEvent = contactEvents.find((result) => result.event)?.event ?? null;
   await recordZohoJourneyEventsInTransaction(transaction, {
+    eventMetadata: contactEvent ? { dependsOnContactEventId: contactEvent.id } : undefined,
     journey: "J1",
     occurrenceKey: `plan-created-j1:${plan.planId}`,
     onboardingPlanId: plan.id,

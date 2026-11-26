@@ -227,6 +227,9 @@ type EnrollmentFormState = {
   productionJ1ReviewEvidence: string;
   zohoContactPermissionConfirmed: boolean;
   zohoContactPermissionEvidence: string;
+  zohoSubscriptionAuthorizationBasis: string;
+  zohoSubscriptionAuthorizationConfirmed: boolean;
+  zohoSubscriptionEvidence: string;
 };
 
 type EditFormState = {
@@ -1058,7 +1061,10 @@ function createEnrollmentState(): EnrollmentFormState {
     productionJ1ReuseConfirmed: false,
     productionJ1ReviewEvidence: "",
     zohoContactPermissionConfirmed: false,
-    zohoContactPermissionEvidence: ""
+    zohoContactPermissionEvidence: "",
+    zohoSubscriptionAuthorizationBasis: "",
+    zohoSubscriptionAuthorizationConfirmed: false,
+    zohoSubscriptionEvidence: ""
   };
 }
 
@@ -2298,6 +2304,8 @@ export function InternalDashboard({
     const primaryContactFirstName = enrollmentState.primaryContactFirstName.trim();
     const primaryContactLastName = enrollmentState.primaryContactLastName.trim();
     const permissionEvidenceReference = enrollmentState.zohoContactPermissionEvidence.trim();
+    const subscriptionAuthorizationBasis = enrollmentState.zohoSubscriptionAuthorizationBasis.trim();
+    const subscriptionEvidenceReference = enrollmentState.zohoSubscriptionEvidence.trim();
     const trimmedClientId = enrollmentState.clientId.trim();
     const hasFullOidcConfig = Boolean(exactTenantName && trimmedClientId && enrollmentState.clientSecret.trim());
     const accessMode: OnboardingCase["accessMode"] =
@@ -2317,6 +2325,15 @@ export function InternalDashboard({
 
     if (enrollmentState.zohoContactPermissionConfirmed && !permissionEvidenceReference) {
       setEnrollmentErrorMessage("Permission Evidence Reference is required when Zoho permission is confirmed.");
+      return;
+    }
+    if (
+      enrollmentState.zohoSubscriptionAuthorizationConfirmed &&
+      (subscriptionEvidenceReference.length < 3 || subscriptionAuthorizationBasis.length < 10)
+    ) {
+      setEnrollmentErrorMessage(
+        "Subscription authorization requires an evidence reference and a clear authorization basis."
+      );
       return;
     }
     if (
@@ -2365,6 +2382,11 @@ export function InternalDashboard({
             zohoContactPermission: {
               confirmed: enrollmentState.zohoContactPermissionConfirmed,
               evidenceReference: permissionEvidenceReference
+            },
+            zohoSubscriptionAuthorization: {
+              authorizationBasis: subscriptionAuthorizationBasis,
+              confirmed: enrollmentState.zohoSubscriptionAuthorizationConfirmed,
+              evidenceReference: subscriptionEvidenceReference
             },
             zohoTestJ1Preparation: {
               confirmed: enrollmentState.prepareZohoTestJ1,
@@ -4664,6 +4686,44 @@ export function InternalDashboard({
                         </label>
                       </div>
                       <p className="mt-3 text-xs leading-5 text-muted">Recording permission does not automatically subscribe the contact or trigger onboarding emails.</p>
+                      {staffIdentity?.role === "ADMIN" ? (
+                        <div className="mt-3 grid gap-3 rounded-2xl border border-border bg-input px-4 py-3">
+                          <label className="flex items-start gap-3 text-sm leading-5 text-secondary">
+                            <input
+                              checked={enrollmentState.zohoSubscriptionAuthorizationConfirmed}
+                              className="mt-0.5 h-4 w-4 rounded border-border bg-input"
+                              onChange={(event) => setEnrollmentState((current) => ({
+                                ...current,
+                                zohoSubscriptionAuthorizationConfirmed: event.target.checked
+                              }))}
+                              type="checkbox"
+                            />
+                            <span>I confirm that independently supportable authorization permits onboarding emails for this contact. Zoho suppression checks remain authoritative.</span>
+                          </label>
+                          {enrollmentState.zohoSubscriptionAuthorizationConfirmed ? (
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <label className="grid gap-2 text-sm text-secondary">
+                                <span>Subscription Evidence Reference</span>
+                                <input
+                                  className="rounded-2xl border border-border bg-surface px-4 py-3 text-foreground outline-none"
+                                  onChange={(event) => setEnrollmentState((current) => ({ ...current, zohoSubscriptionEvidence: event.target.value }))}
+                                  placeholder="Consent record, agreement section, or ticket"
+                                  value={enrollmentState.zohoSubscriptionEvidence}
+                                />
+                              </label>
+                              <label className="grid gap-2 text-sm text-secondary">
+                                <span>Authorization Basis</span>
+                                <input
+                                  className="rounded-2xl border border-border bg-surface px-4 py-3 text-foreground outline-none"
+                                  onChange={(event) => setEnrollmentState((current) => ({ ...current, zohoSubscriptionAuthorizationBasis: event.target.value }))}
+                                  placeholder="How the evidence authorizes onboarding emails"
+                                  value={enrollmentState.zohoSubscriptionAuthorizationBasis}
+                                />
+                              </label>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       {staffIdentity?.role === "ADMIN" ? (
                         <div className="mt-3 grid gap-3 rounded-2xl border border-info-border bg-info-surface px-4 py-3 text-sm leading-5 text-secondary">
                         <label className="flex items-start gap-3">

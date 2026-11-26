@@ -6,6 +6,7 @@ import {
   type ZohoOutboxEventType
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { isZohoProductionRolloutPlanAllowed, isZohoProductionRuntime } from "@/lib/zoho-production-rollout";
 import { getZohoPlanAutomationEligibility } from "@/lib/zoho-legacy-eligibility";
 
 export type ZohoTransaction = Prisma.TransactionClient;
@@ -123,6 +124,9 @@ export async function createZohoOutboxEventInTransaction(
   if (plan.automationEnrollmentState === "EXCLUDED") {
     throw new Error("Automation events cannot be created for an excluded plan.");
   }
+  if (isZohoProductionRuntime() && !isZohoProductionRolloutPlanAllowed(plan.planId)) {
+    return { created: false, event: null, blockedReason: "PRODUCTION_ROLLOUT_NOT_APPROVED" };
+  }
 
   const { recipientEmailNormalized, sequence } = await allocateZohoRecipientSequence(
     transaction,
@@ -178,6 +182,14 @@ export async function createZohoJourneyTriggerEventInTransaction(
   }
   if (plan.automationEnrollmentState === "EXCLUDED") {
     throw new Error("Journey events cannot be created for an excluded plan.");
+  }
+  if (isZohoProductionRuntime() && !isZohoProductionRolloutPlanAllowed(plan.planId)) {
+    return {
+      created: false,
+      event: null,
+      journeySend: null,
+      blockedReason: "PRODUCTION_ROLLOUT_NOT_APPROVED"
+    };
   }
 
   const recipientEmailNormalized = normalizeZohoRecipientEmail(input.recipientEmail);

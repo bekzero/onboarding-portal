@@ -258,6 +258,9 @@ async function prepareEligibleNudge(input: {
       taskKey: evaluated.currentTask.templateKey
     });
     const journeyEvents = await recordZohoJourneyEventsInTransaction(transaction, {
+      eventMetadata: syncEvents.find((result) => result.event)?.event
+        ? { dependsOnContactEventId: syncEvents.find((result) => result.event)!.event!.id }
+        : undefined,
       journey: "J3_R1",
       occurrenceKey: `${occurrenceKey}:journey`,
       onboardingPlanId: plan.id,

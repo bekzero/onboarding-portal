@@ -11,7 +11,8 @@ export type EmailAutomationBlockerCode =
   | "TASK_MAPPING_REQUIRED"
   | "CONTACT_CONFIGURATION_REQUIRED"
   | "J1_CONFIGURATION_REQUIRED"
-  | "LIST_SAFETY_REVIEW_REQUIRED";
+  | "LIST_SAFETY_REVIEW_REQUIRED"
+  | "PRODUCTION_ROLLOUT_NOT_APPROVED";
 
 export type EmailAutomationBlocker = {
   action: string;
@@ -30,6 +31,7 @@ export type EmailAutomationEnablementInput = {
   ownerExists: boolean;
   ownerValid: boolean;
   permissionEvidencePresent: boolean;
+  productionRolloutAllowed: boolean;
   salesEngineerDetailsComplete: boolean;
   subscriptionEvidencePresent: boolean;
   subscriptionStatus: "UNKNOWN" | "PENDING_CONFIRMATION" | "CONFIRMED" | "INELIGIBLE" | "MANUAL_REVIEW" | null;
@@ -71,6 +73,13 @@ export function evaluateEmailAutomationEnablement(
       "LEGACY_PLAN_PROTECTED",
       "This historical onboarding case is permanently excluded from automated emails.",
       "No action is available for this protected case."
+    );
+  }
+  if (!input.productionRolloutAllowed) {
+    add(
+      "PRODUCTION_ROLLOUT_NOT_APPROVED",
+      "Automated emails have not been approved for this onboarding case.",
+      "Ask KZero support to add this plan to the controlled automation rollout."
     );
   }
   if (!input.ownerExists) {

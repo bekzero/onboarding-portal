@@ -169,6 +169,38 @@ test("real PostgreSQL enable/disable workflow is locked, atomic, idempotent, and
     assert.equal(await client.zohoAutomationAudit.count({ where: { action: "email_automation.enabled", onboardingPlanId: ids.plan } }), 1);
     assert.equal((await client.onboardingPlan.findUnique({ where: { id: ids.plan } })).automationEnrollmentState, "ACTIVE");
 
+    const firstCron = await pool.connect();
+    const competingCron = await pool.connect();
+    try {
+      await firstCron.query("BEGIN");
+      await competingCron.query("BEGIN");
+      const claimSql = `
+        SELECT event."id"
+        FROM "zoho_outbox_events" event
+        WHERE event."status" IN ('PENDING', 'RETRY')
+          AND event."planId" = ANY($1::text[])
+          AND NOT EXISTS (
+            SELECT 1 FROM "zoho_outbox_events" earlier
+            WHERE earlier."recipientEmailNormalized" = event."recipientEmailNormalized"
+              AND earlier."sequence" < event."sequence"
+              AND earlier."status" NOT IN ('SUCCEEDED', 'CANCELLED')
+          )
+        ORDER BY event."createdAt" ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+      `;
+      const firstClaim = await firstCron.query(claimSql, [[planId]]);
+      const competingClaim = await competingCron.query(claimSql, [[planId]]);
+      assert.equal(firstClaim.rows.length, 1);
+      assert.equal(firstClaim.rows[0].id, events[0].id);
+      assert.equal(competingClaim.rows.length, 0);
+    } finally {
+      await firstCron.query("ROLLBACK");
+      await competingCron.query("ROLLBACK");
+      firstCron.release();
+      competingCron.release();
+    }
+
     await disableFixture();
     assert.equal(await client.zohoOutboxEvent.count({ where: { onboardingPlanId: ids.plan, status: "CANCELLED" } }), 2);
     assert.equal((await client.onboardingPlan.findUnique({ where: { id: ids.plan } })).automationEnrollmentState, "PAUSED");

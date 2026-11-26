@@ -190,12 +190,14 @@ test("dry-run route is admin-only and cannot invoke the write evaluator or provi
   assert.doesNotMatch(engine, /getZohoApiClient|zohoDispatchProvider|fetch\(/);
 });
 
-test("cron endpoint requires bearer authorization and no schedule is activated", async () => {
+test("nudge cron remains unscheduled while its endpoint retains bearer authorization", async () => {
   const route = await readFile(new URL("../app/api/cron/zoho-nudges/route.ts", import.meta.url), "utf8");
   assert.match(route, /timingSafeEqual/);
   assert.match(route, /authorization/);
   assert.match(route, /runDailyZohoNudgeEvaluation/);
-  await assert.rejects(readFile(new URL("../vercel.json", import.meta.url), "utf8"), /ENOENT/);
+  const vercel = await readFile(new URL("../vercel.json", import.meta.url), "utf8");
+  assert.doesNotMatch(vercel, /zoho-nudges/);
+  assert.match(vercel, /zoho-dispatch/);
 });
 
 test("Z: all Phase 5 and external execution flags remain disabled by default", async () => {

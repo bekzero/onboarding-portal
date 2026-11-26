@@ -17,6 +17,7 @@ registerHooks({
   }
 });
 
+process.env.ZOHO_PRODUCTION_ROLLOUT_PLAN_IDS ||= "benmsp-nfr";
 const { createZohoContactSyncEventInTransaction } = await import("../lib/zoho-foundation.ts");
 
 function ready(overrides = {}) {
