@@ -99,12 +99,14 @@ test("stop-state and contact conflict monitoring do not claim success prematurel
 
 test("case preview links to filtered automation history", async () => {
   const component = await read("components/zoho-integration-status.tsx");
+  const service = await read("lib/zoho-email-automation.ts");
   const header = await read("components/admin-dashboard-header.tsx");
   const staffActions = await read("app/admin/staff/actions.ts");
   const adminAuth = await read("lib/admin-auth.ts");
-  assert.match(component, /View Automation History/);
-  assert.match(component, /automationEnrollmentState/);
-  assert.match(component, /lastSuccessfulContactSync/);
+  assert.match(component, /Open Support Diagnostics/);
+  assert.match(component, /\/admin\/zoho\?tab=events&plan=/);
+  assert.match(service, /automationEnrollmentState/);
+  assert.match(service, /lastJourney/);
   assert.match(header, /Zoho Automation/);
   assert.match(header, /href="\/admin\/zoho"/);
   assert.match(header, /Staff SSO/);

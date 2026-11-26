@@ -135,9 +135,9 @@ test("current provider warning separates email-only readiness from full field an
   assert.match(service, /emailOnlyProviderReady: configuration\.oauthConfigured && configuration\.listKeyPresent/);
   assert.match(service, /listPrivacyVerified: configuration\.listPrivacyVerified/);
   const ui = await read("components/zoho-integration-status.tsx");
-  assert.match(ui, /Email-only list readiness/);
-  assert.match(ui, /Field \/ private-list verification/);
-  assert.match(ui, /Configured journeys/);
+  assert.doesNotMatch(ui, /Email-only list readiness|Field \/ private-list verification|Configured journeys/);
+  assert.match(ui, /Email automation needs attention/);
+  assert.match(ui, /contact KZero support/);
 });
 
 test("future enrollment rejects semicolon-tainted email while preserving historical records", async () => {
@@ -159,12 +159,10 @@ test("future enrollment rejects semicolon-tainted email while preserving histori
   assert.doesNotMatch(persistence, /replace\([^\n]*;/);
 });
 
-test("pilot preview is compact, read-only, and has no live Sync control", async () => {
+test("pilot preview route remains read-only while the normal UI omits pilot controls", async () => {
   const ui = await read("components/zoho-integration-status.tsx");
-  assert.match(ui, /Single-contact pilot readiness/);
-  assert.match(ui, /preview only/);
-  assert.match(ui, /No live Sync control is available/);
-  assert.match(ui, /server-side plan and email allowlist/);
+  assert.doesNotMatch(ui, /Single-contact pilot readiness|Sync Pilot Contact/);
+  assert.match(ui, /Open Support Diagnostics/);
   const route = await read("app/api/admin/zoho/automation/plans/[planId]/route.ts");
   assert.match(route, /dryRun: true/);
   assert.doesNotMatch(route, /getZohoApiClient|addLeadsInBulk|prisma\./);
@@ -239,12 +237,10 @@ test("readiness controls refresh persisted state without creating outbox work", 
   assert.match(center, /communicationContextAssigned/);
 });
 
-test("case preview exposes compact ADMIN controls but no live synchronization action", async () => {
+test("readiness controls remain server-side and are absent from normal Case Preview", async () => {
   const ui = await read("components/zoho-integration-status.tsx");
-  assert.match(ui, /Administrative readiness controls/);
-  assert.match(ui, /Approve Plan &amp; Owner/);
-  assert.match(ui, /Assign Context/);
-  assert.match(ui, /Verify List Privacy/);
-  assert.match(ui, /They cannot prepare events, contact Zoho with a write, or enable dispatch/);
-  assert.doesNotMatch(ui, />Sync Pilot Contact</);
+  const route = await read("app/api/admin/zoho/automation/plans/[planId]/readiness-controls/route.ts");
+  assert.doesNotMatch(ui, /Administrative readiness controls|Approve Plan &amp; Owner|Assign Context|Verify List Privacy/);
+  assert.match(route, /getSensitiveAdminApiAuthError\(request, "ADMIN"\)/);
+  assert.match(route, /VERIFY_LIST_PRIVACY/);
 });

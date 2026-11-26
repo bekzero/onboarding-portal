@@ -165,19 +165,13 @@ test("stable enrollment identity and unique outbox keys prevent duplicate prepar
   assert.match(enrollment, /eventCreated: event\.created/);
 });
 
-test("case preview presents grouped readiness with progressive diagnostics", async () => {
+test("case preview presents plain-language readiness and keeps technical evidence server-side", async () => {
   const ui = await read("components/zoho-integration-status.tsx");
-  assert.match(ui, /Evaluate Zoho Sync/);
-  assert.match(ui, /No event or provider request was created/);
-  assert.match(ui, /Eligible if explicitly enabled/);
-  assert.match(ui, /Items requiring attention/);
-  assert.match(ui, /Contact and permission/);
-  assert.match(ui, /Staff identity/);
-  assert.match(ui, /Automation feature flags/);
-  assert.match(ui, /Advanced Diagnostics/);
-  assert.match(ui, /permissionEvidenceReference/);
-  assert.match(ui, /enrollmentContactSync\.mspName/);
-  assert.match(ui, /enrollmentContactSync\.primaryContactEmail/);
+  assert.match(ui, /Email automation needs attention/);
+  assert.match(ui, /Email recipient/);
+  assert.match(ui, /Open Support Diagnostics/);
+  assert.doesNotMatch(ui, /Advanced Diagnostics/);
+  assert.doesNotMatch(ui, /permissionEvidenceReference/);
   const route = await read("app/api/admin/zoho/automation/plans/[planId]/route.ts");
   assert.match(route, /includePermissionEvidenceReference: Boolean\(staffIdentity\)/);
   const service = await read("lib/zoho-admin-center.ts");
@@ -203,14 +197,13 @@ test("case preview uses four accessible tabs while preserving one stateful conta
   assert.match(dashboard, /Complete App Review/);
 });
 
-test("legacy diagnostic controls remain available but collapsed and global tools link to the admin center", async () => {
+test("legacy diagnostic controls leave normal Case Preview while support remains linked", async () => {
   const ui = await read("components/zoho-integration-status.tsx");
-  assert.match(ui, /Advanced test and discovery tools/);
-  assert.match(ui, /Run Read-only Discovery/);
-  assert.match(ui, /Preview Test Sync/);
-  assert.match(ui, /Check List Membership/);
-  assert.match(ui, /\/admin\/zoho\?tab=test-sync/);
-  assert.match(ui, /\/admin\/zoho\?tab=configuration/);
+  const center = await read("components/zoho-automation-center.tsx");
+  assert.doesNotMatch(ui, /Advanced test and discovery tools|Preview Test Sync|Check List Membership/);
+  assert.match(ui, /Open Support Diagnostics/);
+  assert.match(center, /Test Contact Sync/);
+  assert.match(center, /Configuration/);
 });
 
 test("production automation remains disabled and no Phase 7B.5 provider call exists", async () => {

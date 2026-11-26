@@ -271,13 +271,14 @@ test("server execution uses exact configured target, one email, fresh privacy, d
   assert.doesNotMatch(service, /createZohoOutboxEvent/);
 });
 
-test("UI shows compact preview, exact confirmation, outcomes, and no browser ListKey", async () => {
+test("legacy pilot stays server-protected and is removed from normal Case Preview", async () => {
   const ui = await read("components/zoho-integration-status.tsx");
-  assert.match(ui, /Controlled Contact Sync Pilot/);
-  assert.match(ui, /Preview Sync/);
-  assert.match(ui, /Run Single-Contact Pilot/);
-  assert.match(ui, /RUN SINGLE-CONTACT ZOHO PILOT/);
+  const route = await read("app/api/admin/zoho/automation/plans/[planId]/pilot/execute/route.ts");
+  assert.doesNotMatch(ui, /Controlled Contact Sync Pilot/);
+  assert.doesNotMatch(ui, /Run Single-Contact Pilot/);
   assert.doesNotMatch(ui, /listKey:/);
+  assert.match(route, /getSensitiveAdminApiAuthError/);
+  assert.match(route, /executeSingleContactPilot/);
 });
 
 test("configuration is dormant by default and documents the manual flag", async () => {
@@ -314,7 +315,6 @@ test("pilot evidence controls are exact-target, ADMIN-only, audited, idempotent,
   assert.match(service, /createZohoAutomationAuditInTransaction/);
   assert.doesNotMatch(service, /addLeadsInBulk|createZohoOutboxEvent|executeSingleContactPilot/);
   assert.match(route, /getZohoPlanAutomationSummary/);
-  assert.match(ui, /Record Subscription Decision/);
-  assert.match(ui, /List-associated journeys/);
-  assert.match(ui, /Other list-entry-triggered email actions/);
+  assert.doesNotMatch(ui, /Record Subscription Decision|List-associated journeys|Other list-entry-triggered email actions/);
+  assert.match(ui, /Open Support Diagnostics/);
 });

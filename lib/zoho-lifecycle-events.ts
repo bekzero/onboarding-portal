@@ -19,6 +19,7 @@ import { getPersistedZohoContactSnapshotWithClient } from "@/lib/zoho-contact-sn
 import { getZohoTestJ1EnrollmentConfiguration } from "@/lib/zoho-config";
 import { getZohoAutomationReadinessWithClient } from "@/lib/zoho-readiness";
 import { classifyZohoEventDisposition } from "@/lib/zoho-lifecycle-rules";
+import { shouldPrepareInitialJ1 } from "@/lib/zoho-email-automation-core";
 
 export {
   didActiveTaskChange,
@@ -262,6 +263,58 @@ export function recordZohoJourneyEventsInTransaction(
   input: JourneyInput
 ) {
   return recordZohoJourneyEvents(transaction, input, isZohoEventEmissionEnabled());
+}
+
+export async function prepareZohoEmailAutomationEventsInTransaction(
+  transaction: ZohoTransaction,
+  input: { onboardingPlanId: string; occurrenceKey: string }
+) {
+  const plan = await transaction.onboardingPlan.findUnique({
+    where: { id: input.onboardingPlanId },
+    select: {
+      automaticJ1Allowed: true,
+      id: true,
+      kickoffBookedAt: true,
+      onboardingTasks: {
+        orderBy: { order: "asc" },
+        select: { status: true, templateKey: true }
+      },
+      planId: true
+    }
+  });
+  if (!plan) throw new Error("The onboarding plan could not be found.");
+
+  const nextTask = plan.onboardingTasks.find((task) => task.status !== "complete") ?? null;
+  const contactEvents = await recordZohoContactSyncEvents(transaction, {
+    occurrenceKey: input.occurrenceKey,
+    onboardingPlanId: plan.id,
+    reason: "automation.enabled.contact_sync",
+    taskKey: nextTask?.templateKey ?? null
+  }, true);
+  const contactEvent = contactEvents.find((result) => result.event)?.event ?? null;
+  const prepareJ1 = shouldPrepareInitialJ1({
+    automaticJ1Allowed: plan.automaticJ1Allowed,
+    kickoffBooked: Boolean(plan.kickoffBookedAt),
+    nextTaskKey: nextTask?.templateKey ?? null,
+    nextTaskStatus: nextTask?.status ?? null
+  });
+  const journeyEvents = prepareJ1
+    ? await recordZohoJourneyEvents(transaction, {
+        eventMetadata: contactEvent ? { dependsOnContactEventId: contactEvent.id } : undefined,
+        journey: "J1",
+        occurrenceKey: `${input.occurrenceKey}:j1`,
+        onboardingPlanId: plan.id,
+        reason: "automation.enabled.j1",
+        taskKey: nextTask?.templateKey ?? undefined
+      }, true)
+    : [];
+
+  return {
+    contactEventId: contactEvent?.id ?? null,
+    contactPrepared: contactEvents.some((result) => result.created),
+    j1Prepared: journeyEvents.some((result) => result.created),
+    journeyEventId: journeyEvents.find((result) => result.event)?.event?.id ?? null
+  };
 }
 
 export async function recordAllowlistedZohoTestJ1EnrollmentInTransaction(

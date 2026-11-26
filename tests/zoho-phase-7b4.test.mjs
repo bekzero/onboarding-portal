@@ -248,9 +248,11 @@ test("normal provider uses full-field listsubscribe while the manual pilot remai
 test("production defaults remain disabled and consent readiness is visible", async () => {
   const env = await readFile(new URL("../.env.example", import.meta.url), "utf8");
   const ui = await readFile(new URL("../components/zoho-integration-status.tsx", import.meta.url), "utf8");
+  const dashboard = await readFile(new URL("../components/internal-dashboard.tsx", import.meta.url), "utf8");
   assert.match(env, /ZOHO_MSP_ENROLLMENT_CONTACT_SYNC_ENABLED=false/);
   assert.match(env, /ZOHO_GLOBAL_KILL_SWITCH=true/);
   assert.match(env, /ZOHO_CONTACT_SYNC_ENABLED=false/);
-  assert.match(ui, /Enrollment contact permission/);
-  assert.match(ui, /Enrollment contact sync/);
+  assert.match(ui, /Email automation needs attention/);
+  assert.match(dashboard, /Zoho Partner Onboarding/);
+  assert.match(dashboard, /Record Permission Evidence/);
 });

@@ -294,9 +294,11 @@ test("event insertion failure leaves no partial event, audit, or provider write"
   assert.equal(harness.database.providerWrites, 0);
 });
 
-test("the UI exposes preparation separately from the email-only live pilot", async () => {
+test("existing-plan preparation remains available to support without appearing in normal Case Preview", async () => {
   const ui = await readFile(new URL("../components/zoho-integration-status.tsx", import.meta.url), "utf8");
-  assert.match(ui, /Prepare Full-Field Intent/);
-  assert.match(ui, /PREPARE ONE FULL-FIELD ZOHO TEST INTENT/);
-  assert.match(ui, /never sends, subscribes, or triggers a journey/i);
+  const route = await readFile(new URL("../app/api/admin/zoho/automation/plans/[planId]/full-field-test-intent/route.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(ui, /Prepare Full-Field Intent/);
+  assert.match(ui, /Open Support Diagnostics/);
+  assert.match(route, /getSensitiveAdminApiAuthError/);
+  assert.match(route, /prepareExistingFullFieldTestIntent/);
 });
