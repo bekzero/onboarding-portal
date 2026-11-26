@@ -36,6 +36,28 @@ export type EmailAutomationEnablementInput = {
   taskMappingVerified: boolean;
 };
 
+export type EmailAutomationContactConfigurationInput = {
+  fieldMappingVerified: boolean;
+  listKeyPresent: boolean;
+  listPrivacyVerified: boolean;
+  oauthConfigured: boolean;
+  portalBaseUrlPresent: boolean;
+  topicId: string;
+};
+
+export function isEmailAutomationContactConfigurationReady(
+  input: EmailAutomationContactConfigurationInput
+) {
+  return Boolean(
+    input.oauthConfigured &&
+      input.listKeyPresent &&
+      input.fieldMappingVerified &&
+      input.listPrivacyVerified &&
+      input.portalBaseUrlPresent &&
+      /^\d+$/.test(input.topicId)
+  );
+}
+
 export function evaluateEmailAutomationEnablement(
   input: EmailAutomationEnablementInput
 ): { blockers: EmailAutomationBlocker[]; ready: boolean } {
@@ -145,4 +167,15 @@ export function shouldPrepareInitialJ1(input: {
       input.nextTaskKey === "book-kickoff" &&
       input.nextTaskStatus === "waiting_on_msp"
   );
+}
+
+export function selectKZeroEmailSchedule<
+  Event extends { eventType: string; status: string }
+>(events: Event[]) {
+  return {
+    held: events.find((event) => event.eventType === "TRIGGER_JOURNEY" && event.status === "HELD") ?? null,
+    scheduled: events.find(
+      (event) => event.eventType === "TRIGGER_JOURNEY" && ["PENDING", "RETRY"].includes(event.status)
+    ) ?? null
+  };
 }

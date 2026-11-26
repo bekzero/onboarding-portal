@@ -45,3 +45,7 @@ Technical events and diagnostics remain under `/admin/zoho`. The normal Case Pre
 ## Activation boundary
 
 Plan-level enablement never enables global dispatch. The global kill switch, dispatch mode, contact-sync, journey, automatic-dispatch, event-emission, and nudge flags remain authoritative. A dormant deployment can therefore include this workflow without sending provider requests.
+
+`ZMA_FIELD_MAPPING_VERIFIED` and `ZMA_PRIVATE_LIST_VERIFIED` are tenant-wide provider-configuration evidence, not per-MSP administrator steps. They may be set to `true` only after current read-only discovery confirms the complete field contract and the configured list key resolves uniquely to the approved private list. These markers do not enable sending; all global dispatch safeguards remain independently authoritative.
+
+The Case Preview reports only KZero-triggered journey activity. A journey started directly in Zoho is not represented as a KZero send. A `HELD` outbox event is not a scheduled email and is presented as held work rather than a future send.

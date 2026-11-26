@@ -8,6 +8,8 @@ import { createZohoAutomationAuditInTransaction } from "@/lib/zoho-foundation";
 import { prepareZohoEmailAutomationEventsInTransaction } from "@/lib/zoho-lifecycle-events";
 import {
   evaluateEmailAutomationEnablement,
+  isEmailAutomationContactConfigurationReady,
+  selectKZeroEmailSchedule,
   type EmailAutomationEnablementInput
 } from "@/lib/zoho-email-automation-core";
 import { isValidEmailAddress, isValidHttpUrl, ZohoAdminValidationError } from "@/lib/zoho-validation";
@@ -88,15 +90,14 @@ function configurationReadiness() {
   const configuration = getZohoConfigurationStatus();
   const j1 = configuration.journeys.J1;
   return {
-    contactConfigurationReady: Boolean(
-      configuration.oauthConfigured &&
-      configuration.listKeyPresent &&
-      configuration.topicIdPresent &&
-      configuration.fieldMappingVerified &&
-      configuration.listPrivacyVerified &&
-      configuration.portalBaseUrlPresent &&
-      /^\d+$/.test(getZohoTopicId())
-    ),
+    contactConfigurationReady: isEmailAutomationContactConfigurationReady({
+      fieldMappingVerified: configuration.fieldMappingVerified,
+      listKeyPresent: configuration.listKeyPresent,
+      listPrivacyVerified: configuration.listPrivacyVerified,
+      oauthConfigured: configuration.oauthConfigured,
+      portalBaseUrlPresent: configuration.portalBaseUrlPresent,
+      topicId: getZohoTopicId()
+    }),
     j1ConfigurationReady: Boolean(j1.journeyKeyPresent && j1.triggerKeyPresent)
   };
 }
@@ -158,6 +159,7 @@ function plainEventDescription(event: {
     if (event.status === "SUCCEEDED") return "Contact details synchronized";
     if (event.status === "DEAD") return "Contact synchronization needs attention";
     if (event.status === "CANCELLED") return "Contact update cancelled";
+    if (event.status === "HELD") return "Contact update held";
     return "Contact update queued";
   }
   const label = event.journey === "J1"
@@ -170,6 +172,7 @@ function plainEventDescription(event: {
   if (event.status === "SUCCEEDED") return `${label} workflow accepted`;
   if (event.status === "DEAD") return `${label} needs attention`;
   if (event.status === "CANCELLED") return `${label} cancelled`;
+  if (event.status === "HELD") return `${label} held`;
   return `${label} queued`;
 }
 
@@ -206,9 +209,7 @@ export async function getZohoEmailAutomationStatus(
   const readiness = evaluateEmailAutomationEnablement(input);
   const dispatch = getZohoDispatchConfiguration();
   const enabled = plan.automationEnrollmentState === "ACTIVE" && owner?.automationEnabled === true;
-  const queuedJourney = events.find(
-    (event) => event.eventType === "TRIGGER_JOURNEY" && ["PENDING", "HELD", "RETRY"].includes(event.status)
-  );
+  const { held: heldJourney, scheduled: scheduledJourney } = selectKZeroEmailSchedule(events);
   const lastContact = events.find((event) => event.eventType === "UPSERT_CONTACT") ?? null;
   const systemSendingActive = Boolean(
     !dispatch.globalKillSwitch &&
@@ -261,10 +262,14 @@ export async function getZohoEmailAutomationStatus(
       verifiedDelivered: false
     } : null,
     mspName: plan.msp.name,
-    nextEmail: queuedJourney ? {
-      journey: queuedJourney.journey,
-      state: queuedJourney.status,
-      timing: queuedJourney.status === "PENDING" ? "Ready when sending is approved" : "Waiting for a requirement"
+    heldEmail: heldJourney ? {
+      journey: heldJourney.journey,
+      message: "KZero email work is held and will not send until separately reviewed."
+    } : null,
+    nextEmail: scheduledJourney ? {
+      journey: scheduledJourney.journey,
+      state: scheduledJourney.status,
+      timing: scheduledJourney.status === "PENDING" ? "Ready when sending is approved" : "Retry waiting for a safe provider window"
     } : null,
     planId,
     warning: enabled && !systemSendingActive

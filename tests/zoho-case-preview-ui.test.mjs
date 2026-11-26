@@ -11,7 +11,7 @@ test("normal Case Preview presents one plain-language automated-email workflow",
     "Email recipient",
     "Current stage",
     "Next scheduled email",
-    "Last email",
+    "Last KZero-triggered email",
     "Email activity",
     "Enable Automated Emails",
     "Disable Automated Emails"
@@ -25,6 +25,17 @@ test("normal Case Preview presents one plain-language automated-email workflow",
     "Dispatch Exact J1 Event",
     "Advanced Diagnostics"
   ]) assert.ok(!ui.includes(technicalControl), `${technicalControl} must not appear in normal Case Preview`);
+});
+
+test("status copy distinguishes plan enablement, paused sending, held work, and external Zoho sends", () => {
+  for (const label of [
+    "Enabled for this MSP",
+    "System sending paused",
+    "No KZero email scheduled",
+    "No KZero-triggered email recorded",
+    "Emails started directly in Zoho are not included in this history."
+  ]) assert.ok(ui.includes(label), `Missing ${label}`);
+  assert.match(ui, /status\.heldEmail\?\.message/);
 });
 
 test("opening the screen performs only its read-only status request", () => {

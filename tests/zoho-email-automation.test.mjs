@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   evaluateEmailAutomationEnablement,
+  isEmailAutomationContactConfigurationReady,
+  selectKZeroEmailSchedule,
   shouldPrepareInitialJ1
 } from "../lib/zoho-email-automation-core.ts";
 
@@ -28,6 +30,28 @@ function eligible(overrides = {}) {
 
 test("eligible current plan passes without weakening consent or provider checks", () => {
   assert.deepEqual(evaluateEmailAutomationEnablement(eligible()), { blockers: [], ready: true });
+});
+
+test("tenant-wide field and private-list verification markers fail closed independently", () => {
+  const configured = {
+    fieldMappingVerified: true,
+    listKeyPresent: true,
+    listPrivacyVerified: true,
+    oauthConfigured: true,
+    portalBaseUrlPresent: true,
+    topicId: "1329658000000062845"
+  };
+  assert.equal(isEmailAutomationContactConfigurationReady(configured), true);
+  assert.equal(isEmailAutomationContactConfigurationReady({ ...configured, fieldMappingVerified: false }), false);
+  assert.equal(isEmailAutomationContactConfigurationReady({ ...configured, listPrivacyVerified: false }), false);
+  assert.equal(isEmailAutomationContactConfigurationReady({ ...configured, topicId: "not-numeric" }), false);
+});
+
+test("HELD journey work is not presented as a scheduled KZero email", () => {
+  const held = { eventType: "TRIGGER_JOURNEY", journey: "J1", status: "HELD" };
+  assert.deepEqual(selectKZeroEmailSchedule([held]), { held, scheduled: null });
+  const pending = { eventType: "TRIGGER_JOURNEY", journey: "J5", status: "PENDING" };
+  assert.deepEqual(selectKZeroEmailSchedule([held, pending]), { held, scheduled: pending });
 });
 
 test("immutable legacy cohort always fails closed", () => {

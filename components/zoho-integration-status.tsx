@@ -14,6 +14,7 @@ type AutomationStatus = {
   canManage: boolean;
   contact: { attempts: number; email: string; lastStatus: string };
   currentStage: string;
+  heldEmail: { journey: "J1" | "J3_R1" | "J5" | "J8" | null; message: string } | null;
   lastEmail: { at: string | null; journey: "J1" | "J3_R1" | "J5" | "J8"; status: string; verifiedDelivered: false } | null;
   mspName: string;
   nextEmail: { journey: "J1" | "J3_R1" | "J5" | "J8" | null; state: string; timing: string } | null;
@@ -98,7 +99,8 @@ export function ZohoIntegrationStatus({ planId }: { contacts: ContactOption[]; p
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-lg font-semibold text-foreground" id="automated-emails-heading">Automated Emails</h3>
-              <Badge status={status?.automation.enabled ? "complete" : "not_started"}>{status?.automation.enabled ? "Enabled" : "Disabled"}</Badge>
+              <Badge status={status?.automation.enabled ? "complete" : "not_started"}>{status?.automation.enabled ? "Enabled for this MSP" : "Disabled for this MSP"}</Badge>
+              {status?.automation.enabled && !status.automation.systemSendingActive ? <Badge status="in_progress">System sending paused</Badge> : null}
             </div>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-secondary">KZero keeps the onboarding contact and email journey aligned with this MSP's current plan.</p>
           </div>
@@ -119,8 +121,8 @@ export function ZohoIntegrationStatus({ planId }: { contacts: ContactOption[]; p
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <article className="min-w-0 rounded-xl border border-border bg-input p-4"><p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Email recipient</p><p className="mt-2 break-all text-sm font-semibold text-foreground">{status.contact.email}</p><p className="mt-1 text-xs text-secondary">Onboarding Owner</p></article>
           <article className="min-w-0 rounded-xl border border-border bg-input p-4"><p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Current stage</p><p className="mt-2 text-sm font-semibold text-foreground">{status.currentStage}</p><p className="mt-1 text-xs text-secondary">Current portal state</p></article>
-          <article className="min-w-0 rounded-xl border border-border bg-input p-4"><p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Next scheduled email</p><p className="mt-2 text-sm font-semibold text-foreground">{status.nextEmail?.journey ? journeyNames[status.nextEmail.journey] : "None scheduled"}</p><p className="mt-1 text-xs leading-5 text-secondary">{status.nextEmail?.timing ?? "No queued KZero email work"}</p></article>
-          <article className="min-w-0 rounded-xl border border-border bg-input p-4"><p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Last email</p><p className="mt-2 text-sm font-semibold text-foreground">{status.lastEmail ? journeyNames[status.lastEmail.journey] : "No email recorded"}</p><p className="mt-1 text-xs leading-5 text-secondary">{status.lastEmail ? `${dateTime(status.lastEmail.at)} | provider accepted; delivery not independently confirmed` : "No journey has been accepted"}</p></article>
+          <article className="min-w-0 rounded-xl border border-border bg-input p-4"><p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Next scheduled email</p><p className="mt-2 text-sm font-semibold text-foreground">{status.nextEmail?.journey ? journeyNames[status.nextEmail.journey] : "No KZero email scheduled"}</p><p className="mt-1 text-xs leading-5 text-secondary">{status.nextEmail?.timing ?? status.heldEmail?.message ?? "No queued KZero email work"}</p></article>
+          <article className="min-w-0 rounded-xl border border-border bg-input p-4"><p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Last KZero-triggered email</p><p className="mt-2 text-sm font-semibold text-foreground">{status.lastEmail ? journeyNames[status.lastEmail.journey] : "No KZero-triggered email recorded"}</p><p className="mt-1 text-xs leading-5 text-secondary">{status.lastEmail ? `${dateTime(status.lastEmail.at)} | provider accepted; delivery not independently confirmed` : "Emails started directly in Zoho are not included in this history."}</p></article>
         </div>
 
         {status.blockers.length ? <section className="rounded-xl border border-warning-border/60 bg-warning-surface/40 p-4" aria-labelledby="email-attention-heading">
