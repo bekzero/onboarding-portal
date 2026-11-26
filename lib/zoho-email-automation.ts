@@ -8,7 +8,7 @@ import {
   getZohoDispatchConfiguration,
   getZohoTopicId,
   isZohoProductionJourneyEnabled,
-  isZohoProductionRolloutPlanAllowed,
+  isZohoProductionRolloutRecipientAllowed,
   isZohoProductionRuntime
 } from "@/lib/zoho-config";
 import { createZohoAutomationAuditInTransaction } from "@/lib/zoho-foundation";
@@ -50,7 +50,7 @@ async function loadPlanState(client: Client, planId: string) {
       planContacts: {
         where: { role: "ONBOARDING_OWNER" },
         orderBy: { createdAt: "asc" },
-        take: 1,
+        take: 2,
         select: {
           automationEnabled: true,
           email: true,
@@ -144,7 +144,13 @@ async function enablementInput(
     ),
     permissionEvidencePresent: Boolean(evidence?.permission),
     productionRolloutAllowed:
-      !isZohoProductionRuntime() || isZohoProductionRolloutPlanAllowed(plan.planId),
+      !isZohoProductionRuntime() || Boolean(owner && plan.planContacts.length === 1 &&
+        isZohoProductionRolloutRecipientAllowed({
+          planId: plan.planId,
+          primaryEmail: plan.msp.primaryContactEmail,
+          ownerEmail: owner.email,
+          recipientEmail: owner.normalizedEmail
+        })),
     salesEngineerDetailsComplete: Boolean(
       plan.assignedSeName?.trim() &&
       plan.assignedSeEmail &&
@@ -355,6 +361,9 @@ export async function enableZohoEmailAutomation(
       throw new ZohoAdminValidationError("The onboarding case changed. Reload it before trying again.", 409);
     }
     const owner = plan.planContacts[0];
+    if (owner.id !== initialOwner.id || owner.normalizedEmail !== initialOwner.normalizedEmail) {
+      throw new ZohoAdminValidationError("The Onboarding Owner changed. Review authorization before enabling automated emails.", 409);
+    }
     if (plan.automationEnrollmentState === "ACTIVE" && owner.automationEnabled) return;
     const decision = evaluateEmailAutomationEnablement(await enablementInput(transaction, plan, {
       complete: !membership.truncated,
@@ -406,6 +415,7 @@ export async function enableZohoEmailAutomation(
     const audit = await createZohoAutomationAuditInTransaction(transaction, {
       action: "email_automation.enabled",
       actor: input.actor,
+      evidenceReference: owner.id,
       onboardingPlanId: plan.id,
       reason: "Automated emails were enabled for this MSP after consent, subscription, suppression, provider, task, and communication-context checks passed.",
       recipientEmail: owner.email

@@ -6,7 +6,7 @@ import {
   type ZohoOutboxEventType
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { isZohoProductionRolloutPlanAllowed, isZohoProductionRuntime } from "@/lib/zoho-production-rollout";
+import { getApprovedZohoRolloutOwner, isZohoProductionRuntime } from "@/lib/zoho-production-rollout";
 import { getZohoPlanAutomationEligibility } from "@/lib/zoho-legacy-eligibility";
 
 export type ZohoTransaction = Prisma.TransactionClient;
@@ -124,8 +124,13 @@ export async function createZohoOutboxEventInTransaction(
   if (plan.automationEnrollmentState === "EXCLUDED") {
     throw new Error("Automation events cannot be created for an excluded plan.");
   }
-  if (isZohoProductionRuntime() && !isZohoProductionRolloutPlanAllowed(plan.planId)) {
-    return { created: false, event: null, blockedReason: "PRODUCTION_ROLLOUT_NOT_APPROVED" };
+  let payload = input.payload;
+  if (isZohoProductionRuntime()) {
+    const ownerId = await getApprovedZohoRolloutOwner(transaction, { ...input, planId: plan.planId });
+    if (!ownerId || !payload || typeof payload !== "object" || Array.isArray(payload)) {
+      return { created: false, event: null, blockedReason: "PRODUCTION_ROLLOUT_NOT_APPROVED" };
+    }
+    payload = { ...payload, rolloutOwnerId: ownerId };
   }
 
   const { recipientEmailNormalized, sequence } = await allocateZohoRecipientSequence(
@@ -140,7 +145,7 @@ export async function createZohoOutboxEventInTransaction(
       isStopState: input.isStopState ?? false,
       journey: input.journey,
       onboardingPlanId: input.onboardingPlanId,
-      payload: input.payload,
+      payload,
       planId: plan.planId,
       recipientEmailNormalized,
       sequence,
@@ -183,7 +188,8 @@ export async function createZohoJourneyTriggerEventInTransaction(
   if (plan.automationEnrollmentState === "EXCLUDED") {
     throw new Error("Journey events cannot be created for an excluded plan.");
   }
-  if (isZohoProductionRuntime() && !isZohoProductionRolloutPlanAllowed(plan.planId)) {
+  if (isZohoProductionRuntime() &&
+      !await getApprovedZohoRolloutOwner(transaction, { ...input, planId: plan.planId })) {
     return {
       created: false,
       event: null,

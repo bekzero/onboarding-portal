@@ -3,7 +3,7 @@ import type { ZohoContactSnapshot } from "./zoho-contact-mapping";
 type Provider = {
   synchronizeContact(
     snapshot: ZohoContactSnapshot,
-    options?: { beforeWrite?: () => void; verificationOnly?: boolean }
+    options?: { beforeWrite?: () => void | Promise<void>; verificationOnly?: boolean }
   ): Promise<{ classification: string; code: string }>;
   triggerJourney(input: {
     journeyKey: string;
@@ -15,7 +15,7 @@ type Provider = {
 
 export async function executeZohoProviderWorkflow(input: {
   beforeJourneyTrigger?: () => Promise<void>;
-  contactOptions?: { beforeWrite?: () => void; verificationOnly?: boolean };
+  contactOptions?: { beforeWrite?: () => void | Promise<void>; verificationOnly?: boolean };
   journey?: { journeyKey: string; leadEmail: string; listKey: string; triggerKey: string };
   provider: Provider;
   snapshot: ZohoContactSnapshot;

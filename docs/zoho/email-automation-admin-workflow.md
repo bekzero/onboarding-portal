@@ -50,11 +50,15 @@ Plan-level enablement never enables global dispatch. The global kill switch, dis
 
 ## Controlled Production rollout and automatic dispatch
 
-Routine activation remains fail-closed unless the selected plan ID is present in
-`ZOHO_PRODUCTION_ROLLOUT_PLAN_IDS`. Event creation, batch claiming, and final
-dispatch each enforce this server-only cohort. An empty or missing value permits
-no routine Production work. `ZMA_AUTOMATED_JOURNEYS` independently controls which
-journeys may be created and sent; the initial rollout must contain only `J1`.
+Routine activation requires the approved plan and email in
+`ZOHO_PRODUCTION_ROLLOUT_PLAN_IDS` and `ZOHO_PRODUCTION_ROLLOUT_EMAIL`. The
+normalized primary contact, sole Onboarding Owner, and event recipient must
+all match. Event creation, batch claiming, and final provider writes also
+check that the current owner has the latest individually attributed enable
+approval. Old events without the approved owner ID are ineligible. A missing
+or mismatched setting permits no routine Production work.
+`ZMA_AUTOMATED_JOURNEYS` must be exactly `J1` to allow Welcome journey work.
+Other values, including lists with additional journeys, leave journey work blocked.
 
 Vercel Schedules invokes a private `schedule/v1beta` function every 15 minutes,
 the fastest cadence supported on Hobby. Hobby applies a 15-minute jitter window,
@@ -82,15 +86,14 @@ independently supportable authorization basis. This is distinct from general
 contact permission. Absence of either record leaves activation blocked, and a
 fresh suppression scan still runs when the administrator clicks Enable.
 
-Before enabling the automatic dispatcher, use the existing **Disable Automated
-Emails** action once for BenMSP E2E Test. It records an audit and cancels its
-obsolete held KZero J1 event without calling Zoho or changing the already active
-Zoho reminder. Do not re-enable that plan during the initial rollout.
+BenMSP E2E Test is outside the approved plan and recipient pair. Leave its
+existing KZero state and active Zoho reminder intact during this rollout.
 
 Initial one-plan Production configuration (only after separate authorization):
 
 ```text
-ZOHO_PRODUCTION_ROLLOUT_PLAN_IDS=<reviewed-new-plan-id>
+ZOHO_PRODUCTION_ROLLOUT_PLAN_IDS=kzeroautomatione2etest-nfr
+ZOHO_PRODUCTION_ROLLOUT_EMAIL=beneakinkzero@gmail.com
 ZMA_AUTOMATED_JOURNEYS=J1
 ZOHO_GLOBAL_KILL_SWITCH=false
 ZOHO_DISPATCH_MODE=production

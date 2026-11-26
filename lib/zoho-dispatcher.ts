@@ -39,9 +39,10 @@ import {
   TEST_J1_RECONCILIATION_EVENT_REASON
 } from "@/lib/zoho-test-j1-reconciliation-core";
 import {
+  getApprovedZohoRolloutOwner,
   getZohoProductionRolloutConfiguration,
-  isZohoProductionJourneyEnabled,
-  isZohoProductionRolloutPlanAllowed
+  getZohoRolloutEventOwnerId,
+  isZohoProductionJourneyEnabled
 } from "@/lib/zoho-production-rollout";
 
 type ClaimedEvent = { event: ZohoOutboxEvent; claimId: string; contextVersion: number };
@@ -125,10 +126,12 @@ async function claimSelectedEvent(
   transaction: Prisma.TransactionClient,
   id: string,
   now: Date,
-  leaseSeconds: number
+  leaseSeconds: number,
+  requireRollout = false
 ): Promise<ClaimedEvent | null> {
   const event = await transaction.zohoOutboxEvent.findUnique({ where: { id } });
   if (!event) return null;
+  if (requireRollout && !await hasApprovedRolloutEventOwner(transaction, event)) return null;
   const context = await transaction.zohoCommunicationContext.findUnique({
     where: { recipientEmailNormalized: event.recipientEmailNormalized }
   });
@@ -174,11 +177,10 @@ async function claimSelectedEvent(
 async function claimNextEvent(
   now: Date,
   leaseSeconds: number,
-  allowedPlanIds: ReadonlySet<string> | null
+  target: ReturnType<typeof getZohoProductionRolloutConfiguration>["target"]
 ): Promise<ClaimedEvent | null> {
-  if (allowedPlanIds && allowedPlanIds.size === 0) return null;
-  const rolloutFilter = allowedPlanIds
-    ? Prisma.sql`AND event."planId" IN (${Prisma.join([...allowedPlanIds])})`
+  const rolloutFilter = target
+    ? Prisma.sql`AND event."planId" = ${target.planId} AND event."recipientEmailNormalized" = ${target.email}`
     : Prisma.empty;
   return prisma.$transaction(async (transaction) => {
     const candidates = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -204,7 +206,7 @@ async function claimNextEvent(
     `);
     const id = candidates[0]?.id;
     if (!id) return null;
-    return claimSelectedEvent(transaction, id, now, leaseSeconds);
+    return claimSelectedEvent(transaction, id, now, leaseSeconds, Boolean(target));
   });
 }
 
@@ -354,6 +356,19 @@ async function loadDispatchState(event: ZohoOutboxEvent) {
   return { contact, contactPermissionRecorded: Boolean(permissionAudit), currentTask, milestoneCompleted, plan };
 }
 
+async function hasApprovedRolloutEventOwner(
+  client: Pick<Prisma.TransactionClient, "onboardingPlan">,
+  event: ZohoOutboxEvent,
+  expectedOwnerId = getZohoRolloutEventOwnerId(event.payload)
+) {
+  return Boolean(expectedOwnerId && expectedOwnerId === getZohoRolloutEventOwnerId(event.payload) &&
+    expectedOwnerId === await getApprovedZohoRolloutOwner(client, {
+      onboardingPlanId: event.onboardingPlanId,
+      planId: event.planId,
+      recipientEmail: event.recipientEmailNormalized
+    }));
+}
+
 async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider) {
   const started = Date.now();
   const config = getZohoDispatchConfiguration();
@@ -425,9 +440,16 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
   if (config.mode === "production" && !config.productionApproved) {
     return done({ status: "HELD", reason: "PRODUCTION_DISPATCH_NOT_APPROVED" });
   }
-  if (config.mode === "production" && !isZohoProductionRolloutPlanAllowed(state.plan.planId)) {
+  if (config.mode === "production" && !await hasApprovedRolloutEventOwner(prisma, claim.event, state.contact.id)) {
     return done({ status: "HELD", reason: "PRODUCTION_ROLLOUT_NOT_APPROVED" });
   }
+  const assertApprovedRecipientBeforeWrite = async (email: string) => {
+    if (config.mode === "production" &&
+        (email.trim().toLowerCase() !== claim.event.recipientEmailNormalized ||
+          !await hasApprovedRolloutEventOwner(prisma, claim.event, state.contact.id))) {
+      throw new ZohoApiError("PRODUCTION_ROLLOUT_NOT_APPROVED", "CONFIGURATION");
+    }
+  };
   if (state.contact.subscriptionStatus === "INELIGIBLE") {
     const reason = claim.event.isStopState ? "CRITICAL_STOP_STATE_RECIPIENT_SUPPRESSED" : "RECIPIENT_INELIGIBLE";
     return done({ status: "HELD", reason });
@@ -615,12 +637,14 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
       const triggerCapacity = await reserveZohoApiCapacity("JOURNEY_TRIGGER");
       if (!triggerCapacity.allowed) return done({ status: "RETRY", reason: "JOURNEY_TRIGGER_RATE_LIMITED", retryAt: triggerCapacity.retryAt });
       apiOperation = "JOURNEY_TRIGGER";
-      journeyRequestStarted = true;
       const result = await provider.triggerJourney({
         journeyKey: journey.journeyKey,
         leadEmail: claim.event.recipientEmailNormalized,
         listKey,
         triggerKey: journey.triggerKey
+      }, async () => {
+        await assertApprovedRecipientBeforeWrite(claim.event.recipientEmailNormalized);
+        journeyRequestStarted = true;
       });
       if (result.classification === "IGNORED") return done({
         status: "DEAD", reason: "ZOHO_IGNORED_LEAD", outcome: result.classification,
@@ -634,7 +658,10 @@ async function processClaim(claim: ClaimedEvent, provider: ZohoDispatchProvider)
     const contactCapacity = await reserveZohoApiCapacity("CONTACT_SYNC");
     if (!contactCapacity.allowed) return done({ status: "RETRY", reason: "CONTACT_SYNC_RATE_LIMITED", retryAt: contactCapacity.retryAt });
     const contactOptions = {
-      beforeWrite: () => { contactWriteStarted = true; },
+      beforeWrite: async () => {
+        await assertApprovedRecipientBeforeWrite(String(snapshot.snapshot["Lead Email"] ?? ""));
+        contactWriteStarted = true;
+      },
       verificationOnly: claim.event.lastProviderOutcome === "ACCEPTED_PENDING_VERIFICATION"
     };
     if (claim.event.eventType === "UPSERT_CONTACT") {
@@ -693,7 +720,7 @@ export async function dispatchZohoOutboxBatch(input: { provider?: ZohoDispatchPr
   if (config.exactEventDispatchEnabled || config.globalKillSwitch || config.mode === "disabled") {
     return { claimed: 0, completed: 0, recoveredExpiredClaims: 0, disabled: true };
   }
-  if (config.mode === "production" && rollout.allowedPlanIds.size === 0) {
+  if (config.mode === "production" && !rollout.target) {
     return { claimed: 0, completed: 0, recoveredExpiredClaims: 0, disabled: true };
   }
   await quarantineLegacyQueuedEvents();
@@ -705,7 +732,7 @@ export async function dispatchZohoOutboxBatch(input: { provider?: ZohoDispatchPr
     const claim = await claimNextEvent(
       new Date(),
       config.leaseSeconds,
-      config.mode === "production" ? rollout.allowedPlanIds : null
+      config.mode === "production" ? rollout.target : null
     );
     if (!claim) break;
     claimed += 1;
@@ -720,7 +747,7 @@ export async function dispatchExactZohoOutboxEvent(
   input: { provider?: ZohoDispatchProvider } = {}
 ) {
   const config = getZohoDispatchConfiguration();
-  if (!config.exactEventDispatchEnabled || config.globalKillSwitch || config.mode === "disabled") {
+  if (!config.exactEventDispatchEnabled || config.globalKillSwitch || config.mode !== "test") {
     return { claimed: false, completed: false, disabled: true };
   }
   await quarantineLegacyQueuedEvents();

@@ -119,6 +119,29 @@ test("Trigger Leads uses documented details encoding without putting credentials
   assert.doesNotMatch(calls[1].input, /token|secret|refresh/);
 });
 
+test("contact and journey writes recheck authorization after OAuth and before an auth retry", async () => {
+  for (const send of [
+    (client, guard) => client.subscribeLead({ leadInfo: { "Lead Email": "owner@example.test" }, listKey: "list", topicId: "123" }, guard),
+    (client, guard) => client.triggerJourney({ journeyKey: "journey", leadEmail: "owner@example.test", listKey: "list", triggerKey: "trigger" }, guard)
+  ]) {
+    const calls = [];
+    const fetcher = async (url) => {
+      const oauth = new URL(url).hostname === "accounts.zoho.com";
+      calls.push(oauth ? "oauth" : "write");
+      return oauth ? response({ access_token: "fixture" }) : response({ code: "401" }, 401);
+    };
+    const client = new ZohoApiClientCore(new ZohoOAuthTokenManager({
+      clientId: "fixture", clientSecret: "fixture", refreshToken: "fixture"
+    }, fetcher), fetcher);
+    let checks = 0;
+    await assert.rejects(send(client, async () => {
+      calls.push("check");
+      if (++checks === 2) throw new Error("Owner changed");
+    }), /Owner changed/);
+    assert.deepEqual(calls, ["oauth", "check", "write", "oauth", "check"]);
+  }
+});
+
 test("L: backoff is bounded and Retry-After takes precedence", () => {
   assert.equal(getZohoRetryDelayMs(1), 60_000);
   assert.equal(getZohoRetryDelayMs(2), 300_000);

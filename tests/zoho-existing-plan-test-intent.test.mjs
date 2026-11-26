@@ -17,7 +17,11 @@ registerHooks({
   }
 });
 
-process.env.ZOHO_PRODUCTION_ROLLOUT_PLAN_IDS ||= "benmsp-nfr";
+const rolloutPlanId = "kzeroautomatione2etest-nfr";
+const rolloutEmail = "beneakinkzero@gmail.com";
+process.env.VERCEL_ENV = "production";
+process.env.ZOHO_PRODUCTION_ROLLOUT_PLAN_IDS = rolloutPlanId;
+process.env.ZOHO_PRODUCTION_ROLLOUT_EMAIL = rolloutEmail;
 const { createZohoContactSyncEventInTransaction } = await import("../lib/zoho-foundation.ts");
 
 function ready(overrides = {}) {
@@ -198,7 +202,7 @@ function createLockManager() {
   };
 }
 
-function createOutboxHarness() {
+function createOutboxHarness(primaryContactEmail = rolloutEmail) {
   const database = { audits: [], events: new Map(), nextSequence: 1, providerWrites: 0 };
   const lock = createLockManager();
   let failNextInsert = false;
@@ -217,7 +221,19 @@ function createOutboxHarness() {
       },
       onboardingPlan: {
         async findUnique() {
-          return { automationEnrollmentState: "ACTIVE", planId: "benmsp-nfr" };
+          return {
+            automationEnrollmentState: "ACTIVE",
+            planId: rolloutPlanId,
+            msp: { primaryContactEmail },
+            planContacts: [{
+              id: "fixture-owner", email: rolloutEmail, normalizedEmail: rolloutEmail,
+              automationEnabled: true, subscriptionStatus: "CONFIRMED"
+            }],
+            zohoAutomationAudits: [{
+              action: "email_automation.enabled", actor: "oidc:fixture-admin",
+              evidenceReference: "fixture-owner", recipientEmailNormalized: rolloutEmail
+            }]
+          };
         }
       },
       zohoOutboxEvent: {
@@ -238,10 +254,10 @@ function createOutboxHarness() {
 
     try {
       const result = await createZohoContactSyncEventInTransaction(transaction, {
-        eventKey: "contact-sync:existing-plan-full-field-test:benmsp-nfr:b.eakin%40kzero.com",
+        eventKey: "contact-sync:fixture",
         onboardingPlanId: "plan-database-id",
         payload: { schemaVersion: 3 },
-        recipientEmail: "b.eakin@kzero.com",
+        recipientEmail: rolloutEmail,
         status: "PENDING"
       });
       if (result.created) database.audits.push({ eventId: result.event.id });
@@ -264,6 +280,7 @@ test("transaction-scoped advisory lock allows exactly one idempotent UPSERT_CONT
   const repeated = await harness.prepare();
 
   assert.equal(first.result.created, true);
+  assert.equal(first.result.event.payload.rolloutOwnerId, "fixture-owner");
   assert.equal(repeated.result.created, false);
   assert.equal(first.result.event.id, repeated.result.event.id);
   assert.equal(harness.database.events.size, 1);
@@ -271,7 +288,14 @@ test("transaction-scoped advisory lock allows exactly one idempotent UPSERT_CONT
   assert.equal(harness.database.providerWrites, 0);
   assert.equal(first.executed.length, 1);
   assert.match(first.executed[0].strings.join(""), /pg_advisory_xact_lock\(hashtextextended\(/);
-  assert.equal(first.executed[0].values[0], "zoho-event:contact-sync:existing-plan-full-field-test:benmsp-nfr:b.eakin%40kzero.com");
+  assert.equal(first.executed[0].values[0], "zoho-event:contact-sync:fixture");
+});
+
+test("changing the primary email blocks event creation despite a matching owner and event recipient", async () => {
+  const harness = createOutboxHarness("replacement@example.test");
+  const { result } = await harness.prepare();
+  assert.equal(result.blockedReason, "PRODUCTION_ROLLOUT_NOT_APPROVED");
+  assert.equal(harness.database.events.size, 0);
 });
 
 test("concurrent preparations serialize on the same lock and cannot create duplicates", async () => {

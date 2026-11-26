@@ -9,7 +9,7 @@ import { getZohoProductionRolloutConfiguration } from "@/lib/zoho-production-rol
 export {
   getZohoProductionRolloutConfiguration,
   isZohoProductionJourneyEnabled,
-  isZohoProductionRolloutPlanAllowed,
+  isZohoProductionRolloutRecipientAllowed,
   isZohoProductionRuntime
 } from "@/lib/zoho-production-rollout";
 
@@ -245,7 +245,7 @@ export function getZohoConfigurationStatus() {
     oauthConfigured: Boolean(oauth.clientId && oauth.clientSecret && oauth.refreshToken),
     portalBaseUrlPresent: Boolean(getZohoPublicPortalBaseUrl()),
     productionDispatchApproved: dispatch.productionApproved,
-    productionRolloutPlanCount: getZohoProductionRolloutConfiguration().allowedPlanIds.size,
+    productionRolloutPlanCount: getZohoProductionRolloutConfiguration().target ? 1 : 0,
     productionJourneyRollout: [...getZohoProductionRolloutConfiguration().enabledJourneys],
     testMode: {
       allowlistedEmailCount: getZohoTestConfiguration().allowedEmails.size,

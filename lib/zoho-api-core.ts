@@ -626,9 +626,11 @@ export class ZohoApiClientCore {
     init: RequestInit = {},
     allowAuthRetry = true,
     baseUrl = ZOHO_API_BASE_URL,
-    acceptProviderError = false
+    acceptProviderError = false,
+    beforeWrite?: () => void | Promise<void>
   ): Promise<{ payload: unknown; status: number }> {
     const accessToken = await this.tokenManager.getAccessToken();
+    await beforeWrite?.();
     const response = await fetchWithTimeout(
       this.fetchImpl,
       `${baseUrl}${path}`,
@@ -647,7 +649,7 @@ export class ZohoApiClientCore {
     if ((response.status === 401 || code === "401") && allowAuthRetry) {
       this.tokenManager.invalidate();
       await this.tokenManager.getAccessToken(true);
-      return this.requestResult(path, init, false, baseUrl, acceptProviderError);
+      return this.requestResult(path, init, false, baseUrl, acceptProviderError, beforeWrite);
     }
     if (!acceptProviderError && (!response.ok || (code && !["0", "200"].includes(code)))) {
       throw classifyProviderError(response, payload);
@@ -659,9 +661,10 @@ export class ZohoApiClientCore {
     path: string,
     init: RequestInit = {},
     allowAuthRetry = true,
-    baseUrl = ZOHO_API_BASE_URL
+    baseUrl = ZOHO_API_BASE_URL,
+    beforeWrite?: () => void | Promise<void>
   ): Promise<unknown> {
-    return (await this.requestResult(path, init, allowAuthRetry, baseUrl)).payload;
+    return (await this.requestResult(path, init, allowAuthRetry, baseUrl, false, beforeWrite)).payload;
   }
 
   async getAllLeadFields() {
@@ -922,7 +925,7 @@ export class ZohoApiClientCore {
     leadInfo: Record<string, string | number>;
     listKey: string;
     topicId: string;
-  }) {
+  }, beforeWrite?: () => void | Promise<void>) {
     const body = new URLSearchParams({
       leadinfo: JSON.stringify(input.leadInfo),
       listkey: input.listKey,
@@ -934,7 +937,7 @@ export class ZohoApiClientCore {
       body,
       headers: { "content-type": "application/x-www-form-urlencoded" },
       method: "POST"
-    });
+    }, true, ZOHO_API_BASE_URL, beforeWrite);
     return parseSubscribeResult(payload);
   }
 
@@ -943,7 +946,7 @@ export class ZohoApiClientCore {
     leadEmail: string;
     listKey: string;
     triggerKey: string;
-  }) {
+  }, beforeWrite?: () => void | Promise<void>) {
     const details = encodeURIComponent(JSON.stringify({
       lead_email: input.leadEmail,
       listkey: input.listKey,
@@ -951,7 +954,8 @@ export class ZohoApiClientCore {
     }));
     const payload = await this.request(
       `/api/v1/journeys/${encodeURIComponent(input.journeyKey)}/action/trigger?details=${details}`,
-      { headers: { "content-type": "application/x-www-form-urlencoded" }, method: "POST" }
+      { headers: { "content-type": "application/x-www-form-urlencoded" }, method: "POST" },
+      true, ZOHO_API_BASE_URL, beforeWrite
     );
     return parseTriggerResult(payload, input.leadEmail);
   }

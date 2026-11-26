@@ -10,14 +10,14 @@ import { checkZohoListMembership } from "@/lib/zoho-phase2";
 export type ZohoDispatchProvider = {
   synchronizeContact(
     snapshot: ZohoContactSnapshot,
-    options?: { beforeWrite?: () => void; verificationOnly?: boolean }
+    options?: { beforeWrite?: () => void | Promise<void>; verificationOnly?: boolean }
   ): Promise<{ classification: string; code: string }>;
   triggerJourney(input: {
     journeyKey: string;
     leadEmail: string;
     listKey: string;
     triggerKey: string;
-  }): Promise<{ classification: "TRIGGERED" | "ALREADY_TRIGGERED" | "IGNORED"; code: string }>;
+  }, beforeWrite?: () => void | Promise<void>): Promise<{ classification: "TRIGGERED" | "ALREADY_TRIGGERED" | "IGNORED"; code: string }>;
 };
 
 export const zohoDispatchProvider: ZohoDispatchProvider = {
@@ -30,7 +30,6 @@ export const zohoDispatchProvider: ZohoDispatchProvider = {
     }
     const client = getZohoApiClient();
     return synchronizeFullFieldContact({
-      beforeWrite: options?.beforeWrite,
       fieldMappingVerified: process.env.ZMA_FIELD_MAPPING_VERIFIED?.trim().toLowerCase() === "true",
       getFields: () => client.getAllLeadFields(),
       getMembership: async () => {
@@ -39,12 +38,12 @@ export const zohoDispatchProvider: ZohoDispatchProvider = {
       },
       listKey,
       snapshot,
-      subscribe: (leadInfo) => client.subscribeLead({ leadInfo, listKey, topicId }),
+      subscribe: (leadInfo) => client.subscribeLead({ leadInfo, listKey, topicId }, options?.beforeWrite),
       topicId,
       verificationOnly: options?.verificationOnly
     });
   },
-  async triggerJourney(input) {
-    return getZohoApiClient().triggerJourney(input);
+  async triggerJourney(input, beforeWrite) {
+    return getZohoApiClient().triggerJourney(input, beforeWrite);
   }
 };
