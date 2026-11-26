@@ -222,9 +222,6 @@ type EnrollmentFormState = {
   status: OnboardingCase["status"];
   submittedSaasAppCount: number;
   tenantName: string;
-  prepareZohoTestJ1: boolean;
-  productionJ1ReuseConfirmed: boolean;
-  productionJ1ReviewEvidence: string;
   zohoContactPermissionConfirmed: boolean;
   zohoContactPermissionEvidence: string;
   zohoSubscriptionAuthorizationBasis: string;
@@ -1057,9 +1054,6 @@ function createEnrollmentState(): EnrollmentFormState {
     status: "waiting_on_msp",
     submittedSaasAppCount: 0,
     tenantName: "",
-    prepareZohoTestJ1: false,
-    productionJ1ReuseConfirmed: false,
-    productionJ1ReviewEvidence: "",
     zohoContactPermissionConfirmed: false,
     zohoContactPermissionEvidence: "",
     zohoSubscriptionAuthorizationBasis: "",
@@ -2336,26 +2330,6 @@ export function InternalDashboard({
       );
       return;
     }
-    if (
-      enrollmentState.prepareZohoTestJ1 &&
-      (!enrollmentState.zohoContactPermissionConfirmed ||
-        !primaryContactFirstName ||
-        !enrollmentState.assignedSeName.trim() ||
-        !enrollmentState.assignedSeEmail.trim() ||
-        !enrollmentState.assignedSeBookingUrl.trim())
-    ) {
-      setEnrollmentErrorMessage("TEST J1 preparation requires permission evidence, the owner first name, and complete Sales Engineer details.");
-      return;
-    }
-    if (
-      enrollmentState.prepareZohoTestJ1 &&
-      (!enrollmentState.productionJ1ReuseConfirmed ||
-        enrollmentState.productionJ1ReviewEvidence.trim().length < 8)
-    ) {
-      setEnrollmentErrorMessage("Production J1 reuse requires explicit approval and a review evidence reference.");
-      return;
-    }
-
     setEnrollmentErrorMessage(null);
 
     if (useServerData) {
@@ -2387,17 +2361,19 @@ export function InternalDashboard({
               authorizationBasis: subscriptionAuthorizationBasis,
               confirmed: enrollmentState.zohoSubscriptionAuthorizationConfirmed,
               evidenceReference: subscriptionEvidenceReference
-            },
-            zohoTestJ1Preparation: {
-              confirmed: enrollmentState.prepareZohoTestJ1,
-              productionJourneyReuseConfirmed: enrollmentState.productionJ1ReuseConfirmed,
-              reviewEvidenceReference: enrollmentState.productionJ1ReviewEvidence.trim() || undefined
             }
           })
         });
 
         if (!createResponse.ok) {
-          throw new Error("create_failed");
+          const failure = await createResponse.json().catch(() => null);
+          const message = typeof failure?.error === "string" && failure.error.trim()
+            ? failure.error
+            : "Could not save the new MSP. Check the MSP list before trying again.";
+          setEnrollmentErrorMessage(
+            typeof failure?.requestId === "string" ? `${message} Reference: ${failure.requestId}` : message
+          );
+          return;
         }
 
         const createdPayload = (await createResponse.json()) as { msp: AdminApiCase };
@@ -4722,43 +4698,6 @@ export function InternalDashboard({
                               </label>
                             </div>
                           ) : null}
-                        </div>
-                      ) : null}
-                      {staffIdentity?.role === "ADMIN" ? (
-                        <div className="mt-3 grid gap-3 rounded-2xl border border-info-border bg-info-surface px-4 py-3 text-sm leading-5 text-secondary">
-                        <label className="flex items-start gap-3">
-                          <input
-                            checked={enrollmentState.prepareZohoTestJ1}
-                            className="mt-0.5 h-4 w-4 rounded border-border bg-input"
-                            onChange={(event) => setEnrollmentState((current) => ({ ...current, prepareZohoTestJ1: event.target.checked }))}
-                            type="checkbox"
-                          />
-                          <span>
-                            Prepare the exact allowlisted full-field contact and held J1 intents. This records durable work only; it does not call Zoho or release any automation safeguard.
-                          </span>
-                        </label>
-                        {enrollmentState.prepareZohoTestJ1 ? (
-                          <div className="grid gap-3 border-t border-info-border pt-3">
-                            <label className="flex items-start gap-3">
-                              <input
-                                checked={enrollmentState.productionJ1ReuseConfirmed}
-                                className="mt-0.5 h-4 w-4 rounded border-border bg-input"
-                                onChange={(event) => setEnrollmentState((current) => ({ ...current, productionJ1ReuseConfirmed: event.target.checked }))}
-                                type="checkbox"
-                              />
-                              <span>I approve use of the verified Production J1 for this exact test after reviewing recipient re-entry and delayed-reminder exit behavior.</span>
-                            </label>
-                            <label className="grid gap-2">
-                              <span>J1 review evidence reference</span>
-                              <input
-                                className="h-10 rounded-xl border border-border bg-input px-3 text-foreground"
-                                onChange={(event) => setEnrollmentState((current) => ({ ...current, productionJ1ReviewEvidence: event.target.value }))}
-                                placeholder="Journey review ticket or evidence reference"
-                                value={enrollmentState.productionJ1ReviewEvidence}
-                              />
-                            </label>
-                          </div>
-                        ) : null}
                         </div>
                       ) : null}
                       {enrollmentErrorMessage ? (

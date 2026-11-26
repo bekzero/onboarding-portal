@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getAdminApiAuthError,
@@ -35,8 +36,19 @@ export async function POST(request: NextRequest) {
   const authError = await getAdminApiAuthError("SALES_ENGINEER");
   if (authError) return authError;
 
+  const requestId = randomUUID();
+  function enrollmentError(code: string, error: string, status = 400) {
+    console.warn("[msp-enrollment]", { code, requestId, status });
+    return NextResponse.json({ code, error, requestId }, { status });
+  }
+
+  const payload = await request.json().catch(() => null);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return enrollmentError("INVALID_ENROLLMENT_REQUEST", "Enter the MSP details and try again.");
+  }
+
   try {
-    const body = (await request.json()) as {
+    const { zohoTestJ1Preparation, ...body } = payload as {
       accessMode: "temporary" | "oidc";
       assignedSalesEngineer?: string;
       assignedSeBookingUrl?: string;
@@ -63,21 +75,34 @@ export async function POST(request: NextRequest) {
       };
     };
 
-    if (body.zohoTestJ1Preparation?.confirmed || body.zohoSubscriptionAuthorization?.confirmed) {
+    if (zohoTestJ1Preparation?.confirmed || zohoTestJ1Preparation?.productionJourneyReuseConfirmed) {
+      return enrollmentError(
+        "LEGACY_TEST_J1_NOT_SUPPORTED",
+        "Refresh this page and enroll the MSP again. Manage email activation from the Automated Emails panel after enrollment."
+      );
+    }
+
+    if (body.zohoSubscriptionAuthorization?.confirmed) {
       const sensitiveAuthError = await getSensitiveAdminApiAuthError(request, "ADMIN");
       if (sensitiveAuthError) return sensitiveAuthError;
     }
 
+    if (
+      body.zohoContactPermission?.evidenceReference != null &&
+      typeof body.zohoContactPermission.evidenceReference !== "string"
+    ) {
+      return enrollmentError("INVALID_PERMISSION_EVIDENCE", "Permission Evidence Reference must be text.");
+    }
     const permission = validateEnrollmentContactPermission(body.zohoContactPermission);
     if (!permission.valid) {
-      return NextResponse.json(
-        { error: "Permission Evidence Reference is required when Zoho permission is confirmed." },
-        { status: 400 }
+      return enrollmentError(
+        "PERMISSION_EVIDENCE_REQUIRED",
+        "Permission Evidence Reference is required when Zoho permission is confirmed."
       );
     }
     const subscription = validateEnrollmentSubscriptionAuthorization(body.zohoSubscriptionAuthorization);
     if (!subscription.valid) {
-      return NextResponse.json({ error: subscription.error }, { status: 400 });
+      return enrollmentError("INVALID_SUBSCRIPTION_AUTHORIZATION", subscription.error);
     }
 
     const staffIdentity = await getCurrentStaffIdentity();
@@ -93,17 +118,24 @@ export async function POST(request: NextRequest) {
         authorizationBasis: subscription.authorizationBasis,
         confirmed: subscription.confirmed,
         evidenceReference: subscription.evidenceReference
-      },
-      zohoTestJ1Preparation: {
-        confirmed: body.zohoTestJ1Preparation?.confirmed === true,
-        productionJourneyReuseConfirmed:
-          body.zohoTestJ1Preparation?.productionJourneyReuseConfirmed === true,
-        reviewEvidenceReference: body.zohoTestJ1Preparation?.reviewEvidenceReference
       }
     });
     return NextResponse.json({ msp: adminCase }, { status: 201 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Could not create MSP.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (error && typeof error === "object" && "code" in error && error.code === "P2002") {
+      return enrollmentError("MSP_ALREADY_EXISTS", "An MSP or onboarding plan with this identifier already exists.", 409);
+    }
+    const validationCodes: Record<string, string> = {
+      "MSP slug is required.": "MSP_SLUG_REQUIRED",
+      "Customer name is required for a Customer Plan.": "CUSTOMER_NAME_REQUIRED",
+      "Primary contact email is required.": "INVALID_PRIMARY_CONTACT_EMAIL",
+      "Enter a valid primary contact email.": "INVALID_PRIMARY_CONTACT_EMAIL",
+      "Enter a valid assigned sales engineer email.": "INVALID_ASSIGNED_SE_EMAIL",
+      "Assigned Sales Engineer booking URL must be a valid HTTP or HTTPS URL.": "INVALID_ASSIGNED_SE_BOOKING_URL"
+    };
+    if (error instanceof Error && Object.hasOwn(validationCodes, error.message)) {
+      return enrollmentError(validationCodes[error.message]!, error.message);
+    }
+    return enrollmentError("MSP_ENROLLMENT_FAILED", "Could not save the new MSP. Check the MSP list before trying again.", 500);
   }
 }
